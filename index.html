@@ -2943,29 +2943,97 @@
                 return ['TODAS', ...Array.from(ops)];
             }, [operacoes]);
 
-            // Aplicar filtros
+            // ── Calcular intervalo de datas para modos de média (sem depender de nada calculado depois) ──
+            const calcMediaIntervalo = useMemo(() => {
+                const isMedia = ['media_semanal','media_mensal','media_semestral'].includes(tipoFiltroData);
+                if (!isMedia) return { inicio: null, fim: null, labelPeriodo: '', numDias: 0 };
+                const ref = new Date(dataSelecionada + 'T12:00:00');
+                let inicio, fim;
+                if (tipoFiltroData === 'media_semanal') {
+                    const dow = ref.getDay();
+                    inicio = new Date(ref); inicio.setDate(ref.getDate() - dow);
+                    fim = new Date(ref); fim.setDate(ref.getDate() + (6 - dow));
+                } else if (tipoFiltroData === 'media_mensal') {
+                    inicio = new Date(ref.getFullYear(), ref.getMonth(), 1);
+                    fim = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
+                } else {
+                    const mes = ref.getMonth();
+                    const semestre = mes < 6 ? 0 : 1;
+                    inicio = new Date(ref.getFullYear(), semestre * 6, 1);
+                    fim = new Date(ref.getFullYear(), semestre * 6 + 6, 0);
+                }
+                const toStr = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                const inicioStr = toStr(inicio);
+                const fimStr = toStr(fim);
+                const labelPeriodo = `${inicio.toLocaleDateString('pt-BR')} → ${fim.toLocaleDateString('pt-BR')}`;
+                return { inicio: inicioStr, fim: fimStr, labelPeriodo };
+            }, [tipoFiltroData, dataSelecionada]);
+
+            // Aplicar filtros (sem dependência circular)
             const operacoesFiltradas = useMemo(() => {
                 return operacoes.filter(op => {
-                    // Filtro de data
                     let dataOk = false;
                     if (tipoFiltroData === 'dia') {
                         dataOk = op.data === dataSelecionada;
+                    } else if (['media_semanal','media_mensal','media_semestral'].includes(tipoFiltroData)) {
+                        const { inicio, fim } = calcMediaIntervalo;
+                        dataOk = inicio ? (op.data >= inicio && op.data <= fim) : false;
                     } else {
                         dataOk = op.data >= dataInicio && op.data <= dataFim;
                     }
-                    
-                    // Filtro de operação
-                    const operacaoOk = operacoesSelecionadas.includes('TODAS') || 
-                                      operacoesSelecionadas.includes(op.operacao);
-                    
-                    // Filtro de status
+                    const operacaoOk = operacoesSelecionadas.includes('TODAS') || operacoesSelecionadas.includes(op.operacao);
                     const statusOk = statusSelecionados.includes(op.status);
-                    
                     return dataOk && operacaoOk && statusOk;
                 });
-            }, [operacoes, tipoFiltroData, dataSelecionada, dataInicio, dataFim, operacoesSelecionadas, statusSelecionados]);
+            }, [operacoes, tipoFiltroData, dataSelecionada, dataInicio, dataFim, operacoesSelecionadas, statusSelecionados, calcMediaIntervalo]);
 
-            // Toggle operação selecionada
+            // Calcular médias por operação para os modos de média
+            const mediasPeriodo = useMemo(() => {
+                const { inicio, fim, labelPeriodo } = calcMediaIntervalo;
+                if (!inicio) return { inicio: null, fim: null, numDias: 0, labelPeriodo: '', mediaPorOp: [], mediaTodos: null };
+
+                const opsNoPeriodo = operacoes.filter(op => op.data >= inicio && op.data <= fim);
+                const numDias = (new Set(opsNoPeriodo.map(op => op.data))).size || 1;
+                const opsNomes = [...new Set(opsNoPeriodo.map(op => op.operacao))];
+                const opsParaCalc = opsNomes.filter(nome =>
+                    operacoesSelecionadas.includes('TODAS') || operacoesSelecionadas.includes(nome)
+                );
+
+                const mediaPorOp = opsParaCalc.map(nome => {
+                    const opsOp = opsNoPeriodo.filter(op => op.operacao === nome && statusSelecionados.includes(op.status));
+                    const diasOp = (new Set(opsOp.map(op => op.data))).size || 1;
+                    const totalNF = opsOp.reduce((a, o) => a + (o.nf || 0), 0);
+                    const totalVol = opsOp.reduce((a, o) => a + (o.vol || 0), 0);
+                    const totalCub = opsOp.reduce((a, o) => a + (o.cubagem || 0), 0);
+                    const verde = opsOp.filter(o => o.status === 'verde').length;
+                    const total = opsOp.length;
+                    return {
+                        nome, dias: diasOp,
+                        mediaNF: totalNF / diasOp,
+                        mediaVol: totalVol / diasOp,
+                        mediaCub: totalCub / diasOp,
+                        taxaPontualidade: total > 0 ? (verde / total) * 100 : 0,
+                        totalOps: total, totalNF, totalVol, totalCub
+                    };
+                });
+
+                const opsGeral = opsNoPeriodo.filter(op =>
+                    (operacoesSelecionadas.includes('TODAS') || operacoesSelecionadas.includes(op.operacao)) &&
+                    statusSelecionados.includes(op.status)
+                );
+                const diasGeral = (new Set(opsGeral.map(op => op.data))).size || 1;
+                const verdeG = opsGeral.filter(o => o.status === 'verde').length;
+                const mediaTodos = {
+                    dias: diasGeral,
+                    mediaNF: opsGeral.reduce((a, o) => a + (o.nf || 0), 0) / diasGeral,
+                    mediaVol: opsGeral.reduce((a, o) => a + (o.vol || 0), 0) / diasGeral,
+                    mediaCub: opsGeral.reduce((a, o) => a + (o.cubagem || 0), 0) / diasGeral,
+                    taxaPontualidade: opsGeral.length > 0 ? (verdeG / opsGeral.length) * 100 : 0,
+                    totalOps: opsGeral.length,
+                };
+
+                return { inicio, fim, numDias, labelPeriodo, mediaPorOp, mediaTodos };
+            }, [operacoes, calcMediaIntervalo, operacoesSelecionadas, statusSelecionados]);
             const toggleOperacao = (operacao) => {
                 if (operacao === 'TODAS') {
                     setOperacoesSelecionadas(['TODAS']);
@@ -3376,6 +3444,9 @@
                                 >
                                     <option value="dia">Dia Específico</option>
                                     <option value="periodo">Intervalo de Datas</option>
+                                    <option value="media_semanal">📊 Média Semanal</option>
+                                    <option value="media_mensal">📊 Média Mensal</option>
+                                    <option value="media_semestral">📊 Média Semestral</option>
                                 </select>
                                 
                                 {tipoFiltroData === 'dia' ? (
@@ -3385,7 +3456,7 @@
                                         onChange={(e) => setDataSelecionada(e.target.value)}
                                         className="w-full p-2 border-2 border-gray-300 rounded-lg"
                                     />
-                                ) : (
+                                ) : tipoFiltroData === 'periodo' ? (
                                     <div className="space-y-2">
                                         <input 
                                             type="date" 
@@ -3401,6 +3472,21 @@
                                             className="w-full p-2 border-2 border-gray-300 rounded-lg"
                                             placeholder="Data Fim"
                                         />
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <div style={{fontSize:'11px',color:'#6b7280',marginBottom:'4px'}}>Data de referência (fim do período):</div>
+                                        <input 
+                                            type="date" 
+                                            value={dataSelecionada}
+                                            onChange={(e) => setDataSelecionada(e.target.value)}
+                                            className="w-full p-2 border-2 border-gray-300 rounded-lg"
+                                        />
+                                        <div style={{marginTop:'6px',padding:'6px 10px',background:'#ede9fe',borderRadius:'8px',fontSize:'11px',color:'#5b21b6',fontWeight:'600'}}>
+                                            {tipoFiltroData === 'media_semanal' && `📅 Semana: ${mediasPeriodo.labelPeriodo}`}
+                                            {tipoFiltroData === 'media_mensal' && `📅 Mês: ${mediasPeriodo.labelPeriodo}`}
+                                            {tipoFiltroData === 'media_semestral' && `📅 Semestre: ${mediasPeriodo.labelPeriodo}`}
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -3527,7 +3613,80 @@
                         </div>
                     </div>
                     
-
+                    {/* ── PAINEL DE MÉDIAS (semanal / mensal / semestral) ── */}
+                    {['media_semanal','media_mensal','media_semestral'].includes(tipoFiltroData) && mediasPeriodo.mediaTodos && (
+                        <div style={{background:'linear-gradient(135deg,#1e1b4b 0%,#312e81 100%)',borderRadius:'16px',padding:'20px 24px',marginBottom:'24px',boxShadow:'0 8px 32px rgba(49,46,129,0.35)'}}>
+                            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'16px',flexWrap:'wrap',gap:'8px'}}>
+                                <div>
+                                    <div style={{color:'#fff',fontWeight:'800',fontSize:'17px'}}>
+                                        {tipoFiltroData === 'media_semanal' && '📊 Média Semanal de Operações'}
+                                        {tipoFiltroData === 'media_mensal' && '📊 Média Mensal de Operações'}
+                                        {tipoFiltroData === 'media_semestral' && '📊 Média Semestral de Operações'}
+                                    </div>
+                                    <div style={{color:'rgba(199,210,254,0.8)',fontSize:'12px',marginTop:'2px'}}>{mediasPeriodo.labelPeriodo} · {mediasPeriodo.numDias} dia(s) com registro</div>
+                                </div>
+                                <div style={{background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.2)',borderRadius:'20px',padding:'5px 14px',fontSize:'12px',color:'#e0d5ff',fontWeight:'600'}}>Média diária por operação</div>
+                            </div>
+                            <div style={{background:'rgba(255,255,255,0.1)',border:'1.5px solid rgba(255,255,255,0.2)',borderRadius:'12px',padding:'14px 18px',marginBottom:'14px'}}>
+                                <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'10px'}}>
+                                    <span style={{fontSize:'18px'}}>🏭</span>
+                                    <span style={{color:'#fff',fontWeight:'800',fontSize:'14px'}}>TODAS AS OPERAÇÕES</span>
+                                    <span style={{background:'rgba(255,255,255,0.15)',color:'#c7d2fe',fontSize:'11px',fontWeight:'600',padding:'2px 10px',borderRadius:'10px',marginLeft:'auto'}}>{mediasPeriodo.mediaTodos.totalOps} registros · {mediasPeriodo.mediaTodos.dias} dias</span>
+                                </div>
+                                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:'10px'}}>
+                                    <div style={{background:'rgba(139,92,246,0.25)',borderRadius:'10px',padding:'10px 14px',textAlign:'center'}}>
+                                        <div style={{color:'#c4b5fd',fontSize:'11px',fontWeight:'600',marginBottom:'4px'}}>Média NF/dia</div>
+                                        <div style={{color:'#fff',fontWeight:'800',fontSize:'20px'}}>{Math.round(mediasPeriodo.mediaTodos.mediaNF).toLocaleString('pt-BR')}</div>
+                                    </div>
+                                    <div style={{background:'rgba(59,130,246,0.25)',borderRadius:'10px',padding:'10px 14px',textAlign:'center'}}>
+                                        <div style={{color:'#93c5fd',fontSize:'11px',fontWeight:'600',marginBottom:'4px'}}>Média Vol/dia</div>
+                                        <div style={{color:'#fff',fontWeight:'800',fontSize:'20px'}}>{Math.round(mediasPeriodo.mediaTodos.mediaVol).toLocaleString('pt-BR')}</div>
+                                    </div>
+                                    <div style={{background:'rgba(245,158,11,0.25)',borderRadius:'10px',padding:'10px 14px',textAlign:'center'}}>
+                                        <div style={{color:'#fcd34d',fontSize:'11px',fontWeight:'600',marginBottom:'4px'}}>Média m³/dia</div>
+                                        <div style={{color:'#fff',fontWeight:'800',fontSize:'20px'}}>{mediasPeriodo.mediaTodos.mediaCub.toFixed(2)}</div>
+                                    </div>
+                                    <div style={{background:'rgba(16,185,129,0.25)',borderRadius:'10px',padding:'10px 14px',textAlign:'center'}}>
+                                        <div style={{color:'#6ee7b7',fontSize:'11px',fontWeight:'600',marginBottom:'4px'}}>Pontualidade</div>
+                                        <div style={{color:'#fff',fontWeight:'800',fontSize:'20px'}}>{mediasPeriodo.mediaTodos.taxaPontualidade.toFixed(1)}%</div>
+                                    </div>
+                                </div>
+                            </div>
+                            {mediasPeriodo.mediaPorOp.length > 0 ? (
+                                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:'12px'}}>
+                                    {mediasPeriodo.mediaPorOp.map(op => (
+                                        <div key={op.nome} style={{background:'rgba(255,255,255,0.07)',border:'1.5px solid rgba(255,255,255,0.15)',borderRadius:'12px',padding:'14px 16px'}}>
+                                            <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'10px'}}>
+                                                <span style={{fontSize:'14px'}}>⚙️</span>
+                                                <span style={{color:'#e0e7ff',fontWeight:'800',fontSize:'13px',flex:1}}>{op.nome}</span>
+                                                <span style={{color:'rgba(199,210,254,0.7)',fontSize:'10px',fontWeight:'600'}}>{op.dias} dias</span>
+                                            </div>
+                                            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
+                                                <div style={{background:'rgba(139,92,246,0.2)',borderRadius:'8px',padding:'8px 10px',textAlign:'center'}}>
+                                                    <div style={{color:'#c4b5fd',fontSize:'10px',fontWeight:'600',marginBottom:'2px'}}>NF/dia</div>
+                                                    <div style={{color:'#fff',fontWeight:'800',fontSize:'16px'}}>{Math.round(op.mediaNF).toLocaleString('pt-BR')}</div>
+                                                </div>
+                                                <div style={{background:'rgba(59,130,246,0.2)',borderRadius:'8px',padding:'8px 10px',textAlign:'center'}}>
+                                                    <div style={{color:'#93c5fd',fontSize:'10px',fontWeight:'600',marginBottom:'2px'}}>Vol/dia</div>
+                                                    <div style={{color:'#fff',fontWeight:'800',fontSize:'16px'}}>{Math.round(op.mediaVol).toLocaleString('pt-BR')}</div>
+                                                </div>
+                                                <div style={{background:'rgba(245,158,11,0.2)',borderRadius:'8px',padding:'8px 10px',textAlign:'center'}}>
+                                                    <div style={{color:'#fcd34d',fontSize:'10px',fontWeight:'600',marginBottom:'2px'}}>m³/dia</div>
+                                                    <div style={{color:'#fff',fontWeight:'800',fontSize:'16px'}}>{op.mediaCub.toFixed(2)}</div>
+                                                </div>
+                                                <div style={{background:op.taxaPontualidade>=80?'rgba(16,185,129,0.2)':op.taxaPontualidade>=50?'rgba(245,158,11,0.2)':'rgba(239,68,68,0.2)',borderRadius:'8px',padding:'8px 10px',textAlign:'center'}}>
+                                                    <div style={{color:op.taxaPontualidade>=80?'#6ee7b7':op.taxaPontualidade>=50?'#fcd34d':'#fca5a5',fontSize:'10px',fontWeight:'600',marginBottom:'2px'}}>Pontual.</div>
+                                                    <div style={{color:'#fff',fontWeight:'800',fontSize:'16px'}}>{op.taxaPontualidade.toFixed(1)}%</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div style={{textAlign:'center',padding:'20px',color:'rgba(199,210,254,0.6)',fontSize:'13px'}}>Nenhum dado encontrado para o período selecionado.</div>
+                            )}
+                        </div>
+                    )}
 
                     {/* ── ALERTA: OPERAÇÕES ACIMA DA CAPACIDADE ── */}
                     {(() => {
