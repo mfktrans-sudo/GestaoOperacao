@@ -1343,24 +1343,29 @@
                 if (periodo==='custom' && customIni && customFim) { setDataIni(customIni); setDataFim(customFim); }
             }, [customIni, customFim, periodo]);
 
-            // ══ HELPER: normaliza nome removendo sufixo numérico (ex: "PAVUNA 1" → "PAVUNA") ══
-            const normalizarNome = (nome) => {
-                if (!nome) return '—';
-                // Remove sufixo " 1", " 2", " 3"... no final (com ou sem espaço extra)
-                return nome.trim().replace(/\s+\d+$/, '').trim();
+            // ── Normaliza nome de operação para agrupamento no filtro ──
+            // Remove sufixos numéricos como "-1", "-2", " 1", " 2", "1", "2" no final do nome.
+            // Ex: "TP-PAVUNA-2" → "TP-PAVUNA", "TZ-SANTA/ESTEIO 2" → "TZ-SANTA/ESTEIO"
+            const normalizarOpTorre = (nome) => {
+                if (!nome) return nome;
+                return nome.trim()
+                    .replace(/[\s\-]+\d+\s*$/, '')  // remove " 2", "-2", " -2" no final
+                    .replace(/\s+\d+$/, '')           // remove espaço + número no final
+                    .trim();
             };
 
-            // Operações disponíveis — nomes normalizados (sem duplicatas)
+            // Operações disponíveis — agrupadas (sem sufixo numérico)
             const opsDisponiveis = useMemo(() => {
-                const s = new Set(operacoes.map(o => normalizarNome(o.operacao)).filter(n => n && n !== '—'));
-                return ['TODAS', ...Array.from(s).sort()];
+                const nomes = operacoes.map(o => o.operacao).filter(Boolean);
+                const normalizados = new Set(nomes.map(n => normalizarOpTorre(n)));
+                return ['TODAS', ...Array.from(normalizados).sort()];
             }, [operacoes]);
 
-            // Filtro principal — compara nome normalizado com o filtro selecionado
+            // Filtro principal — compara pelo nome normalizado
             const opsFiltradas = useMemo(() => operacoes.filter(o => {
                 if (!dataIni || !dataFim) return true;
                 const dentroData = o.data >= dataIni && o.data <= dataFim;
-                const dentroOp   = opFiltro === 'TODAS' || normalizarNome(o.operacao) === opFiltro;
+                const dentroOp = opFiltro === 'TODAS' || normalizarOpTorre(o.operacao) === opFiltro;
                 return dentroData && dentroOp;
             }), [operacoes, dataIni, dataFim, opFiltro, ticker]);
 
@@ -1406,31 +1411,26 @@
                 return Object.values(map).sort((a,b)=>a.data.localeCompare(b.data));
             }, [opsFiltradas]);
 
-            // Por operação — agrupa pelo nome normalizado
+            // Por operação — agrupa por nome normalizado
             const porOperacao = useMemo(() => {
                 const map = {};
                 opsFiltradas.forEach(o => {
-                    const k = normalizarNome(o.operacao);
-                    if (!map[k]) map[k] = {op:k,total:0,verde:0,amarelo:0,vermelho:0,vol:0,nf:0,cub:0,subOps:new Set()};
+                    const k = normalizarOpTorre(o.operacao) || '—';
+                    if (!map[k]) map[k] = {op:k,total:0,verde:0,amarelo:0,vermelho:0,vol:0,nf:0,cub:0};
                     map[k].total++; map[k].vol+=Number(o.vol)||0; map[k].nf+=Number(o.nf)||0; map[k].cub+=parseFloat(o.cubagem||0);
                     if(o.status==='verde')    map[k].verde++;
                     if(o.status==='amarelo')  map[k].amarelo++;
                     if(o.status==='vermelho') map[k].vermelho++;
-                    if(o.operacao && o.operacao.trim() !== k) map[k].subOps.add(o.operacao.trim());
                 });
-                // Converte Set para array e adiciona flag de múltiplos veículos
-                return Object.values(map).map(v => ({
-                    ...v,
-                    subOps: Array.from(v.subOps).sort(),
-                    temMultiplos: v.subOps.size > 0,
-                })).sort((a,b)=>b.vol-a.vol);
+                return Object.values(map).sort((a,b)=>b.vol-a.vol);
             }, [opsFiltradas]);
 
+            // drillDados: filtra por nome normalizado, mas exibe sub-operações com nome original
             const drillDados = useMemo(() => {
                 if (!drillOp) return [];
                 return opsFiltradas
-                    .filter(o => normalizarNome(o.operacao) === drillOp)
-                    .sort((a,b) => b.data.localeCompare(a.data));
+                    .filter(o => normalizarOpTorre(o.operacao) === drillOp)
+                    .sort((a,b)=>b.data.localeCompare(a.data));
             }, [drillOp, opsFiltradas]);
 
             const ultimasOps = useMemo(() => [...opsFiltradas].sort((a,b)=>b.data.localeCompare(a.data)).slice(0,10), [opsFiltradas]);
@@ -1442,31 +1442,31 @@
                 if (tipo==='volumetria') {
                     titulo='📦 Detalhamento de Volumetria por Operação';
                     const agg={};
-                    opsFiltradas.forEach(o=>{ const k=normalizarNome(o.operacao); if(!agg[k]) agg[k]={op:k,vol:0,nf:0,cub:0,total:0}; agg[k].vol+=Number(o.vol)||0; agg[k].nf+=Number(o.nf)||0; agg[k].cub+=parseFloat(o.cubagem||0); agg[k].total++; });
+                    opsFiltradas.forEach(o=>{ const k=normalizarOpTorre(o.operacao)||'—'; if(!agg[k]) agg[k]={op:k,vol:0,nf:0,cub:0,total:0}; agg[k].vol+=Number(o.vol)||0; agg[k].nf+=Number(o.nf)||0; agg[k].cub+=parseFloat(o.cubagem||0); agg[k].total++; });
                     dados=Object.values(agg).sort((a,b)=>b.vol-a.vol);
                     colunas=['Operação','Volume Total','NFs Total','Cubagem m³','Qtd Registros','Vol Médio/Op'];
                 } else if (tipo==='notas') {
                     titulo='📄 Detalhamento de Notas Fiscais por Operação';
                     const agg={};
-                    opsFiltradas.forEach(o=>{ const k=normalizarNome(o.operacao); if(!agg[k]) agg[k]={op:k,nf:0,vol:0,total:0}; agg[k].nf+=Number(o.nf)||0; agg[k].vol+=Number(o.vol)||0; agg[k].total++; });
+                    opsFiltradas.forEach(o=>{ const k=normalizarOpTorre(o.operacao)||'—'; if(!agg[k]) agg[k]={op:k,nf:0,vol:0,total:0}; agg[k].nf+=Number(o.nf)||0; agg[k].vol+=Number(o.vol)||0; agg[k].total++; });
                     dados=Object.values(agg).sort((a,b)=>b.nf-a.nf);
                     colunas=['Operação','NFs Total','Volume Total','Qtd Registros','NF Média/Op'];
                 } else if (tipo==='cubagem') {
                     titulo='📐 Detalhamento de Cubagem por Operação';
                     const agg={};
-                    opsFiltradas.forEach(o=>{ const k=normalizarNome(o.operacao); if(!agg[k]) agg[k]={op:k,cub:0,vol:0,nf:0,total:0}; agg[k].cub+=parseFloat(o.cubagem||0); agg[k].vol+=Number(o.vol)||0; agg[k].nf+=Number(o.nf)||0; agg[k].total++; });
+                    opsFiltradas.forEach(o=>{ const k=normalizarOpTorre(o.operacao)||'—'; if(!agg[k]) agg[k]={op:k,cub:0,vol:0,nf:0,total:0}; agg[k].cub+=parseFloat(o.cubagem||0); agg[k].vol+=Number(o.vol)||0; agg[k].nf+=Number(o.nf)||0; agg[k].total++; });
                     dados=Object.values(agg).sort((a,b)=>b.cub-a.cub);
                     colunas=['Operação','Cubagem Total (m³)','Volume Total','NFs Total','Qtd Registros','Cub Média/Op'];
                 } else if (tipo==='sla') {
                     titulo='🎯 Distribuição de Status por Operação';
                     const agg={};
-                    opsFiltradas.forEach(o=>{ const k=normalizarNome(o.operacao); if(!agg[k]) agg[k]={op:k,total:0,verde:0,amarelo:0,vermelho:0}; agg[k].total++; if(o.status==='verde') agg[k].verde++; if(o.status==='amarelo') agg[k].amarelo++; if(o.status==='vermelho') agg[k].vermelho++; });
+                    opsFiltradas.forEach(o=>{ const k=normalizarOpTorre(o.operacao)||'—'; if(!agg[k]) agg[k]={op:k,total:0,verde:0,amarelo:0,vermelho:0}; agg[k].total++; if(o.status==='verde') agg[k].verde++; if(o.status==='amarelo') agg[k].amarelo++; if(o.status==='vermelho') agg[k].vermelho++; });
                     dados=Object.values(agg).sort((a,b)=>{ const sA=a.total>0?a.verde/a.total:0; const sB=b.total>0?b.verde/b.total:0; return sB-sA; });
                     colunas=['Operação','Total Ops','✅ No Prazo','⚠️ Atenção','🚨 Crítico','SLA %'];
                 } else if (tipo==='operacoes') {
                     titulo='⚡ Todas as Operações no Período';
                     dados=[...opsFiltradas].sort((a,b)=>b.data.localeCompare(a.data));
-                    colunas=['Data','Operação','Veículo','Volume','NFs','Cubagem m³','Início','Término','Status'];
+                    colunas=['Data','Operação','Volume','NFs','Cubagem m³','Início','Término','Status'];
                 }
                 setTorreModal({titulo,dados,colunas,tipo});
             };
@@ -1481,26 +1481,7 @@
                 if (tipo==='notas') return <tr key={i} style={{background:bg}}>{cel(row.op,{bold:true})}{cel(Math.round(row.nf).toLocaleString('pt-BR'),{color:BLUE_C,bold:true})}{cel(Math.round(row.vol).toLocaleString('pt-BR'),{color:PURPLE_C})}{cel(row.total,{center:true})}{cel(Math.round(row.nf/row.total).toLocaleString('pt-BR'),{center:true,color:BLUE_C})}</tr>;
                 if (tipo==='cubagem') return <tr key={i} style={{background:bg}}>{cel(row.op,{bold:true})}{cel(row.cub.toFixed(2)+' m³',{color:AMBER_C,bold:true})}{cel(Math.round(row.vol).toLocaleString('pt-BR'),{color:PURPLE_C})}{cel(Math.round(row.nf).toLocaleString('pt-BR'),{color:BLUE_C})}{cel(row.total,{center:true})}{cel((row.cub/row.total).toFixed(2)+' m³',{center:true,color:AMBER_C})}</tr>;
                 if (tipo==='sla') { const sla=row.total>0?(row.verde/row.total*100):0; const sbg=sla>=80?'#d1fae5':sla>=60?'#fef3c7':'#fee2e2'; const sc2=sla>=80?'#065f46':sla>=60?'#92400e':'#991b1b'; return <tr key={i} style={{background:bg}}>{cel(row.op,{bold:true})}{cel(row.total,{center:true,bold:true})}{cel(row.verde,{center:true,color:GREEN_C,bold:true})}{cel(row.amarelo,{center:true,color:AMBER_C,bold:true})}{cel(row.vermelho,{center:true,color:RED_C,bold:true})}<td style={{padding:'9px 14px',borderBottom:'1px solid #f3f0ff',textAlign:'center'}}><span style={{background:sbg,color:sc2,padding:'3px 10px',borderRadius:12,fontSize:11,fontWeight:700}}>{sla.toFixed(1)}%</span></td></tr>; }
-                if (tipo==='operacoes') {
-                    const nomeOrig = (row.operacao||'').trim();
-                    const nomeBase = normalizarNome(nomeOrig);
-                    const sufixo = nomeOrig !== nomeBase ? nomeOrig.replace(nomeBase,'').trim() : '—';
-                    return <tr key={i} style={{background:bg}}>
-                        {cel(fmtFull2(row.data))}
-                        {cel(nomeBase,{bold:true})}
-                        <td style={{padding:'9px 14px',borderBottom:'1px solid #f3f0ff'}}>
-                            {sufixo !== '—'
-                                ? <span style={{background:'#ddd6fe',color:PURPLE_C,padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700}}>🚛 Veíc. {sufixo}</span>
-                                : <span style={{color:'#9ca3af',fontSize:11}}>—</span>}
-                        </td>
-                        {cel(Math.round(row.vol||0).toLocaleString('pt-BR'),{color:PURPLE_C,bold:true})}
-                        {cel(Math.round(row.nf||0).toLocaleString('pt-BR'),{color:BLUE_C})}
-                        {cel(parseFloat(row.cubagem||0).toFixed(2),{color:AMBER_C})}
-                        {cel(row.inicio||'—')}
-                        {cel(row.termino||'—')}
-                        <td style={{padding:'9px 14px',borderBottom:'1px solid #f3f0ff'}}>{pill(row.status)}</td>
-                    </tr>;
-                }
+                if (tipo==='operacoes') return <tr key={i} style={{background:bg}}>{cel(fmtFull2(row.data))}{cel(row.operacao||'—',{bold:true})}{cel(Math.round(row.vol||0).toLocaleString('pt-BR'),{color:PURPLE_C,bold:true})}{cel(Math.round(row.nf||0).toLocaleString('pt-BR'),{color:BLUE_C})}{cel(parseFloat(row.cubagem||0).toFixed(2),{color:AMBER_C})}{cel(row.inicio||'—')}{cel(row.termino||'—')}<td style={{padding:'9px 14px',borderBottom:'1px solid #f3f0ff'}}>{pill(row.status)}</td></tr>;
                 return null;
             };
 
@@ -1647,30 +1628,29 @@
                 </div>
 
                 {/* ══ FILTROS ══ */}
-                <div style={{background:'linear-gradient(135deg,#4c1d95,#6d28d9)',borderRadius:14,padding:'14px 20px',marginBottom:14,border:'1px solid #7c3aed'}}>
+                <div style={{background:'linear-gradient(135deg,#2d1b69 0%,#4c1d95 100%)',borderRadius:14,padding:'14px 20px',marginBottom:14,border:'1px solid rgba(255,255,255,0.15)',boxShadow:'0 4px 18px rgba(76,29,149,0.25)'}}>
                     {/* Linha 1: botões de período */}
-                    <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:10}}>
-                        <span style={{fontSize:11,fontWeight:700,color:'#e9d5ff',textTransform:'uppercase',letterSpacing:'0.08em',flexShrink:0,marginRight:4}}>Período:</span>
+                    <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}}>
+                        <span style={{fontSize:11,fontWeight:700,color:'rgba(200,180,255,0.9)',textTransform:'uppercase',letterSpacing:'0.08em',flexShrink:0}}>Período:</span>
                         {periodos.map(([k,l]) => {
                             const isActive = periodo === k;
                             return (
                                 <button key={k}
                                     onClick={() => setPeriodo(k)}
                                     style={{
-                                        padding:'7px 16px',
+                                        padding:'6px 14px',
                                         borderRadius:20,
-                                        fontSize:12,
+                                        fontSize:11,
                                         fontWeight:700,
-                                        border: isActive ? '2px solid #fff' : '2px solid rgba(255,255,255,0.4)',
-                                        background: isActive ? '#ffffff' : 'rgba(255,255,255,0.15)',
-                                        color: isActive ? '#6d28d9' : '#ffffff',
+                                        border:'1.5px solid '+(isActive?'#fff':'rgba(255,255,255,0.3)'),
+                                        background:isActive?'#fff':'rgba(255,255,255,0.1)',
+                                        color:isActive?'#7c3aed':'rgba(255,255,255,0.9)',
                                         cursor:'pointer',
                                         flexShrink:0,
                                         whiteSpace:'nowrap',
-                                        boxShadow: isActive ? '0 3px 12px rgba(0,0,0,0.25)' : 'none',
+                                        boxShadow:isActive?'0 4px 14px rgba(0,0,0,0.25)':'none',
                                         transition:'all 0.15s',
                                         lineHeight:'1.4',
-                                        outline:'none',
                                     }}>
                                     {l}
                                 </button>
@@ -1681,16 +1661,13 @@
                     <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
                         {showCustom && (
                             <>
-                                <input type="date" value={customIni} onChange={e=>setCustomIni(e.target.value)}
-                                    style={{padding:'6px 10px',borderRadius:8,border:'1.5px solid rgba(255,255,255,0.5)',background:'rgba(255,255,255,0.15)',color:'#fff',fontSize:12,fontWeight:600,outline:'none'}}/>
-                                <span style={{color:'rgba(255,255,255,0.7)',fontWeight:700}}>–</span>
-                                <input type="date" value={customFim} onChange={e=>setCustomFim(e.target.value)}
-                                    style={{padding:'6px 10px',borderRadius:8,border:'1.5px solid rgba(255,255,255,0.5)',background:'rgba(255,255,255,0.15)',color:'#fff',fontSize:12,fontWeight:600,outline:'none'}}/>
+                                <input type="date" value={customIni} onChange={e=>setCustomIni(e.target.value)} className="torre-input-date"/>
+                                <span style={{color:'rgba(255,255,255,0.6)'}}>–</span>
+                                <input type="date" value={customFim} onChange={e=>setCustomFim(e.target.value)} className="torre-input-date"/>
                             </>
                         )}
-                        <span style={{fontSize:11,fontWeight:700,color:'#e9d5ff',textTransform:'uppercase',letterSpacing:'0.08em',flexShrink:0}}>Operação:</span>
-                        <select value={opFiltro} onChange={e=>{setOpFiltro(e.target.value);setDrillOp(null);}}
-                            style={{padding:'6px 12px',borderRadius:10,fontSize:12,fontWeight:700,border:'1.5px solid rgba(255,255,255,0.5)',color:'#4c1d95',background:'#fff',cursor:'pointer',outline:'none'}}>
+                        <span style={{fontSize:11,fontWeight:700,color:'rgba(200,180,255,0.9)',textTransform:'uppercase',letterSpacing:'0.08em',marginLeft:showCustom?8:0,flexShrink:0}}>Operação:</span>
+                        <select className="torre-select" value={opFiltro} onChange={e=>{setOpFiltro(e.target.value);setDrillOp(null);}}>
                             {opsDisponiveis.map(o=><option key={o} value={o}>{o}</option>)}
                         </select>
                         {drillOp && (
@@ -1897,15 +1874,9 @@
                                         onClick={() => setDrillOp(isD?null:op.op)}
                                         style={{padding:'12px 14px',borderRadius:10,background:isD?'#ede9fe':'#faf5ff',border:'1px solid '+(isD?PURPLE:'#ede9fe')}}>
                                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                                            <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
-                                                <span style={{fontSize:11,fontWeight:800,color:i<3?PURPLE:'#9ca3af',minWidth:22,flexShrink:0}}>#{i+1}</span>
+                                            <div style={{display:'flex',alignItems:'center',gap:8}}>
+                                                <span style={{fontSize:11,fontWeight:800,color:i<3?PURPLE:'#9ca3af',minWidth:22}}>#{i+1}</span>
                                                 <span style={{fontSize:12,fontWeight:700,color:'#1f2937'}}>{op.op}</span>
-                                                {op.temMultiplos && (
-                                                    <span style={{background:'#ede9fe',color:PURPLE,fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:99,flexShrink:0}}
-                                                        title={`Veículos: ${op.subOps.join(', ')}`}>
-                                                        🚛 {op.subOps.length + 1} veíc.
-                                                    </span>
-                                                )}
                                             </div>
                                             <span style={pillStyle(sla)}>{sla.toFixed(0)}%</span>
                                         </div>
@@ -1941,20 +1912,16 @@
                                 {drillDados.map((o,i) => {
                                     const sc = o.status==='verde'?GREEN:o.status==='amarelo'?AMBER:RED;
                                     const sl = o.status==='verde'?'✅':o.status==='amarelo'?'⚠️':'🚨';
-                                    const nomeOriginal = (o.operacao||'').trim();
-                                    const nomeBase = normalizarNome(nomeOriginal);
-                                    const sufixo = nomeOriginal !== nomeBase ? nomeOriginal.replace(nomeBase,'').trim() : null;
+                                    const nomeOrig = o.operacao || '—';
+                                    const nomeNorm = normalizarOpTorre(o.operacao);
+                                    const temVariacao = nomeOrig !== nomeNorm;
                                     return (
                                         <div key={i} className="torre-last-row" style={{padding:'10px 12px',borderRadius:8,background:'#faf5ff',border:'1px solid #ede9fe',display:'flex',gap:10,alignItems:'flex-start'}}>
                                             <div style={{width:9,height:9,borderRadius:'50%',background:sc,flexShrink:0,marginTop:3,boxShadow:`0 0 6px ${sc}55`}}/>
                                             <div style={{flex:1,minWidth:0}}>
-                                                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:3}}>
+                                                <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:3,flexWrap:'wrap'}}>
+                                                    {temVariacao && <span style={{fontSize:10,background:'#ede9fe',color:'#7c3aed',borderRadius:10,padding:'1px 7px',fontWeight:700}}>{nomeOrig}</span>}
                                                     <span style={{fontSize:11,color:'#6b7280'}}>{fmtFull(o.data)} · {o.inicio||'--:--'} → {o.termino||'--:--'}</span>
-                                                    {sufixo && (
-                                                        <span style={{background:'#ddd6fe',color:PURPLE,fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:99,flexShrink:0}}>
-                                                            🚛 Veíc. {sufixo}
-                                                        </span>
-                                                    )}
                                                 </div>
                                                 <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
                                                     {[{l:'Vol',v:fmtN(o.vol||0),c:PURPLE},{l:'NFs',v:fmtN(o.nf||0),c:'#3b82f6'},{l:'m³',v:parseFloat(o.cubagem||0).toFixed(1),c:AMBER}].map(x=>(
@@ -1975,16 +1942,16 @@
                                 {ultimasOps.length===0 && <div style={{textAlign:'center',padding:24,color:'#9ca3af',fontSize:12}}>📭 Nenhum registro no período</div>}
                                 {ultimasOps.map((o,i) => {
                                     const sc = o.status==='verde'?GREEN:o.status==='amarelo'?AMBER:RED;
-                                    const nomeOrig = (o.operacao||'').trim();
-                                    const nomeBase = normalizarNome(nomeOrig);
-                                    const sufixo = nomeOrig !== nomeBase ? nomeOrig.replace(nomeBase,'').trim() : null;
+                                    const nomeNorm = normalizarOpTorre(o.operacao);
+                                    const nomeOrig = o.operacao || '—';
+                                    const temVariacao = nomeOrig !== nomeNorm;
                                     return (
                                         <div key={i} className="torre-last-row" style={{padding:'10px 12px',borderRadius:8,background:'#faf5ff',border:'1px solid #ede9fe',display:'flex',alignItems:'center',gap:10}}>
                                             <div style={{width:9,height:9,borderRadius:'50%',background:sc,flexShrink:0,boxShadow:`0 0 6px ${sc}55`}}/>
                                             <div style={{flex:1,minWidth:0}}>
-                                                <div style={{display:'flex',alignItems:'center',gap:5,flexWrap:'nowrap'}}>
-                                                    <span style={{fontSize:12,fontWeight:700,color:'#1f2937',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nomeBase||'—'}</span>
-                                                    {sufixo && <span style={{background:'#ddd6fe',color:PURPLE,fontSize:9,fontWeight:700,padding:'1px 5px',borderRadius:99,flexShrink:0}}>🚛{sufixo}</span>}
+                                                <div style={{display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
+                                                    <span style={{fontSize:12,fontWeight:700,color:'#1f2937',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{nomeNorm||'—'}</span>
+                                                    {temVariacao && <span style={{fontSize:10,background:'#ede9fe',color:'#7c3aed',borderRadius:10,padding:'1px 6px',fontWeight:600,flexShrink:0}}>{nomeOrig}</span>}
                                                 </div>
                                                 <div style={{fontSize:9,color:'#9ca3af',marginTop:1}}>{fmtFull(o.data)} · {o.inicio||'--'} → {o.termino||'--'}</div>
                                             </div>
