@@ -1290,749 +1290,819 @@
             );
         }
 
-        // ========== TORRE DE CONTROLE ==========
+
+        // ========== TORRE DE CONTROLE — V13 PALETA ORIGINAL ==========
         function TorreDeControle({ operacoes, listaOperacoes }) {
             const { useState, useEffect, useMemo, useRef } = React;
 
             const getBRT = () => {
                 const n = new Date();
                 const b = new Date(n.toLocaleString('en-US',{timeZone:'America/Sao_Paulo'}));
-                const y = b.getFullYear();
-                const m = String(b.getMonth()+1).padStart(2,'0');
-                const d = String(b.getDate()).padStart(2,'0');
-                return `${y}-${m}-${d}`;
+                return b.getFullYear()+'-'+String(b.getMonth()+1).padStart(2,'0')+'-'+String(b.getDate()).padStart(2,'0');
             };
             const hoje = getBRT();
 
-            // Período
-            const [periodo, setPeriodo] = useState('30d');
-            const [dataIni, setDataIni] = useState(() => { const d=new Date(hoje); d.setDate(d.getDate()-29); return d.toISOString().split('T')[0]; });
-            const [dataFim, setDataFim] = useState(hoje);
+            const [periodo, setPeriodo]   = useState('mensal');
+            const [dataIni, setDataIni]   = useState('');
+            const [dataFim, setDataFim]   = useState(hoje);
             const [opFiltro, setOpFiltro] = useState('TODAS');
-            const [subAba, setSubAba] = useState('executivo'); // executivo | historico | ranking | tendencias
-            const [metrica, setMetrica] = useState('pontualidade'); // pontualidade | nf | vol | cubagem
+            const [showCustom, setShowCustom] = useState(false);
+            const [customIni, setCustomIni]   = useState('');
+            const [customFim, setCustomFim]   = useState('');
+            const [drillOp, setDrillOp]       = useState(null);
+            const [exploding, setExploding]   = useState({});
+            const [ticker, setTicker]         = useState(0);
+            const [torreModal, setTorreModal] = useState(null);
 
-            // Chart refs
-            const chartTendRef  = useRef(null);
-            const chartDistRef  = useRef(null);
-            const chartMesRef   = useRef(null);
-            const chartOpRef    = useRef(null);
-            const chartMultiRef = useRef(null);
-            const instTend  = useRef(null);
-            const instDist  = useRef(null);
-            const instMes   = useRef(null);
-            const instOp    = useRef(null);
-            const instMulti = useRef(null);
+            // Auto-refresh a cada 60s
+            useEffect(() => {
+                const t = setInterval(() => setTicker(x => x+1), 60000);
+                return () => clearInterval(t);
+            }, []);
 
-            // Ajustar datas quando mudar período
+            const explodeCard = (id) => {
+                setExploding(p => ({...p, [id]: true}));
+                setTimeout(() => setExploding(p => ({...p, [id]: false})), 700);
+            };
+
+            // Período
             useEffect(() => {
                 const d = new Date(hoje);
-                if (periodo === '7d')  { d.setDate(d.getDate()-6);  setDataIni(d.toISOString().split('T')[0]); setDataFim(hoje); }
-                if (periodo === '30d') { d.setDate(d.getDate()-29); setDataIni(d.toISOString().split('T')[0]); setDataFim(hoje); }
-                if (periodo === '90d') { d.setDate(d.getDate()-89); setDataIni(d.toISOString().split('T')[0]); setDataFim(hoje); }
-                if (periodo === '12m') { d.setMonth(d.getMonth()-11); d.setDate(1); setDataIni(d.toISOString().split('T')[0]); setDataFim(hoje); }
+                if (periodo==='hoje')        { setDataIni(hoje); setDataFim(hoje); setShowCustom(false); }
+                else if (periodo==='ontem')  { d.setDate(d.getDate()-1); const s=d.toISOString().split('T')[0]; setDataIni(s); setDataFim(s); setShowCustom(false); }
+                else if (periodo==='semana') { d.setDate(d.getDate()-6);   setDataIni(d.toISOString().split('T')[0]); setDataFim(hoje); setShowCustom(false); }
+                else if (periodo==='quinzena') { d.setDate(d.getDate()-14); setDataIni(d.toISOString().split('T')[0]); setDataFim(hoje); setShowCustom(false); }
+                else if (periodo==='mensal') { d.setDate(d.getDate()-29);  setDataIni(d.toISOString().split('T')[0]); setDataFim(hoje); setShowCustom(false); }
+                else if (periodo==='trimestral') { d.setDate(d.getDate()-89); setDataIni(d.toISOString().split('T')[0]); setDataFim(hoje); setShowCustom(false); }
+                else if (periodo==='semestral') { d.setDate(d.getDate()-179); setDataIni(d.toISOString().split('T')[0]); setDataFim(hoje); setShowCustom(false); }
+                else if (periodo==='anual')  { d.setFullYear(d.getFullYear()-1); setDataIni(d.toISOString().split('T')[0]); setDataFim(hoje); setShowCustom(false); }
+                else if (periodo==='custom') setShowCustom(true);
             }, [periodo]);
 
-            // Lista de operações disponíveis
+            useEffect(() => {
+                if (periodo==='custom' && customIni && customFim) { setDataIni(customIni); setDataFim(customFim); }
+            }, [customIni, customFim, periodo]);
+
+            // ══ HELPER: normaliza nome removendo sufixo numérico (ex: "PAVUNA 1" → "PAVUNA") ══
+            const normalizarNome = (nome) => {
+                if (!nome) return '—';
+                // Remove sufixo " 1", " 2", " 3"... no final (com ou sem espaço extra)
+                return nome.trim().replace(/\s+\d+$/, '').trim();
+            };
+
+            // Operações disponíveis — nomes normalizados (sem duplicatas)
             const opsDisponiveis = useMemo(() => {
-                const s = new Set(operacoes.map(o=>o.operacao).filter(Boolean));
+                const s = new Set(operacoes.map(o => normalizarNome(o.operacao)).filter(n => n && n !== '—'));
                 return ['TODAS', ...Array.from(s).sort()];
             }, [operacoes]);
 
-            // Operações filtradas pelo período e operação
-            const opsFiltradas = useMemo(() => {
-                return operacoes.filter(o => {
-                    const dataOk = o.data >= dataIni && o.data <= dataFim;
-                    const opOk = opFiltro === 'TODAS' || o.operacao === opFiltro;
-                    return dataOk && opOk;
-                });
-            }, [operacoes, dataIni, dataFim, opFiltro]);
+            // Filtro principal — compara nome normalizado com o filtro selecionado
+            const opsFiltradas = useMemo(() => operacoes.filter(o => {
+                if (!dataIni || !dataFim) return true;
+                const dentroData = o.data >= dataIni && o.data <= dataFim;
+                const dentroOp   = opFiltro === 'TODAS' || normalizarNome(o.operacao) === opFiltro;
+                return dentroData && dentroOp;
+            }), [operacoes, dataIni, dataFim, opFiltro, ticker]);
 
             // KPIs gerais
-            const kpis = useMemo(() => {
+            const kpi = useMemo(() => {
                 const total    = opsFiltradas.length;
-                const verde    = opsFiltradas.filter(o=>o.status==='verde').length;
-                const vermelho = opsFiltradas.filter(o=>o.status==='vermelho').length;
-                const amarelo  = opsFiltradas.filter(o=>o.status==='amarelo').length;
-                const taxa     = total > 0 ? (verde/total*100) : 0;
-                const nfTotal  = opsFiltradas.reduce((a,o)=>a+(o.nf||0),0);
-                const volTotal = opsFiltradas.reduce((a,o)=>a+(o.vol||0),0);
-                const cubTotal = opsFiltradas.reduce((a,o)=>a+parseFloat(o.cubagem||0),0);
-                const diasUnicos = new Set(opsFiltradas.map(o=>o.data)).size;
-                const mediaNF  = diasUnicos > 0 ? nfTotal/diasUnicos : 0;
-                const mediaVol = diasUnicos > 0 ? volTotal/diasUnicos : 0;
-                return { total, verde, vermelho, amarelo, taxa, nfTotal, volTotal, cubTotal, diasUnicos, mediaNF, mediaVol };
+                const verde    = opsFiltradas.filter(o => o.status==='verde').length;
+                const amarelo  = opsFiltradas.filter(o => o.status==='amarelo').length;
+                const vermelho = opsFiltradas.filter(o => o.status==='vermelho').length;
+                const volTotal = opsFiltradas.reduce((a,o) => a+(Number(o.vol)||0), 0);
+                const nfTotal  = opsFiltradas.reduce((a,o) => a+(Number(o.nf)||0), 0);
+                const cubTotal = opsFiltradas.reduce((a,o) => a+parseFloat(o.cubagem||0), 0);
+                const dias     = new Set(opsFiltradas.map(o=>o.data)).size || 1;
+                const sla      = total > 0 ? (verde/total*100) : 0;
+                return { total, verde, amarelo, vermelho, volTotal, nfTotal, cubTotal, dias, sla,
+                    mediaVol: volTotal/dias, mediaNF: nfTotal/dias, mediaCub: cubTotal/dias };
             }, [opsFiltradas]);
 
-            // Dados por data (para gráficos de tendência)
-            const dadosPorData = useMemo(() => {
+            // Dados de hoje
+            const kpiHoje = useMemo(() => {
+                const ops = operacoes.filter(o => o.data === hoje);
+                const total = ops.length, verde = ops.filter(o=>o.status==='verde').length;
+                const vol = ops.reduce((a,o)=>a+(Number(o.vol)||0),0);
+                const nf  = ops.reduce((a,o)=>a+(Number(o.nf)||0),0);
+                const cub = ops.reduce((a,o)=>a+parseFloat(o.cubagem||0),0);
+                return { total, verde, vol, nf, cub, sla: total>0?(verde/total*100):0 };
+            }, [operacoes, hoje]);
+
+            // Evolução diária
+            const evolucao = useMemo(() => {
                 const map = {};
                 opsFiltradas.forEach(o => {
-                    if (!map[o.data]) map[o.data] = { data:o.data, total:0, verde:0, vermelho:0, amarelo:0, nf:0, vol:0, cub:0 };
+                    if (!o.data) return;
+                    if (!map[o.data]) map[o.data] = {data:o.data,vol:0,nf:0,cub:0,total:0,verde:0,amarelo:0,vermelho:0};
+                    map[o.data].vol   += Number(o.vol)||0;
+                    map[o.data].nf    += Number(o.nf)||0;
+                    map[o.data].cub   += parseFloat(o.cubagem||0);
                     map[o.data].total++;
-                    map[o.data][o.status]++;
-                    map[o.data].nf  += (o.nf||0);
-                    map[o.data].vol += (o.vol||0);
-                    map[o.data].cub += parseFloat(o.cubagem||0);
+                    if(o.status==='verde')    map[o.data].verde++;
+                    if(o.status==='amarelo')  map[o.data].amarelo++;
+                    if(o.status==='vermelho') map[o.data].vermelho++;
                 });
                 return Object.values(map).sort((a,b)=>a.data.localeCompare(b.data));
             }, [opsFiltradas]);
 
-            // Dados por mês
-            const dadosPorMes = useMemo(() => {
+            // Por operação — agrupa pelo nome normalizado
+            const porOperacao = useMemo(() => {
                 const map = {};
                 opsFiltradas.forEach(o => {
-                    const mes = o.data.substring(0,7);
-                    if (!map[mes]) map[mes] = { mes, total:0, verde:0, vermelho:0, nf:0, vol:0, cub:0 };
-                    map[mes].total++;
-                    map[mes][o.status]++;
-                    map[mes].nf  += (o.nf||0);
-                    map[mes].vol += (o.vol||0);
-                    map[mes].cub += parseFloat(o.cubagem||0);
+                    const k = normalizarNome(o.operacao);
+                    if (!map[k]) map[k] = {op:k,total:0,verde:0,amarelo:0,vermelho:0,vol:0,nf:0,cub:0,subOps:new Set()};
+                    map[k].total++; map[k].vol+=Number(o.vol)||0; map[k].nf+=Number(o.nf)||0; map[k].cub+=parseFloat(o.cubagem||0);
+                    if(o.status==='verde')    map[k].verde++;
+                    if(o.status==='amarelo')  map[k].amarelo++;
+                    if(o.status==='vermelho') map[k].vermelho++;
+                    if(o.operacao && o.operacao.trim() !== k) map[k].subOps.add(o.operacao.trim());
                 });
-                return Object.values(map).sort((a,b)=>a.mes.localeCompare(b.mes));
+                // Converte Set para array e adiciona flag de múltiplos veículos
+                return Object.values(map).map(v => ({
+                    ...v,
+                    subOps: Array.from(v.subOps).sort(),
+                    temMultiplos: v.subOps.size > 0,
+                })).sort((a,b)=>b.vol-a.vol);
             }, [opsFiltradas]);
 
-            // Ranking por operação
-            const rankingOps = useMemo(() => {
-                const map = {};
-                opsFiltradas.forEach(o => {
-                    if (!map[o.operacao]) map[o.operacao] = { nome:o.operacao, total:0, verde:0, vermelho:0, amarelo:0, nf:0, vol:0, cub:0 };
-                    map[o.operacao].total++;
-                    map[o.operacao][o.status]++;
-                    map[o.operacao].nf  += (o.nf||0);
-                    map[o.operacao].vol += (o.vol||0);
-                    map[o.operacao].cub += parseFloat(o.cubagem||0);
-                });
-                return Object.values(map)
-                    .map(r=>({...r, taxa: r.total>0 ? r.verde/r.total*100 : 0}))
-                    .sort((a,b)=>b.taxa-a.taxa);
-            }, [opsFiltradas]);
+            const drillDados = useMemo(() => {
+                if (!drillOp) return [];
+                return opsFiltradas
+                    .filter(o => normalizarNome(o.operacao) === drillOp)
+                    .sort((a,b) => b.data.localeCompare(a.data));
+            }, [drillOp, opsFiltradas]);
 
-            // Tendência: comparar 2ª metade vs 1ª metade do período (por métrica)
-            const tendencia = useMemo(() => {
-                if (dadosPorData.length < 2) return null;
-                const mid = Math.floor(dadosPorData.length/2);
-                const primeira = dadosPorData.slice(0, mid);
-                const segunda  = dadosPorData.slice(mid);
-                const getVal = (arr) => {
-                    if (metrica==='pontualidade') return arr.reduce((a,d)=>a+d.verde,0) / Math.max(arr.reduce((a,d)=>a+d.total,0),1) * 100;
-                    if (metrica==='nf')           return arr.reduce((a,d)=>a+d.nf,0);
-                    if (metrica==='vol')          return arr.reduce((a,d)=>a+d.vol,0);
-                    if (metrica==='cubagem')      return arr.reduce((a,d)=>a+d.cub,0);
-                    return 0;
-                };
-                const v1 = getVal(primeira), v2 = getVal(segunda);
-                const diff = v2 - v1;
-                const pct = v1 > 0 ? (diff/v1*100) : 0;
-                const lbl = metrica==='pontualidade' ? '%' : metrica==='cubagem' ? ' m³' : '';
-                return {
-                    taxa1: metrica==='pontualidade' ? v1.toFixed(1) : Math.round(v1).toLocaleString('pt-BR'),
-                    taxa2: metrica==='pontualidade' ? v2.toFixed(1) : Math.round(v2).toLocaleString('pt-BR'),
-                    diff:  metrica==='pontualidade' ? diff.toFixed(1) : Math.round(diff).toLocaleString('pt-BR'),
-                    pct: pct.toFixed(1), lbl,
-                    up: diff > 0, down: diff < 0
-                };
-            }, [dadosPorData, metrica]);
+            const ultimasOps = useMemo(() => [...opsFiltradas].sort((a,b)=>b.data.localeCompare(a.data)).slice(0,10), [opsFiltradas]);
 
-            // Helpers de label e cor por métrica
-            const mLabel = metrica==='pontualidade'?'Pontualidade':metrica==='nf'?'NFs':metrica==='vol'?'Volumes':'Cubagem';
-            const mIcon  = metrica==='pontualidade'?'📊':metrica==='nf'?'📄':metrica==='vol'?'📦':'⚖️';
-            const mCor   = metrica==='pontualidade'?'#7c3aed':metrica==='nf'?'#3b82f6':metrica==='vol'?'#10b981':'#f59e0b';
-            const mValOp = (o) => metrica==='nf'?(o.nf||0):metrica==='vol'?(o.vol||0):metrica==='cubagem'?(o.cubagem||0):0;
-            const mValDia = (d) => metrica==='nf'?d.nf:metrica==='vol'?d.vol:metrica==='cubagem'?d.cub:0;
-            const mValMes = (m) => metrica==='nf'?m.nf:metrica==='vol'?m.vol:metrica==='cubagem'?m.cub:0;
-            const mValRank= (r) => metrica==='nf'?r.nf:metrica==='vol'?r.vol:metrica==='cubagem'?r.cub:r.taxa;
-            const mFmt   = (v) => metrica==='pontualidade'?v.toFixed(1)+'%':metrica==='cubagem'?v.toFixed(2):Math.round(v).toLocaleString('pt-BR');
+            // ══ MODAL TORRE ══
+            const abrirTorreModal = (tipo) => {
+                const PURPLE_C='#7c3aed', AMBER_C='#f59e0b', GREEN_C='#10b981', RED_C='#ef4444', BLUE_C='#3b82f6';
+                let titulo='', dados=[], colunas=[];
+                if (tipo==='volumetria') {
+                    titulo='📦 Detalhamento de Volumetria por Operação';
+                    const agg={};
+                    opsFiltradas.forEach(o=>{ const k=normalizarNome(o.operacao); if(!agg[k]) agg[k]={op:k,vol:0,nf:0,cub:0,total:0}; agg[k].vol+=Number(o.vol)||0; agg[k].nf+=Number(o.nf)||0; agg[k].cub+=parseFloat(o.cubagem||0); agg[k].total++; });
+                    dados=Object.values(agg).sort((a,b)=>b.vol-a.vol);
+                    colunas=['Operação','Volume Total','NFs Total','Cubagem m³','Qtd Registros','Vol Médio/Op'];
+                } else if (tipo==='notas') {
+                    titulo='📄 Detalhamento de Notas Fiscais por Operação';
+                    const agg={};
+                    opsFiltradas.forEach(o=>{ const k=normalizarNome(o.operacao); if(!agg[k]) agg[k]={op:k,nf:0,vol:0,total:0}; agg[k].nf+=Number(o.nf)||0; agg[k].vol+=Number(o.vol)||0; agg[k].total++; });
+                    dados=Object.values(agg).sort((a,b)=>b.nf-a.nf);
+                    colunas=['Operação','NFs Total','Volume Total','Qtd Registros','NF Média/Op'];
+                } else if (tipo==='cubagem') {
+                    titulo='📐 Detalhamento de Cubagem por Operação';
+                    const agg={};
+                    opsFiltradas.forEach(o=>{ const k=normalizarNome(o.operacao); if(!agg[k]) agg[k]={op:k,cub:0,vol:0,nf:0,total:0}; agg[k].cub+=parseFloat(o.cubagem||0); agg[k].vol+=Number(o.vol)||0; agg[k].nf+=Number(o.nf)||0; agg[k].total++; });
+                    dados=Object.values(agg).sort((a,b)=>b.cub-a.cub);
+                    colunas=['Operação','Cubagem Total (m³)','Volume Total','NFs Total','Qtd Registros','Cub Média/Op'];
+                } else if (tipo==='sla') {
+                    titulo='🎯 Distribuição de Status por Operação';
+                    const agg={};
+                    opsFiltradas.forEach(o=>{ const k=normalizarNome(o.operacao); if(!agg[k]) agg[k]={op:k,total:0,verde:0,amarelo:0,vermelho:0}; agg[k].total++; if(o.status==='verde') agg[k].verde++; if(o.status==='amarelo') agg[k].amarelo++; if(o.status==='vermelho') agg[k].vermelho++; });
+                    dados=Object.values(agg).sort((a,b)=>{ const sA=a.total>0?a.verde/a.total:0; const sB=b.total>0?b.verde/b.total:0; return sB-sA; });
+                    colunas=['Operação','Total Ops','✅ No Prazo','⚠️ Atenção','🚨 Crítico','SLA %'];
+                } else if (tipo==='operacoes') {
+                    titulo='⚡ Todas as Operações no Período';
+                    dados=[...opsFiltradas].sort((a,b)=>b.data.localeCompare(a.data));
+                    colunas=['Data','Operação','Veículo','Volume','NFs','Cubagem m³','Início','Término','Status'];
+                }
+                setTorreModal({titulo,dados,colunas,tipo});
+            };
 
-            // Cores para linhas por operação (mesmo estilo da aba Gráficos)
-            const TORRE_CORES = ['#667eea','#f093fb','#f5a623','#50e3c2','#e74c3c','#9b59b6','#3498db','#2ecc71','#e67e22','#1abc9c','#e91e63','#ff5722'];
-            const getTorreCor = (idx) => TORRE_CORES[idx % TORRE_CORES.length];
+            const renderTorreModalRow = (tipo, row, i) => {
+                const PURPLE_C='#7c3aed', AMBER_C='#f59e0b', GREEN_C='#10b981', RED_C='#ef4444', BLUE_C='#3b82f6';
+                const bg=i%2===0?'#f8fafc':'#fff';
+                const cel=(v,opts={})=><td style={{padding:'9px 14px',borderBottom:'1px solid #f3f0ff',color:opts.color||'#374151',fontWeight:opts.bold?700:400,textAlign:opts.center?'center':'left'}}>{v}</td>;
+                const pill=s=>{ const m={verde:{bg:'#d1fae5',c:'#065f46',l:'No Prazo'},amarelo:{bg:'#fef3c7',c:'#92400e',l:'Atenção'},vermelho:{bg:'#fee2e2',c:'#991b1b',l:'Crítico'}}; const x=m[s]||m.amarelo; return <span style={{background:x.bg,color:x.c,padding:'2px 8px',borderRadius:12,fontSize:11,fontWeight:700}}>{x.l}</span>; };
+                const fmtFull2=s=>{ if(!s)return''; const[y,m,d]=s.split('-'); return d+'/'+m+'/'+y; };
+                if (tipo==='volumetria') return <tr key={i} style={{background:bg}}>{cel(row.op,{bold:true})}{cel(Math.round(row.vol).toLocaleString('pt-BR'),{color:PURPLE_C,bold:true})}{cel(Math.round(row.nf).toLocaleString('pt-BR'),{color:BLUE_C})}{cel(row.cub.toFixed(2),{color:AMBER_C})}{cel(row.total,{center:true})}{cel(Math.round(row.vol/row.total).toLocaleString('pt-BR'),{center:true,color:PURPLE_C})}</tr>;
+                if (tipo==='notas') return <tr key={i} style={{background:bg}}>{cel(row.op,{bold:true})}{cel(Math.round(row.nf).toLocaleString('pt-BR'),{color:BLUE_C,bold:true})}{cel(Math.round(row.vol).toLocaleString('pt-BR'),{color:PURPLE_C})}{cel(row.total,{center:true})}{cel(Math.round(row.nf/row.total).toLocaleString('pt-BR'),{center:true,color:BLUE_C})}</tr>;
+                if (tipo==='cubagem') return <tr key={i} style={{background:bg}}>{cel(row.op,{bold:true})}{cel(row.cub.toFixed(2)+' m³',{color:AMBER_C,bold:true})}{cel(Math.round(row.vol).toLocaleString('pt-BR'),{color:PURPLE_C})}{cel(Math.round(row.nf).toLocaleString('pt-BR'),{color:BLUE_C})}{cel(row.total,{center:true})}{cel((row.cub/row.total).toFixed(2)+' m³',{center:true,color:AMBER_C})}</tr>;
+                if (tipo==='sla') { const sla=row.total>0?(row.verde/row.total*100):0; const sbg=sla>=80?'#d1fae5':sla>=60?'#fef3c7':'#fee2e2'; const sc2=sla>=80?'#065f46':sla>=60?'#92400e':'#991b1b'; return <tr key={i} style={{background:bg}}>{cel(row.op,{bold:true})}{cel(row.total,{center:true,bold:true})}{cel(row.verde,{center:true,color:GREEN_C,bold:true})}{cel(row.amarelo,{center:true,color:AMBER_C,bold:true})}{cel(row.vermelho,{center:true,color:RED_C,bold:true})}<td style={{padding:'9px 14px',borderBottom:'1px solid #f3f0ff',textAlign:'center'}}><span style={{background:sbg,color:sc2,padding:'3px 10px',borderRadius:12,fontSize:11,fontWeight:700}}>{sla.toFixed(1)}%</span></td></tr>; }
+                if (tipo==='operacoes') {
+                    const nomeOrig = (row.operacao||'').trim();
+                    const nomeBase = normalizarNome(nomeOrig);
+                    const sufixo = nomeOrig !== nomeBase ? nomeOrig.replace(nomeBase,'').trim() : '—';
+                    return <tr key={i} style={{background:bg}}>
+                        {cel(fmtFull2(row.data))}
+                        {cel(nomeBase,{bold:true})}
+                        <td style={{padding:'9px 14px',borderBottom:'1px solid #f3f0ff'}}>
+                            {sufixo !== '—'
+                                ? <span style={{background:'#ddd6fe',color:PURPLE_C,padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700}}>🚛 Veíc. {sufixo}</span>
+                                : <span style={{color:'#9ca3af',fontSize:11}}>—</span>}
+                        </td>
+                        {cel(Math.round(row.vol||0).toLocaleString('pt-BR'),{color:PURPLE_C,bold:true})}
+                        {cel(Math.round(row.nf||0).toLocaleString('pt-BR'),{color:BLUE_C})}
+                        {cel(parseFloat(row.cubagem||0).toFixed(2),{color:AMBER_C})}
+                        {cel(row.inicio||'—')}
+                        {cel(row.termino||'—')}
+                        <td style={{padding:'9px 14px',borderBottom:'1px solid #f3f0ff'}}>{pill(row.status)}</td>
+                    </tr>;
+                }
+                return null;
+            };
 
-            // Datasets multi-linha por operação (para o gráfico estilo Evolução Geral)
-            const torredatasUnicas = useMemo(() => {
-                const s = new Set(opsFiltradas.map(o=>o.data));
-                return Array.from(s).sort();
-            }, [opsFiltradas]);
 
-            const torrefmtLabel = (s) => { if(!s) return ''; const d=new Date(s+'T00:00:00'); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}); };
+            const refLine  = useRef(null); const refBar   = useRef(null);
+            const refDonut = useRef(null); const refArea  = useRef(null);
+            const instLine = useRef(null); const instBar  = useRef(null);
+            const instDonut= useRef(null); const instArea = useRef(null);
+            const kill = ref => { try { if(ref.current){ref.current.destroy();ref.current=null;} } catch(e){} };
 
-            const torreOpsUnicas = useMemo(() => {
-                const s = new Set(opsFiltradas.map(o=>o.operacao).filter(Boolean));
-                return Array.from(s).sort();
-            }, [opsFiltradas]);
+            const fmtN    = n => { const v=Number(n)||0; return Math.round(v).toLocaleString('pt-BR'); };
+            const fmtD    = s => { if(!s) return ''; const [,m,d]=s.split('-'); return d+'/'+m; };
+            const fmtFull = s => { if(!s) return ''; const [y,m,d]=s.split('-'); return d+'/'+m+'/'+y; };
+            const slaColor = v => v>=80?'#10b981':v>=60?'#f59e0b':'#ef4444';
+            const slaLabel = v => v>=80?'Excelente':v>=60?'Atenção':'Crítico';
+            const pillStyle = v => {
+                const c = v>=80?{bg:'#d1fae5',color:'#065f46'}:v>=60?{bg:'#fef3c7',color:'#92400e'}:{bg:'#fee2e2',color:'#991b1b'};
+                return {display:'inline-block',padding:'3px 10px',borderRadius:12,fontSize:11,fontWeight:700,background:c.bg,color:c.color};
+            };
 
-            const torreDadosGeral = useMemo(() => {
-                return torreOpsUnicas.map((op, idx) => {
-                    const data = torredatasUnicas.map(d => {
-                        const reg = opsFiltradas.filter(o=>o.data===d && o.operacao===op);
-                        if (metrica==='pontualidade') { const t=reg.length, v=reg.filter(r=>r.status==='verde').length; return t>0?parseFloat((v/t*100).toFixed(1)):0; }
-                        if (metrica==='nf')      return reg.reduce((a,r)=>a+(r.nf||0),0);
-                        if (metrica==='vol')     return reg.reduce((a,r)=>a+(r.vol||0),0);
-                        if (metrica==='cubagem') return parseFloat(reg.reduce((a,r)=>a+(r.cubagem||0),0).toFixed(2));
-                        return 0;
-                    });
-                    const cor = getTorreCor(idx);
-                    return { label: op, data, borderColor: cor, backgroundColor: cor+'18', tension: 0.4, pointRadius: 5, pointHoverRadius: 8, borderWidth: 2.5, fill: false };
-                });
-            }, [torreOpsUnicas, torredatasUnicas, opsFiltradas, metrica]);
+            const PURPLE = '#7c3aed', PURPLE_L = 'rgba(124,58,237,0.15)';
+            const GREEN  = '#10b981', GREEN_L  = 'rgba(16,185,129,0.15)';
+            const AMBER  = '#f59e0b', RED = '#ef4444';
 
-            const fmtData = (s) => { if(!s) return ''; const d=new Date(s+'T00:00:00'); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}); };
-            const fmtMes  = (s) => { if(!s) return ''; const [y,m]=s.split('-'); const ns=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']; return (ns[parseInt(m)-1]||m)+'/'+y.slice(2); };
-            const fmtNum  = (n) => n >= 1000 ? (n/1000).toFixed(1)+'k' : String(Math.round(n));
-
-            // Gráfico tendência pontualidade por dia
+            // Charts
             useEffect(() => {
-                if (subAba !== 'tendencias' && subAba !== 'executivo') return;
-                if (!chartTendRef.current) return;
-                if (instTend.current) { instTend.current.destroy(); instTend.current = null; }
-                if (dadosPorData.length === 0) return;
-                const labels = dadosPorData.map(d=>fmtData(d.data));
-                const isPorc = metrica === 'pontualidade';
-                const taxas = dadosPorData.map(d => {
-                    if (metrica==='pontualidade') return d.total>0 ? +(d.verde/d.total*100).toFixed(1) : 0;
-                    if (metrica==='nf')           return d.nf;
-                    if (metrica==='vol')          return d.vol;
-                    if (metrica==='cubagem')      return +d.cub.toFixed(2);
-                    return 0;
+                kill(instLine);
+                if (!refLine.current || !evolucao.length) return;
+                instLine.current = new Chart(refLine.current, {
+                    type:'line',
+                    data:{ labels: evolucao.map(d=>fmtD(d.data)),
+                        datasets:[{label:'Volume',data:evolucao.map(d=>d.vol),
+                            borderColor:PURPLE,backgroundColor:PURPLE_L,tension:0.45,fill:true,
+                            pointRadius:3,pointHoverRadius:7,pointBackgroundColor:PURPLE,
+                            pointBorderColor:'#fff',pointBorderWidth:2,borderWidth:2.5}]},
+                    options:{responsive:true,maintainAspectRatio:false,
+                        plugins:{legend:{display:false},tooltip:{backgroundColor:'#2d1b69',titleColor:'#c4b5fd',bodyColor:PURPLE,callbacks:{label:c=>' '+fmtN(c.raw)+' vol'}}},
+                        scales:{x:{grid:{color:'rgba(124,58,237,0.07)'},ticks:{color:'#9ca3af',font:{size:10},maxTicksLimit:10}},
+                            y:{grid:{color:'rgba(124,58,237,0.07)'},ticks:{color:'#9ca3af',font:{size:9},callback:v=>fmtN(v)},beginAtZero:true}}}
                 });
-                const labelMetrica = metrica==='pontualidade'?'Pontualidade (%)':metrica==='nf'?'NFs':metrica==='vol'?'Volumes':'Cubagem (m³)';
-                const corLinha = metrica==='pontualidade'?'#7c3aed':metrica==='nf'?'#3b82f6':metrica==='vol'?'#10b981':'#f59e0b';
-                const corFundo = metrica==='pontualidade'?'rgba(124,58,237,0.08)':metrica==='nf'?'rgba(59,130,246,0.08)':metrica==='vol'?'rgba(16,185,129,0.08)':'rgba(245,158,11,0.08)';
-                instTend.current = new Chart(chartTendRef.current, {
-                    type: 'line',
-                    data: {
-                        labels,
-                        datasets: [{
-                            label: labelMetrica,
-                            data: taxas,
-                            borderColor: corLinha,
-                            backgroundColor: corFundo,
-                            borderWidth: 2.5,
-                            pointBackgroundColor: isPorc ? taxas.map(v=>v>=80?'#10b981':v>=60?'#f59e0b':'#ef4444') : corLinha,
-                            pointRadius: 4,
-                            fill: true,
-                            tension: 0.4
-                        }]
-                    },
-                    options: {
-                        responsive: true, maintainAspectRatio: false,
-                        plugins: { legend:{display:false}, datalabels:{display:false} },
-                        scales: {
-                            x: { grid:{display:false}, ticks:{font:{size:10}, maxTicksLimit:12} },
-                            y: { min:0, ...(isPorc?{max:100}:{}), ticks:{callback:v=>isPorc?v+'%':v.toLocaleString('pt-BR'), font:{size:10}}, grid:{color:'rgba(0,0,0,0.05)'} }
-                        }
-                    }
-                });
-            }, [dadosPorData, subAba, metrica]);
+            }, [evolucao]);
 
-            // Gráfico distribuição status
             useEffect(() => {
-                if (subAba !== 'executivo' && subAba !== 'historico') return;
-                if (!chartDistRef.current) return;
-                if (instDist.current) { instDist.current.destroy(); instDist.current = null; }
-                if (kpis.total === 0) return;
-                instDist.current = new Chart(chartDistRef.current, {
-                    type: 'doughnut',
-                    data: {
-                        labels: ['No prazo','Atrasadas','Pendentes'],
-                        datasets: [{
-                            data: [kpis.verde, kpis.vermelho, kpis.amarelo],
-                            backgroundColor: ['#10b981','#ef4444','#f59e0b'],
-                            borderWidth: 0
-                        }]
-                    },
-                    options: {
-                        responsive: true, maintainAspectRatio: false,
-                        cutout: '70%',
-                        plugins: {
-                            legend: { position:'bottom', labels:{font:{size:11}, padding:10} },
-                            datalabels: {
-                                color:'#fff', font:{size:11, weight:'bold'},
-                                formatter:(v,ctx) => { const t=ctx.dataset.data.reduce((a,b)=>a+b,0); return t>0&&v>0?Math.round(v/t*100)+'%':''; }
-                            }
-                        }
-                    },
-                    plugins: [ChartDataLabels]
+                kill(instBar);
+                if (!refBar.current || !evolucao.length) return;
+                instBar.current = new Chart(refBar.current, {
+                    type:'bar',
+                    data:{ labels: evolucao.map(d=>fmtD(d.data)),
+                        datasets:[
+                            {label:'Volumetria',data:evolucao.map(d=>d.vol),backgroundColor:'rgba(124,58,237,0.7)',borderRadius:5,borderSkipped:false},
+                            {label:'Notas Fiscais',data:evolucao.map(d=>d.nf),backgroundColor:'rgba(167,139,250,0.7)',borderRadius:5,borderSkipped:false},
+                        ]},
+                    options:{responsive:true,maintainAspectRatio:false,
+                        plugins:{legend:{labels:{color:'#6b7280',font:{size:10},boxWidth:10,padding:10}},tooltip:{backgroundColor:'#2d1b69',titleColor:'#c4b5fd'}},
+                        scales:{x:{grid:{display:false},ticks:{color:'#9ca3af',font:{size:10},maxTicksLimit:10}},
+                            y:{grid:{color:'rgba(124,58,237,0.07)'},ticks:{color:'#9ca3af',font:{size:9},callback:v=>fmtN(v)},beginAtZero:true}}}
                 });
-            }, [kpis, subAba]);
+            }, [evolucao]);
 
-            // Gráfico volume por mês
             useEffect(() => {
-                if (subAba !== 'historico') return;
-                if (!chartMesRef.current) return;
-                if (instMes.current) { instMes.current.destroy(); instMes.current = null; }
-                if (dadosPorMes.length === 0) return;
-                const isPorc2 = metrica === 'pontualidade';
-                const mesDatasets = isPorc2
-                    ? [{ label:'Pontualidade (%)', data:dadosPorMes.map(d=>d.total>0?+(d.verde/d.total*100).toFixed(1):0), backgroundColor:'rgba(124,58,237,0.75)', borderRadius:6 }]
-                    : metrica==='nf'
-                        ? [{ label:'NFs', data:dadosPorMes.map(d=>d.nf), backgroundColor:'rgba(59,130,246,0.75)', borderRadius:6 }]
-                        : metrica==='vol'
-                            ? [{ label:'Volumes', data:dadosPorMes.map(d=>d.vol), backgroundColor:'rgba(16,185,129,0.75)', borderRadius:6 }]
-                            : [{ label:'Cubagem (m³)', data:dadosPorMes.map(d=>+d.vol.toFixed ? dadosPorData.filter(dd=>dd.data.startsWith(d.mes)).reduce((a,dd)=>a+dd.cub,0).toFixed(2) : 0), backgroundColor:'rgba(245,158,11,0.75)', borderRadius:6 }];
-                instMes.current = new Chart(chartMesRef.current, {
-                    type: isPorc2 ? 'line' : 'bar',
-                    data: {
-                        labels: dadosPorMes.map(d=>fmtMes(d.mes)),
-                        datasets: mesDatasets
-                    },
-                    options: {
-                        responsive: true, maintainAspectRatio: false,
-                        plugins: { legend:{position:'top', labels:{font:{size:11}}}, datalabels:{display:false} },
-                        scales: {
-                            x: { grid:{display:false}, ticks:{font:{size:10}} },
-                            y: { ...(isPorc2?{min:0,max:100}:{}), ticks:{callback:v=>isPorc2?v+'%':v.toLocaleString('pt-BR'), font:{size:10}}, grid:{color:'rgba(0,0,0,0.05)'} }
-                        },
-                        ...(isPorc2?{elements:{line:{tension:0.4,fill:true,backgroundColor:'rgba(124,58,237,0.08)'}}}:{})
-                    }
+                kill(instDonut);
+                if (!refDonut.current) return;
+                instDonut.current = new Chart(refDonut.current, {
+                    type:'doughnut',
+                    data:{ labels:['No Prazo','Atenção','Crítico'],
+                        datasets:[{data:[kpi.verde||0,kpi.amarelo||0,kpi.vermelho||0],
+                            backgroundColor:[GREEN,AMBER,RED],borderWidth:0,hoverOffset:8,borderRadius:4}]},
+                    options:{responsive:true,maintainAspectRatio:false,cutout:'72%',
+                        plugins:{legend:{display:false},tooltip:{backgroundColor:'#2d1b69',titleColor:'#c4b5fd',callbacks:{label:c=>c.label+': '+c.raw+' ops'}}}}
                 });
-            }, [dadosPorMes, dadosPorData, subAba, metrica]);
+            }, [kpi.verde, kpi.amarelo, kpi.vermelho]);
 
-            // Gráfico taxa por operação
             useEffect(() => {
-                if (subAba !== 'ranking') return;
-                if (!chartOpRef.current) return;
-                if (instOp.current) { instOp.current.destroy(); instOp.current = null; }
-                const isPorc3 = metrica==='pontualidade';
-                const topSorted = [...rankingOps].sort((a,b)=>isPorc3?b.taxa-a.taxa:mValRank(b)-mValRank(a)).slice(0,10);
-                if (topSorted.length === 0) return;
-                const rankVals = topSorted.map(r=>isPorc3?+r.taxa.toFixed(1):metrica==='cubagem'?+r.cub.toFixed(2):metrica==='nf'?r.nf:r.vol);
-                const rankCors = isPorc3
-                    ? topSorted.map(r=>r.taxa>=80?'rgba(16,185,129,0.75)':r.taxa>=60?'rgba(245,158,11,0.75)':'rgba(239,68,68,0.75)')
-                    : metrica==='nf'?'rgba(59,130,246,0.75)':metrica==='vol'?'rgba(16,185,129,0.75)':'rgba(245,158,11,0.75)';
-                instOp.current = new Chart(chartOpRef.current, {
-                    type: 'bar',
-                    data: {
-                        labels: topSorted.map(r=>r.nome.length>18?r.nome.substring(0,18)+'…':r.nome),
-                        datasets: [{
-                            label: mLabel,
-                            data: rankVals,
-                            backgroundColor: rankCors,
-                            borderRadius: 6
-                        }]
-                    },
-                    options: {
-                        indexAxis: 'y',
-                        responsive: true, maintainAspectRatio: false,
-                        plugins: {
-                            legend:{display:false},
-                            datalabels:{ anchor:'end', align:'right', color:'#374151', font:{size:11,weight:'bold'}, formatter:v=>isPorc3?v+'%':typeof v==='number'&&v>=1000?(v/1000).toFixed(1)+'k':String(v) }
-                        },
-                        scales: {
-                            x: { ...(isPorc3?{min:0,max:100}:{}), ticks:{callback:v=>isPorc3?v+'%':v>=1000?(v/1000).toFixed(1)+'k':v, font:{size:10}}, grid:{color:'rgba(0,0,0,0.05)'} },
-                            y: { grid:{display:false}, ticks:{font:{size:11}} }
-                        }
-                    },
-                    plugins: [ChartDataLabels]
+                kill(instArea);
+                if (!refArea.current || !evolucao.length) return;
+                instArea.current = new Chart(refArea.current, {
+                    type:'line',
+                    data:{ labels: evolucao.map(d=>fmtD(d.data)),
+                        datasets:[{label:'SLA %',
+                            data:evolucao.map(d=>d.total>0?(d.verde/d.total*100):0),
+                            borderColor:GREEN,backgroundColor:GREEN_L,tension:0.45,fill:true,
+                            pointRadius:2,pointHoverRadius:6,borderWidth:2.5}]},
+                    options:{responsive:true,maintainAspectRatio:false,
+                        plugins:{legend:{display:false},tooltip:{backgroundColor:'#2d1b69',titleColor:'#c4b5fd',bodyColor:GREEN,callbacks:{label:c=>' SLA: '+c.raw.toFixed(1)+'%'}}},
+                        scales:{x:{grid:{color:'rgba(124,58,237,0.07)'},ticks:{color:'#9ca3af',font:{size:10},maxTicksLimit:10}},
+                            y:{min:0,max:100,grid:{color:'rgba(124,58,237,0.07)'},ticks:{color:'#9ca3af',font:{size:9},callback:v=>v+'%'}}}}
                 });
-            }, [rankingOps, subAba, metrica]);
+            }, [evolucao]);
 
-            // Gráfico multi-linha estilo Evolução Geral
-            useEffect(() => {
-                if (subAba !== 'executivo' && subAba !== 'tendencias') return;
-                if (!chartMultiRef.current) return;
-                if (instMulti.current) { instMulti.current.destroy(); instMulti.current = null; }
-                if (torredatasUnicas.length === 0 || torreDadosGeral.length === 0) return;
-                instMulti.current = new Chart(chartMultiRef.current, {
-                    type: 'line',
-                    data: { labels: torredatasUnicas.map(torrefmtLabel), datasets: torreDadosGeral },
-                    options: {
-                        responsive: true, maintainAspectRatio: false,
-                        interaction: { mode: 'index', intersect: false },
-                        plugins: {
-                            legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 14, padding: 12 } },
-                            datalabels: { display: false }
-                        },
-                        scales: {
-                            x: { grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 } } },
-                            y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { callback: v => metrica==='pontualidade'?v+'%':v.toLocaleString('pt-BR'), font: { size: 10 } } }
-                        }
-                    }
-                });
-            }, [torreDadosGeral, torredatasUnicas, subAba, metrica]);
+            const now = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 
-            // Cleanup ao desmontar
-            useEffect(() => {
-                return () => {
-                    [instTend, instDist, instMes, instOp, instMulti].forEach(r => { if(r.current){r.current.destroy();r.current=null;} });
-                };
-            }, []);
-
-            const subAbas = [
-                { key:'executivo',  label:'🗼 Executivo'    },
-                { key:'historico',  label:'📅 Histórico'    },
-                { key:'ranking',    label:'🏅 Ranking'      },
-                { key:'tendencias', label:'📈 Tendências'   },
+            const periodos = [
+                ['hoje','Hoje'],['ontem','Ontem'],['semana','Semana'],['quinzena','Quinzena'],
+                ['mensal','Mensal'],['trimestral','Trimestral'],['semestral','Semestral'],['anual','Anual'],['custom','📆']
             ];
 
+            // Estilos reutilizáveis
+            const cardStyle = {background:'#fff',borderRadius:14,padding:'20px',border:'1.5px solid #ede9fe',marginBottom:14};
+            const cardTitleStyle = {fontSize:12,fontWeight:700,color:PURPLE,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:14,display:'flex',alignItems:'center',justifyContent:'space-between'};
+            const kpiLblStyle = {fontSize:10,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:8};
+
             return (
-                <div className="torre-wrapper animate-slide-in">
-                    {/* Header */}
-                    <div className="torre-header-bar">
+                <div style={{fontFamily:"'Inter',-apple-system,sans-serif"}}>
+                <style>{`
+                    @keyframes explodeKpi {
+                        0%   { transform: scale(1); }
+                        20%  { transform: scale(1.35); box-shadow: 0 0 0 8px rgba(124,58,237,0.25); }
+                        40%  { transform: scale(0.92); }
+                        60%  { transform: scale(1.12); box-shadow: 0 0 0 14px rgba(124,58,237,0.1); }
+                        80%  { transform: scale(0.97); }
+                        100% { transform: scale(1); box-shadow: none; }
+                    }
+                    @keyframes pulseGreenTorre { 0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,0.4)} 50%{box-shadow:0 0 0 6px rgba(16,185,129,0)} }
+                    .torre-kpi-explode { animation: explodeKpi 0.65s cubic-bezier(0.36,0.07,0.19,0.97) both; }
+                    .torre-kpi-hover:hover { transform: translateY(-4px) !important; box-shadow: 0 12px 32px rgba(124,58,237,0.18) !important; }
+                    .torre-op-row { transition: all 0.15s; cursor: pointer; }
+                    .torre-op-row:hover { background: #ede9fe !important; border-color: #a78bfa !important; transform: translateX(4px); }
+                    .torre-last-row { transition: all 0.15s; }
+                    .torre-last-row:hover { background: rgba(124,58,237,0.06) !important; }
+                    .torre-tbl-row:hover td { background: #faf5ff !important; }
+                    .torre-scrl::-webkit-scrollbar { width: 4px; height: 4px; }
+                    .torre-scrl::-webkit-scrollbar-thumb { background: #ddd6fe; border-radius: 2px; }
+                    .torre-pbtn { transition: all 0.15s; cursor: pointer; flex-shrink: 0; white-space: nowrap; }
+                    .torre-pbtn:hover { background: rgba(255,255,255,0.25) !important; color: #fff !important; }
+                    .torre-pbtn-active { background: #fff !important; color: #7c3aed !important; border-color: #fff !important; box-shadow: 0 4px 14px rgba(0,0,0,0.2); }
+                `}</style>
+
+                {/* ══ HEADER ══ */}
+                <div className="torre-header-bar">
+                    <div style={{display:'flex',alignItems:'center',gap:14}}>
+                        <div style={{background:'linear-gradient(135deg,#667eea,#764ba2)',width:46,height:46,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,boxShadow:'0 4px 18px rgba(102,102,234,0.5)',flexShrink:0}}>📊</div>
                         <div>
-                            <div className="torre-header-title">🗼 Torre de Controle</div>
-                            <div className="torre-header-subtitle">Visão executiva consolidada — histórico e tendências</div>
-                        </div>
-                        <div style={{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}}>
-                            <span className="torre-badge">📊 {opsFiltradas.length} registros</span>
-                            <span className="torre-badge">📅 {dataIni} → {dataFim}</span>
+                            <div className="torre-header-title">Central de Desempenho Operacional</div>
+                            <div className="torre-header-subtitle" style={{display:'flex',alignItems:'center',gap:8}}>
+                                <span style={{width:7,height:7,borderRadius:'50%',background:'#10b981',display:'inline-block',animation:'pulseGreenTorre 2s infinite'}}/>
+                                Ao Vivo · {operacoes.length} ops registradas · Atualizado {now}
+                            </div>
                         </div>
                     </div>
+                    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                        <span className="torre-badge">{kpi.dias} dias analisados</span>
+                        <span className="torre-badge">{kpi.total} operações</span>
+                    </div>
+                </div>
 
-                    {/* Filtros */}
-                    <div className="torre-filtros">
-                        <span className="torre-filtro-label">Período:</span>
-                        {[['7d','7 dias'],['30d','30 dias'],['90d','90 dias'],['12m','12 meses'],['custom','Personalizado']].map(([k,l])=>(
-                            <button key={k} className={`torre-btn-periodo${periodo===k?' active':''}`} onClick={()=>setPeriodo(k)}>{l}</button>
-                        ))}
-                        {periodo==='custom' && (<>
-                            <input type="date" className="torre-input-date" value={dataIni} onChange={e=>setDataIni(e.target.value)} />
-                            <span className="torre-filtro-label">até</span>
-                            <input type="date" className="torre-input-date" value={dataFim} onChange={e=>setDataFim(e.target.value)} />
-                        </>)}
-                        <select className="torre-select" value={opFiltro} onChange={e=>setOpFiltro(e.target.value)}>
+                {/* ══ FILTROS ══ */}
+                <div style={{background:'linear-gradient(135deg,#4c1d95,#6d28d9)',borderRadius:14,padding:'14px 20px',marginBottom:14,border:'1px solid #7c3aed'}}>
+                    {/* Linha 1: botões de período */}
+                    <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:10}}>
+                        <span style={{fontSize:11,fontWeight:700,color:'#e9d5ff',textTransform:'uppercase',letterSpacing:'0.08em',flexShrink:0,marginRight:4}}>Período:</span>
+                        {periodos.map(([k,l]) => {
+                            const isActive = periodo === k;
+                            return (
+                                <button key={k}
+                                    onClick={() => setPeriodo(k)}
+                                    style={{
+                                        padding:'7px 16px',
+                                        borderRadius:20,
+                                        fontSize:12,
+                                        fontWeight:700,
+                                        border: isActive ? '2px solid #fff' : '2px solid rgba(255,255,255,0.4)',
+                                        background: isActive ? '#ffffff' : 'rgba(255,255,255,0.15)',
+                                        color: isActive ? '#6d28d9' : '#ffffff',
+                                        cursor:'pointer',
+                                        flexShrink:0,
+                                        whiteSpace:'nowrap',
+                                        boxShadow: isActive ? '0 3px 12px rgba(0,0,0,0.25)' : 'none',
+                                        transition:'all 0.15s',
+                                        lineHeight:'1.4',
+                                        outline:'none',
+                                    }}>
+                                    {l}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {/* Linha 2: datas customizadas + operação + drill */}
+                    <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                        {showCustom && (
+                            <>
+                                <input type="date" value={customIni} onChange={e=>setCustomIni(e.target.value)}
+                                    style={{padding:'6px 10px',borderRadius:8,border:'1.5px solid rgba(255,255,255,0.5)',background:'rgba(255,255,255,0.15)',color:'#fff',fontSize:12,fontWeight:600,outline:'none'}}/>
+                                <span style={{color:'rgba(255,255,255,0.7)',fontWeight:700}}>–</span>
+                                <input type="date" value={customFim} onChange={e=>setCustomFim(e.target.value)}
+                                    style={{padding:'6px 10px',borderRadius:8,border:'1.5px solid rgba(255,255,255,0.5)',background:'rgba(255,255,255,0.15)',color:'#fff',fontSize:12,fontWeight:600,outline:'none'}}/>
+                            </>
+                        )}
+                        <span style={{fontSize:11,fontWeight:700,color:'#e9d5ff',textTransform:'uppercase',letterSpacing:'0.08em',flexShrink:0}}>Operação:</span>
+                        <select value={opFiltro} onChange={e=>{setOpFiltro(e.target.value);setDrillOp(null);}}
+                            style={{padding:'6px 12px',borderRadius:10,fontSize:12,fontWeight:700,border:'1.5px solid rgba(255,255,255,0.5)',color:'#4c1d95',background:'#fff',cursor:'pointer',outline:'none'}}>
                             {opsDisponiveis.map(o=><option key={o} value={o}>{o}</option>)}
                         </select>
-                        <span className="torre-filtro-label" style={{marginLeft:'8px'}}>Análise:</span>
-                        {[['pontualidade','📊 Pontualidade'],['nf','📄 NFs'],['vol','📦 Volumes'],['cubagem','⚖️ Cubagem']].map(([k,l])=>(
-                            <button key={k} className={`torre-btn-periodo${metrica===k?' active':''}`} onClick={()=>setMetrica(k)}>{l}</button>
-                        ))}
-                    </div>
-
-                    {/* Sub-abas */}
-                    <div style={{display:'flex',gap:'6px',marginBottom:'20px',flexWrap:'wrap'}}>
-                        {subAbas.map(s=>(
-                            <button key={s.key}
-                                onClick={()=>setSubAba(s.key)}
-                                style={{
-                                    padding:'8px 18px', borderRadius:'10px', fontSize:'13px', fontWeight:'700',
-                                    border:'none', cursor:'pointer', transition:'all 0.15s',
-                                    background: subAba===s.key ? 'linear-gradient(135deg,#6d28d9,#7c3aed)' : '#f3f0ff',
-                                    color: subAba===s.key ? '#fff' : '#6d28d9',
-                                    boxShadow: subAba===s.key ? '0 4px 12px rgba(124,58,237,0.3)' : 'none'
-                                }}>
-                                {s.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* ── SUB-ABA: EXECUTIVO ── */}
-                    {subAba==='executivo' && (<>
-                        {kpis.total === 0 ? (
-                            <div className="torre-empty">
-                                <div className="torre-empty-icon">📭</div>
-                                <p style={{fontWeight:'600',fontSize:'16px',marginBottom:'6px'}}>Nenhum dado no período selecionado</p>
-                                <p style={{fontSize:'13px'}}>Ajuste os filtros de data ou cadastre operações.</p>
+                        {drillOp && (
+                            <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,0.9)',borderRadius:20,padding:'5px 14px',fontSize:12,color:PURPLE,fontWeight:700}}>
+                                🔍 {drillOp}
+                                <span onClick={()=>setDrillOp(null)} style={{cursor:'pointer',color:RED,fontWeight:900,fontSize:15,lineHeight:1}}>✕</span>
                             </div>
-                        ) : (<>
-                            {/* Resumo rápido — dinâmico por métrica */}
-                            <div className="torre-resumo-periodo">
-                                <div className="torre-resumo-item"><div className="torre-resumo-val">{kpis.total}</div><div className="torre-resumo-lbl">Total operações</div></div>
-                                {metrica==='pontualidade' && <>
-                                    <div className="torre-resumo-item"><div className="torre-resumo-val">{kpis.taxa.toFixed(1)}%</div><div className="torre-resumo-lbl">Taxa pontualidade</div></div>
-                                    <div className="torre-resumo-item"><div className="torre-resumo-val">{kpis.verde}</div><div className="torre-resumo-lbl">No prazo</div></div>
-                                    <div className="torre-resumo-item"><div className="torre-resumo-val">{kpis.vermelho}</div><div className="torre-resumo-lbl">Atrasadas</div></div>
-                                </>}
-                                {metrica==='nf' && <>
-                                    <div className="torre-resumo-item"><div className="torre-resumo-val">{kpis.nfTotal.toLocaleString('pt-BR')}</div><div className="torre-resumo-lbl">Total NFs</div></div>
-                                    <div className="torre-resumo-item"><div className="torre-resumo-val">{Math.round(kpis.mediaNF).toLocaleString('pt-BR')}</div><div className="torre-resumo-lbl">Média NF/dia</div></div>
-                                    <div className="torre-resumo-item"><div className="torre-resumo-val">{kpis.diasUnicos}</div><div className="torre-resumo-lbl">Dias com registro</div></div>
-                                </>}
-                                {metrica==='vol' && <>
-                                    <div className="torre-resumo-item"><div className="torre-resumo-val">{kpis.volTotal.toLocaleString('pt-BR')}</div><div className="torre-resumo-lbl">Total volumes</div></div>
-                                    <div className="torre-resumo-item"><div className="torre-resumo-val">{Math.round(kpis.mediaVol).toLocaleString('pt-BR')}</div><div className="torre-resumo-lbl">Média Vol/dia</div></div>
-                                    <div className="torre-resumo-item"><div className="torre-resumo-val">{kpis.diasUnicos}</div><div className="torre-resumo-lbl">Dias com registro</div></div>
-                                </>}
-                                {metrica==='cubagem' && <>
-                                    <div className="torre-resumo-item"><div className="torre-resumo-val">{kpis.cubTotal.toFixed(2)}</div><div className="torre-resumo-lbl">Total m³</div></div>
-                                    <div className="torre-resumo-item"><div className="torre-resumo-val">{kpis.diasUnicos>0?(kpis.cubTotal/kpis.diasUnicos).toFixed(2):0}</div><div className="torre-resumo-lbl">Média m³/dia</div></div>
-                                    <div className="torre-resumo-item"><div className="torre-resumo-val">{kpis.diasUnicos}</div><div className="torre-resumo-lbl">Dias com registro</div></div>
-                                </>}
-                                {tendencia && (
-                                    <div className="torre-resumo-item">
-                                        <div style={{fontSize:'22px',fontWeight:'800',color:tendencia.up?'#34d399':tendencia.down?'#f87171':'#fbbf24'}}>
-                                            {tendencia.up?'↑':tendencia.down?'↓':'→'} {tendencia.diff}{tendencia.lbl}
-                                        </div>
-                                        <div className="torre-resumo-lbl">Tendência</div>
+                        )}
+                    </div>
+                </div>
+
+                {/* ══ BANNER RESUMO ══ */}
+                <div className="torre-resumo-periodo">
+                    {[
+                        {l:'Volumetria Total', v: fmtN(kpi.volTotal), tipo:'volumetria', clicavel:true},
+                        {l:'Notas Fiscais',    v: fmtN(kpi.nfTotal),  tipo:'notas',      clicavel:true},
+                        {l:'Cubagem m³',       v: kpi.cubTotal.toFixed(1), tipo:'cubagem', clicavel:true},
+                        {l:'SLA Geral',        v: kpi.sla.toFixed(1)+'%', tipo:'sla',     clicavel:true},
+                        {l:'Operações',        v: kpi.total,           tipo:'operacoes',  clicavel:true},
+                        {l:'Dias analisados',  v: kpi.dias,            tipo:null,         clicavel:false},
+                    ].map(x => (
+                        <div key={x.l} className="torre-resumo-item"
+                            onClick={x.clicavel ? ()=>abrirTorreModal(x.tipo) : undefined}
+                            title={x.clicavel ? 'Clique para ver detalhes' : ''}
+                            style={{cursor:x.clicavel?'pointer':'default',borderRadius:8,padding:'6px 10px',transition:'background 0.15s'}}
+                            onMouseEnter={x.clicavel ? e=>{e.currentTarget.style.background='rgba(255,255,255,0.12)'} : undefined}
+                            onMouseLeave={x.clicavel ? e=>{e.currentTarget.style.background='transparent'} : undefined}
+                        >
+                            <div className="torre-resumo-val">{x.v}</div>
+                            <div className="torre-resumo-lbl">{x.l}</div>
+                            {x.clicavel && <div style={{fontSize:9,opacity:0.65,marginTop:2,textAlign:'center'}}>🔍 ver detalhes</div>}
+                        </div>
+                    ))}
+                </div>
+
+                {/* ══ KPI CARDS ══ */}
+                <div className="torre-kpi-grid">
+                    {[
+                        {id:'vol', cls:'purple', icon:'📦', label:'Volumetria Total',  val:fmtN(kpi.volTotal),        sub:'Média '+fmtN(kpi.mediaVol)+' / dia',          hoje:fmtN(kpiHoje.vol),              valColor:PURPLE},
+                        {id:'nf',  cls:'blue',   icon:'📄', label:'Notas Fiscais',     val:fmtN(kpi.nfTotal),         sub:'Média '+fmtN(kpi.mediaNF)+' / dia',           hoje:fmtN(kpiHoje.nf),               valColor:'#3b82f6'},
+                        {id:'cub', cls:'amber',  icon:'📐', label:'Cubagem m³',        val:kpi.cubTotal.toFixed(1),   sub:'Média '+kpi.mediaCub.toFixed(1)+' m³ / dia',  hoje:kpiHoje.cub.toFixed(1)+' m³',   valColor:AMBER},
+                        {id:'sla', cls:kpi.sla>=80?'green':kpi.sla>=60?'amber':'red', icon:'🎯', label:'SLA no Prazo', val:kpi.sla.toFixed(1)+'%', sub:slaLabel(kpi.sla)+' · '+kpi.verde+'/'+kpi.total+' ops', hoje:kpiHoje.sla.toFixed(1)+'%', valColor:slaColor(kpi.sla)},
+                        {id:'ops', cls:'purple', icon:'⚡', label:'Total Operações',   val:kpi.total,                 sub:kpi.dias+' dias · '+porOperacao.length+' tipos', hoje:kpiHoje.total,                 valColor:PURPLE},
+                    ].map(c => (
+                        <div key={c.id}
+                            className={'torre-kpi-card '+c.cls+' torre-kpi-hover'+(exploding[c.id]?' torre-kpi-explode':'')}
+                            onClick={() => explodeCard(c.id)}
+                            style={{cursor:'pointer',transition:'transform 0.2s,box-shadow 0.2s'}}>
+                            <div className="torre-kpi-icon">{c.icon}</div>
+                            <div className="torre-kpi-label">{c.label}</div>
+                            <div className="torre-kpi-value" style={{color:c.valColor}}>{c.val}</div>
+                            <div className="torre-kpi-sub">{c.sub}</div>
+                            <div style={{height:1,background:'#f3f0ff',margin:'10px 0'}}/>
+                            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                                <span style={{fontSize:10,color:'#9ca3af',fontWeight:700,textTransform:'uppercase'}}>Hoje</span>
+                                <span style={{fontSize:14,fontWeight:900,color:c.valColor}}>{c.hoje}</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* ══ ROW: STATUS + DONUT + HOJE ══ */}
+                <div style={{display:'grid',gridTemplateColumns:'1fr 220px 220px',gap:12,marginBottom:14}}>
+
+                    {/* Status */}
+                    <div style={cardStyle}>
+                        <div style={cardTitleStyle}>
+                            <span>📊 Status das Operações</span>
+                            <span style={{background:'#ede9fe',color:PURPLE,borderRadius:20,padding:'3px 10px',fontSize:10,fontWeight:700}}>{kpi.total} ops</span>
+                        </div>
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}}>
+                            {[
+                                {l:'No Prazo',v:kpi.verde,   pct:kpi.total>0?(kpi.verde/kpi.total*100):0,   bg:'#d1fae5',border:'#6ee7b7',nc:'#065f46',c:GREEN},
+                                {l:'Atenção', v:kpi.amarelo, pct:kpi.total>0?(kpi.amarelo/kpi.total*100):0, bg:'#fef3c7',border:'#fde68a',nc:'#92400e',c:AMBER},
+                                {l:'Crítico',  v:kpi.vermelho,pct:kpi.total>0?(kpi.vermelho/kpi.total*100):0,bg:'#fee2e2',border:'#fca5a5',nc:'#991b1b',c:RED},
+                            ].map(b => (
+                                <div key={b.l} style={{background:b.bg,border:'1.5px solid '+b.border,borderRadius:12,padding:16,textAlign:'center'}}>
+                                    <div style={{fontSize:28,fontWeight:900,color:b.nc,lineHeight:1}}>{b.v}</div>
+                                    <div style={{fontSize:10,fontWeight:700,color:b.nc,marginTop:4,textTransform:'uppercase',letterSpacing:'0.05em'}}>{b.l}</div>
+                                    <div style={{height:4,background:'#e5e7eb',borderRadius:2,marginTop:8,overflow:'hidden'}}>
+                                        <div style={{height:4,width:b.pct+'%',background:b.c,transition:'width 0.6s ease'}}/>
                                     </div>
-                                )}
-                            </div>
-                            {/* KPI Cards — dinâmicos por métrica */}
-                            <div className="torre-kpi-grid">
-                                {metrica==='pontualidade' && <>
-                                    <div className="torre-kpi-card green"><div className="torre-kpi-icon">✅</div><div className="torre-kpi-label">No Prazo</div><div className="torre-kpi-value">{kpis.verde}</div><div className="torre-kpi-sub">{kpis.total>0?(kpis.verde/kpis.total*100).toFixed(1):0}% do total</div></div>
-                                    <div className="torre-kpi-card red"><div className="torre-kpi-icon">❌</div><div className="torre-kpi-label">Atrasadas</div><div className="torre-kpi-value">{kpis.vermelho}</div><div className="torre-kpi-sub">{kpis.total>0?(kpis.vermelho/kpis.total*100).toFixed(1):0}% do total</div></div>
-                                    <div className="torre-kpi-card amber"><div className="torre-kpi-icon">⏳</div><div className="torre-kpi-label">Pendentes</div><div className="torre-kpi-value">{kpis.amarelo}</div><div className="torre-kpi-sub">{kpis.total>0?(kpis.amarelo/kpis.total*100).toFixed(1):0}% do total</div></div>
-                                    <div className="torre-kpi-card purple"><div className="torre-kpi-icon">📊</div><div className="torre-kpi-label">Taxa pontualidade</div><div className="torre-kpi-value">{kpis.taxa.toFixed(1)}%</div><div className="torre-kpi-sub">{kpis.diasUnicos} dias</div></div>
-                                </>}
-                                {metrica==='nf' && <>
-                                    <div className="torre-kpi-card blue"><div className="torre-kpi-icon">📄</div><div className="torre-kpi-label">Total NFs</div><div className="torre-kpi-value" style={{fontSize:'22px'}}>{kpis.nfTotal.toLocaleString('pt-BR')}</div><div className="torre-kpi-sub">no período</div></div>
-                                    <div className="torre-kpi-card purple"><div className="torre-kpi-icon">📅</div><div className="torre-kpi-label">Média NF/dia</div><div className="torre-kpi-value">{Math.round(kpis.mediaNF).toLocaleString('pt-BR')}</div><div className="torre-kpi-sub">{kpis.diasUnicos} dias</div></div>
-                                    <div className="torre-kpi-card green"><div className="torre-kpi-icon">📄</div><div className="torre-kpi-label">NFs no prazo</div><div className="torre-kpi-value" style={{fontSize:'22px'}}>{opsFiltradas.filter(o=>o.status==='verde').reduce((a,o)=>a+(o.nf||0),0).toLocaleString('pt-BR')}</div><div className="torre-kpi-sub">operações verdes</div></div>
-                                    <div className="torre-kpi-card red"><div className="torre-kpi-icon">📄</div><div className="torre-kpi-label">NFs em atraso</div><div className="torre-kpi-value" style={{fontSize:'22px'}}>{opsFiltradas.filter(o=>o.status==='vermelho').reduce((a,o)=>a+(o.nf||0),0).toLocaleString('pt-BR')}</div><div className="torre-kpi-sub">operações vermelhas</div></div>
-                                </>}
-                                {metrica==='vol' && <>
-                                    <div className="torre-kpi-card green"><div className="torre-kpi-icon">📦</div><div className="torre-kpi-label">Total volumes</div><div className="torre-kpi-value" style={{fontSize:'22px'}}>{kpis.volTotal.toLocaleString('pt-BR')}</div><div className="torre-kpi-sub">no período</div></div>
-                                    <div className="torre-kpi-card purple"><div className="torre-kpi-icon">📅</div><div className="torre-kpi-label">Média Vol/dia</div><div className="torre-kpi-value">{Math.round(kpis.mediaVol).toLocaleString('pt-BR')}</div><div className="torre-kpi-sub">{kpis.diasUnicos} dias</div></div>
-                                    <div className="torre-kpi-card blue"><div className="torre-kpi-icon">📦</div><div className="torre-kpi-label">Vols no prazo</div><div className="torre-kpi-value" style={{fontSize:'22px'}}>{opsFiltradas.filter(o=>o.status==='verde').reduce((a,o)=>a+(o.vol||0),0).toLocaleString('pt-BR')}</div><div className="torre-kpi-sub">operações verdes</div></div>
-                                    <div className="torre-kpi-card red"><div className="torre-kpi-icon">📦</div><div className="torre-kpi-label">Vols em atraso</div><div className="torre-kpi-value" style={{fontSize:'22px'}}>{opsFiltradas.filter(o=>o.status==='vermelho').reduce((a,o)=>a+(o.vol||0),0).toLocaleString('pt-BR')}</div><div className="torre-kpi-sub">operações vermelhas</div></div>
-                                </>}
-                                {metrica==='cubagem' && <>
-                                    <div className="torre-kpi-card amber"><div className="torre-kpi-icon">⚖️</div><div className="torre-kpi-label">Total cubagem</div><div className="torre-kpi-value" style={{fontSize:'22px'}}>{kpis.cubTotal.toFixed(2)}</div><div className="torre-kpi-sub">m³ no período</div></div>
-                                    <div className="torre-kpi-card purple"><div className="torre-kpi-icon">📅</div><div className="torre-kpi-label">Média m³/dia</div><div className="torre-kpi-value">{kpis.diasUnicos>0?(kpis.cubTotal/kpis.diasUnicos).toFixed(2):0}</div><div className="torre-kpi-sub">{kpis.diasUnicos} dias</div></div>
-                                    <div className="torre-kpi-card green"><div className="torre-kpi-icon">⚖️</div><div className="torre-kpi-label">m³ no prazo</div><div className="torre-kpi-value" style={{fontSize:'22px'}}>{opsFiltradas.filter(o=>o.status==='verde').reduce((a,o)=>a+parseFloat(o.cubagem||0),0).toFixed(2)}</div><div className="torre-kpi-sub">operações verdes</div></div>
-                                    <div className="torre-kpi-card red"><div className="torre-kpi-icon">⚖️</div><div className="torre-kpi-label">m³ em atraso</div><div className="torre-kpi-value" style={{fontSize:'22px'}}>{opsFiltradas.filter(o=>o.status==='vermelho').reduce((a,o)=>a+parseFloat(o.cubagem||0),0).toFixed(2)}</div><div className="torre-kpi-sub">operações vermelhas</div></div>
-                                </>}
-                            </div>
-                            {/* Gráfico multi-linha estilo Evolução Geral */}
-                            <div className="torre-chart-panel">
-                                <div className="torre-chart-header">
-                                    <div className="torre-chart-title">{mIcon} Evolução Geral — {mLabel}</div>
-                                    <span style={{fontSize:'11px',color:'#9ca3af'}}>{torredatasUnicas.length} dias · {torreOpsUnicas.length} operações</span>
+                                    <div style={{fontSize:12,fontWeight:800,color:b.c,marginTop:5}}>{b.pct.toFixed(1)}%</div>
                                 </div>
-                                <div style={{position:'relative', height:'320px'}}>
-                                    {torredatasUnicas.length > 0
-                                        ? <canvas ref={chartMultiRef}></canvas>
-                                        : <div className="torre-empty" style={{padding:'30px'}}><p>Sem dados</p></div>
-                                    }
-                                </div>
+                            ))}
+                        </div>
+                        <div>
+                            <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:'#6b7280',marginBottom:4,fontWeight:600}}>
+                                <span>Distribuição SLA</span>
+                                <span style={{color:slaColor(kpi.sla),fontWeight:800}}>{kpi.sla.toFixed(1)}% no prazo</span>
                             </div>
-                        </>)}
-                    </>)}
+                            <div style={{height:8,background:'#f3f4f6',borderRadius:4,overflow:'hidden',display:'flex'}}>
+                                <div style={{height:8,width:(kpi.total>0?kpi.verde/kpi.total*100:0)+'%',background:GREEN,transition:'width .6s'}}/>
+                                <div style={{height:8,width:(kpi.total>0?kpi.amarelo/kpi.total*100:0)+'%',background:AMBER,transition:'width .6s'}}/>
+                                <div style={{height:8,width:(kpi.total>0?kpi.vermelho/kpi.total*100:0)+'%',background:RED,transition:'width .6s'}}/>
+                            </div>
+                        </div>
+                    </div>
 
-                    {/* ── SUB-ABA: HISTÓRICO ── */}
-                    {subAba==='historico' && (<>
-                        {dadosPorMes.length === 0 ? (
-                            <div className="torre-empty">
-                                <div className="torre-empty-icon">📭</div>
-                                <p style={{fontWeight:'600',fontSize:'16px',marginBottom:'6px'}}>Nenhum dado no período</p>
+                    {/* Donut */}
+                    <div style={{...cardStyle,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
+                        <div style={{...cardTitleStyle,alignSelf:'flex-start',width:'100%'}}>🎯 SLA Geral</div>
+                        <div style={{position:'relative',height:120,width:120,marginBottom:12}}>
+                            <canvas ref={refDonut}/>
+                            <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',textAlign:'center',pointerEvents:'none'}}>
+                                <div style={{fontSize:22,fontWeight:900,color:slaColor(kpi.sla),lineHeight:1}}>{kpi.sla.toFixed(0)}%</div>
+                                <div style={{fontSize:9,color:'#9ca3af',fontWeight:700,marginTop:2}}>SLA</div>
                             </div>
-                        ) : (<>
-                            <div className="torre-kpi-grid" style={{marginBottom:'16px'}}>
-                                {dadosPorMes.map(m=>{
-                                    const taxa = m.total>0?m.verde/m.total*100:0;
-                                    const valMes = mValMes(m);
-                                    const cor = metrica==='pontualidade'?(taxa>=80?'green':taxa>=60?'amber':'red'):'blue';
+                        </div>
+                        <div style={{width:'100%',display:'flex',flexDirection:'column',gap:5}}>
+                            {[{l:'✅ No Prazo',v:kpi.verde,c:GREEN},{l:'⚠️ Atenção',v:kpi.amarelo,c:AMBER},{l:'🚨 Crítico',v:kpi.vermelho,c:RED}].map(x=>(
+                                <div key={x.l} style={{display:'flex',justifyContent:'space-between',fontSize:11}}>
+                                    <span style={{color:'#6b7280'}}>{x.l}</span>
+                                    <span style={{fontWeight:800,color:x.c}}>{x.v}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Hoje */}
+                    <div style={cardStyle}>
+                        <div style={cardTitleStyle}>📅 Hoje — {fmtFull(hoje)}</div>
+                        {kpiHoje.total > 0 ? (
+                            <>
+                            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
+                                {[
+                                    {l:'Ops',    v:kpiHoje.total,                 c:PURPLE},
+                                    {l:'SLA',    v:kpiHoje.sla.toFixed(0)+'%',    c:slaColor(kpiHoje.sla)},
+                                    {l:'Volume', v:fmtN(kpiHoje.vol),             c:PURPLE},
+                                    {l:'NFs',    v:fmtN(kpiHoje.nf),              c:'#3b82f6'},
+                                ].map(x=>(
+                                    <div key={x.l} style={{background:'#faf5ff',border:'1px solid #ede9fe',borderRadius:8,padding:10,textAlign:'center'}}>
+                                        <div style={{fontSize:9,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',marginBottom:4}}>{x.l}</div>
+                                        <div style={{fontSize:17,fontWeight:900,color:x.c}}>{x.v}</div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:8,padding:10,textAlign:'center'}}>
+                                <div style={{fontSize:9,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',marginBottom:4}}>Cubagem</div>
+                                <div style={{fontSize:20,fontWeight:900,color:'#2563eb'}}>{kpiHoje.cub.toFixed(1)} m³</div>
+                            </div>
+                            </>
+                        ) : (
+                            <div style={{textAlign:'center',padding:'24px 0',color:'#9ca3af',fontSize:12}}>
+                                <div style={{fontSize:32,marginBottom:8}}>📭</div>
+                                Nenhum lançamento hoje ainda
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* ══ GRÁFICOS LINHA + ÁREA ══ */}
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}}>
+                    <div style={cardStyle}>
+                        <div style={cardTitleStyle}>
+                            <span>📈 Evolução de Volumetria</span>
+                            <span style={{background:'#ede9fe',color:PURPLE,borderRadius:20,padding:'3px 10px',fontSize:10,fontWeight:700}}>{evolucao.length} dias</span>
+                        </div>
+                        <div style={{position:'relative',height:200}}>
+                            {evolucao.length>0 ? <canvas ref={refLine}/> : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'#9ca3af',fontSize:12}}>Sem dados no período</div>}
+                        </div>
+                    </div>
+                    <div style={cardStyle}>
+                        <div style={cardTitleStyle}>
+                            <span>📉 Evolução de SLA %</span>
+                            <span style={pillStyle(kpi.sla)}>{kpi.sla.toFixed(1)}% geral</span>
+                        </div>
+                        <div style={{position:'relative',height:200}}>
+                            {evolucao.length>0 ? <canvas ref={refArea}/> : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'#9ca3af',fontSize:12}}>Sem dados no período</div>}
+                        </div>
+                    </div>
+                </div>
+
+                {/* ══ GRÁFICO BARRAS ══ */}
+                <div style={cardStyle}>
+                    <div style={cardTitleStyle}>
+                        <span>📊 Volumetria × Notas Fiscais por Dia</span>
+                        <div style={{display:'flex',gap:10,fontSize:10,color:'#6b7280'}}>
+                            <span style={{display:'flex',alignItems:'center',gap:4}}><span style={{width:10,height:10,borderRadius:2,background:'rgba(124,58,237,0.7)',display:'inline-block'}}/> Volumetria</span>
+                            <span style={{display:'flex',alignItems:'center',gap:4}}><span style={{width:10,height:10,borderRadius:2,background:'rgba(167,139,250,0.7)',display:'inline-block'}}/> Notas Fiscais</span>
+                        </div>
+                    </div>
+                    <div style={{position:'relative',height:200}}>
+                        {evolucao.length>0 ? <canvas ref={refBar}/> : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'#9ca3af',fontSize:12}}>Sem dados no período</div>}
+                    </div>
+                </div>
+
+                {/* ══ POR OPERAÇÃO + ÚLTIMAS/DRILL ══ */}
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}}>
+
+                    {/* Por Operação */}
+                    <div style={cardStyle}>
+                        <div style={cardTitleStyle}>
+                            <span>🏷️ Desempenho por Operação</span>
+                            <span style={{fontSize:10,color:'#9ca3af',textTransform:'none',fontWeight:400,letterSpacing:0}}>clique para detalhar</span>
+                        </div>
+                        <div className="torre-scrl" style={{display:'flex',flexDirection:'column',gap:6,maxHeight:360,overflowY:'auto',paddingRight:4}}>
+                            {porOperacao.length===0 && <div style={{textAlign:'center',padding:'24px',color:'#9ca3af',fontSize:12}}>📭 Nenhum dado no período</div>}
+                            {porOperacao.map((op,i) => {
+                                const sla = op.total>0?(op.verde/op.total*100):0;
+                                const isD = drillOp===op.op;
+                                return (
+                                    <div key={op.op} className="torre-op-row"
+                                        onClick={() => setDrillOp(isD?null:op.op)}
+                                        style={{padding:'12px 14px',borderRadius:10,background:isD?'#ede9fe':'#faf5ff',border:'1px solid '+(isD?PURPLE:'#ede9fe')}}>
+                                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                                            <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
+                                                <span style={{fontSize:11,fontWeight:800,color:i<3?PURPLE:'#9ca3af',minWidth:22,flexShrink:0}}>#{i+1}</span>
+                                                <span style={{fontSize:12,fontWeight:700,color:'#1f2937'}}>{op.op}</span>
+                                                {op.temMultiplos && (
+                                                    <span style={{background:'#ede9fe',color:PURPLE,fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:99,flexShrink:0}}
+                                                        title={`Veículos: ${op.subOps.join(', ')}`}>
+                                                        🚛 {op.subOps.length + 1} veíc.
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <span style={pillStyle(sla)}>{sla.toFixed(0)}%</span>
+                                        </div>
+                                        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:5}}>
+                                            {[{l:'Ops',v:op.total,c:'#374151'},{l:'Vol',v:fmtN(op.vol),c:PURPLE},{l:'NFs',v:fmtN(op.nf),c:'#3b82f6'},{l:'m³',v:op.cub.toFixed(1),c:AMBER}].map(x=>(
+                                                <div key={x.l} style={{textAlign:'center',background:'#fff',borderRadius:6,padding:'5px 3px'}}>
+                                                    <div style={{fontSize:9,color:'#9ca3af',fontWeight:700}}>{x.l}</div>
+                                                    <div style={{fontSize:12,fontWeight:800,color:x.c}}>{x.v}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div style={{marginTop:7,height:3,background:'#e5e7eb',borderRadius:2,overflow:'hidden',display:'flex'}}>
+                                            <div style={{height:3,width:(op.total>0?op.verde/op.total*100:0)+'%',background:GREEN}}/>
+                                            <div style={{height:3,width:(op.total>0?op.amarelo/op.total*100:0)+'%',background:AMBER}}/>
+                                            <div style={{height:3,width:(op.total>0?op.vermelho/op.total*100:0)+'%',background:RED}}/>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Drill / Últimas */}
+                    <div style={cardStyle}>
+                        {drillOp ? (
+                            <>
+                            <div style={cardTitleStyle}>
+                                <span>🔍 Detalhes — {drillOp}</span>
+                                <button onClick={()=>setDrillOp(null)} style={{background:'#fee2e2',border:'1px solid #fca5a5',borderRadius:7,padding:'4px 10px',fontSize:11,color:'#dc2626',cursor:'pointer',fontWeight:700}}>✕ Fechar</button>
+                            </div>
+                            <div className="torre-scrl" style={{display:'flex',flexDirection:'column',gap:5,maxHeight:360,overflowY:'auto'}}>
+                                {drillDados.length===0 && <div style={{textAlign:'center',padding:24,color:'#9ca3af',fontSize:12}}>📭 Sem registros</div>}
+                                {drillDados.map((o,i) => {
+                                    const sc = o.status==='verde'?GREEN:o.status==='amarelo'?AMBER:RED;
+                                    const sl = o.status==='verde'?'✅':o.status==='amarelo'?'⚠️':'🚨';
+                                    const nomeOriginal = (o.operacao||'').trim();
+                                    const nomeBase = normalizarNome(nomeOriginal);
+                                    const sufixo = nomeOriginal !== nomeBase ? nomeOriginal.replace(nomeBase,'').trim() : null;
                                     return (
-                                        <div key={m.mes} className={`torre-kpi-card ${cor}`}>
-                                            <div className="torre-kpi-label">{fmtMes(m.mes)}</div>
-                                            {metrica==='pontualidade' && <><div className="torre-kpi-value">{taxa.toFixed(1)}%</div><div className="torre-kpi-sub">{m.verde} ok / {m.vermelho} atraso</div></>}
-                                            {metrica!=='pontualidade' && <><div className="torre-kpi-value" style={{fontSize:'20px'}}>{metrica==='cubagem'?valMes.toFixed(2):Math.round(valMes).toLocaleString('pt-BR')}</div><div className="torre-kpi-sub">{mLabel}{metrica==='cubagem'?' m³':''} · {m.total} ops</div></>}
+                                        <div key={i} className="torre-last-row" style={{padding:'10px 12px',borderRadius:8,background:'#faf5ff',border:'1px solid #ede9fe',display:'flex',gap:10,alignItems:'flex-start'}}>
+                                            <div style={{width:9,height:9,borderRadius:'50%',background:sc,flexShrink:0,marginTop:3,boxShadow:`0 0 6px ${sc}55`}}/>
+                                            <div style={{flex:1,minWidth:0}}>
+                                                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:3}}>
+                                                    <span style={{fontSize:11,color:'#6b7280'}}>{fmtFull(o.data)} · {o.inicio||'--:--'} → {o.termino||'--:--'}</span>
+                                                    {sufixo && (
+                                                        <span style={{background:'#ddd6fe',color:PURPLE,fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:99,flexShrink:0}}>
+                                                            🚛 Veíc. {sufixo}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                                                    {[{l:'Vol',v:fmtN(o.vol||0),c:PURPLE},{l:'NFs',v:fmtN(o.nf||0),c:'#3b82f6'},{l:'m³',v:parseFloat(o.cubagem||0).toFixed(1),c:AMBER}].map(x=>(
+                                                        <span key={x.l} style={{fontSize:11,fontWeight:700,color:x.c}}>{x.l}: {x.v}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <span style={{fontSize:14,flexShrink:0}}>{sl}</span>
                                         </div>
                                     );
                                 })}
                             </div>
-                            <div className="torre-chart-panel">
-                                <div className="torre-chart-header">
-                                    <div className="torre-chart-title">{mIcon} {mLabel} por mês</div>
-                                    <span style={{fontSize:'11px',color:'#9ca3af'}}>{dadosPorMes.length} meses</span>
-                                </div>
-                                <div className="torre-canvas-wrap" style={{height:'260px'}}>
-                                    <canvas ref={chartMesRef}></canvas>
-                                </div>
-                            </div>
-                            {/* Tabela mensal — dinâmica por métrica */}
-                            <div className="torre-chart-panel" style={{marginTop:'0'}}>
-                                <div className="torre-chart-header">
-                                    <div className="torre-chart-title">📋 {mLabel} — resumo mensal</div>
-                                </div>
-                                <div style={{overflowX:'auto'}}>
-                                    <table className="torre-table">
-                                        <thead><tr>
-                                            <th>Mês</th>
-                                            <th>Total ops</th>
-                                            {metrica==='pontualidade' && <><th>✅ No prazo</th><th>❌ Atraso</th><th>⏳ Pendente</th><th>Pontualidade</th></>}
-                                            {metrica==='nf'      && <><th>Total NFs</th><th>NFs/dia</th></>}
-                                            {metrica==='vol'     && <><th>Total Vols</th><th>Vols/dia</th></>}
-                                            {metrica==='cubagem' && <><th>Total m³</th><th>m³/dia</th></>}
-                                        </tr></thead>
-                                        <tbody>
-                                            {dadosPorMes.map(m=>{
-                                                const taxa=m.total>0?m.verde/m.total*100:0;
-                                                const cor=taxa>=80?'#10b981':taxa>=60?'#f59e0b':'#ef4444';
-                                                const diasMes = new Set(opsFiltradas.filter(o=>o.data.startsWith(m.mes)).map(o=>o.data)).size || 1;
-                                                return (
-                                                    <tr key={m.mes}>
-                                                        <td><strong>{fmtMes(m.mes)}</strong></td>
-                                                        <td>{m.total}</td>
-                                                        {metrica==='pontualidade' && <>
-                                                            <td style={{color:'#065f46',fontWeight:'700'}}>{m.verde}</td>
-                                                            <td style={{color:'#991b1b',fontWeight:'700'}}>{m.vermelho}</td>
-                                                            <td style={{color:'#92400e',fontWeight:'700'}}>{m.amarelo}</td>
-                                                            <td><div style={{display:'flex',alignItems:'center',gap:'8px'}}><div className="torre-progress-bar" style={{width:'70px'}}><div className="torre-progress-fill" style={{width:taxa+'%',background:cor}}></div></div><span style={{fontWeight:'700',color:cor,minWidth:'40px'}}>{taxa.toFixed(1)}%</span></div></td>
-                                                        </>}
-                                                        {metrica==='nf'      && <><td style={{fontWeight:'700',color:'#3b82f6'}}>{m.nf.toLocaleString('pt-BR')}</td><td>{Math.round(m.nf/diasMes).toLocaleString('pt-BR')}</td></>}
-                                                        {metrica==='vol'     && <><td style={{fontWeight:'700',color:'#10b981'}}>{m.vol.toLocaleString('pt-BR')}</td><td>{Math.round(m.vol/diasMes).toLocaleString('pt-BR')}</td></>}
-                                                        {metrica==='cubagem' && <><td style={{fontWeight:'700',color:'#f59e0b'}}>{m.cub.toFixed(2)}</td><td>{(m.cub/diasMes).toFixed(2)}</td></>}
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </>)}
-                    </>)}
-
-                    {/* ── SUB-ABA: RANKING ── */}
-                    {subAba==='ranking' && (<>
-                        {rankingOps.length === 0 ? (
-                            <div className="torre-empty">
-                                <div className="torre-empty-icon">📭</div>
-                                <p style={{fontWeight:'600',fontSize:'16px',marginBottom:'6px'}}>Nenhum dado no período</p>
-                            </div>
-                        ) : (<>
-                            <div className="torre-chart-panel" style={{marginBottom:'16px'}}>
-                                <div className="torre-chart-header">
-                                    <div className="torre-chart-title">🏅 {mLabel} por operação (top 10)</div>
-                                    <span style={{fontSize:'11px',color:'#9ca3af'}}>{rankingOps.length} operações no período</span>
-                                </div>
-                                <div style={{position:'relative',height:Math.max(200,rankingOps.slice(0,10).length*38)+'px'}}>
-                                    <canvas ref={chartOpRef}></canvas>
-                                </div>
-                            </div>
-                            <div className="torre-chart-panel">
-                                <div className="torre-chart-header">
-                                    <div className="torre-chart-title">📋 Ranking completo — {mLabel}</div>
-                                </div>
-                                <div style={{overflowX:'auto'}}>
-                                    <table className="torre-table">
-                                        <thead><tr>
-                                            <th>#</th>
-                                            <th>Operação</th>
-                                            <th>Total ops</th>
-                                            {metrica==='pontualidade' && <><th>✅ Prazo</th><th>❌ Atraso</th><th>Pontualidade</th></>}
-                                            {metrica==='nf'      && <th>Total NFs</th>}
-                                            {metrica==='vol'     && <th>Total Vols</th>}
-                                            {metrica==='cubagem' && <th>Total m³</th>}
-                                            <th>Status</th>
-                                        </tr></thead>
-                                        <tbody>
-                                            {[...rankingOps].sort((a,b)=> metrica==='pontualidade'?b.taxa-a.taxa : mValRank(b)-mValRank(a)).map((r,i)=>{
-                                                const cor=r.taxa>=80?'#10b981':r.taxa>=60?'#f59e0b':'#ef4444';
-                                                const pill=r.taxa>=80?'verde':r.taxa>=60?'amarelo':'vermelho';
-                                                const mVal = metrica==='nf'?r.nf:metrica==='vol'?r.vol:metrica==='cubagem'?r.cub:null;
-                                                const mCorRank = metrica==='nf'?'#3b82f6':metrica==='vol'?'#10b981':'#f59e0b';
-                                                return (
-                                                    <tr key={r.nome}>
-                                                        <td><strong style={{color:'#7c3aed'}}>#{i+1}</strong></td>
-                                                        <td style={{fontWeight:'600',maxWidth:'180px'}}>{r.nome}</td>
-                                                        <td>{r.total}</td>
-                                                        {metrica==='pontualidade' && <>
-                                                            <td style={{color:'#065f46',fontWeight:'700'}}>{r.verde}</td>
-                                                            <td style={{color:'#991b1b',fontWeight:'700'}}>{r.vermelho}</td>
-                                                            <td><div style={{display:'flex',alignItems:'center',gap:'8px'}}><div className="torre-progress-bar" style={{width:'60px'}}><div className="torre-progress-fill" style={{width:r.taxa+'%',background:cor}}></div></div><span style={{fontWeight:'700',color:cor}}>{r.taxa.toFixed(1)}%</span></div></td>
-                                                        </>}
-                                                        {metrica!=='pontualidade' && <td style={{fontWeight:'700',color:mCorRank}}>{metrica==='cubagem'?r.cub.toFixed(2):mVal.toLocaleString('pt-BR')}</td>}
-                                                        <td>{r.vol.toLocaleString('pt-BR')}</td>
-                                                        <td><span className={`torre-pill ${pill}`}>{r.taxa>=80?'Excelente':r.taxa>=60?'Atenção':'Crítico'}</span></td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </>)}
-                    </>)}
-
-                    {/* ── SUB-ABA: TENDÊNCIAS ── */}
-                    {subAba==='tendencias' && (<>
-                        {dadosPorData.length === 0 ? (
-                            <div className="torre-empty">
-                                <div className="torre-empty-icon">📭</div>
-                                <p style={{fontWeight:'600',fontSize:'16px',marginBottom:'6px'}}>Nenhum dado no período</p>
-                            </div>
-                        ) : (<>
-                            {/* Card tendência geral */}
-                            {tendencia && (
-                                <div className="torre-resumo-periodo" style={{marginBottom:'16px'}}>
-                                    <div className="torre-resumo-item">
-                                        <div className="torre-resumo-val">1ª metade</div>
-                                        <div style={{fontSize:'28px',fontWeight:'800',color:'#c4b5fd'}}>{tendencia.taxa1}{tendencia.lbl}</div>
-                                        <div className="torre-resumo-lbl">{mLabel}</div>
-                                    </div>
-                                    <div style={{fontSize:'36px',color:tendencia.up?'#34d399':tendencia.down?'#f87171':'#fbbf24',fontWeight:'900'}}>
-                                        {tendencia.up?'↑':tendencia.down?'↓':'→'}
-                                    </div>
-                                    <div className="torre-resumo-item">
-                                        <div className="torre-resumo-val">2ª metade</div>
-                                        <div style={{fontSize:'28px',fontWeight:'800',color:tendencia.up?'#34d399':tendencia.down?'#f87171':'#fbbf24'}}>{tendencia.taxa2}{tendencia.lbl}</div>
-                                        <div className="torre-resumo-lbl">{mLabel}</div>
-                                    </div>
-                                    <div className="torre-resumo-item">
-                                        <div style={{fontSize:'24px',fontWeight:'800',color:tendencia.up?'#34d399':tendencia.down?'#f87171':'#fbbf24'}}>
-                                            {tendencia.diff > 0||String(tendencia.diff).startsWith('-')?'':''}{tendencia.diff}{tendencia.lbl}
+                            </>
+                        ) : (
+                            <>
+                            <div style={cardTitleStyle}>🕐 Últimas Operações</div>
+                            <div className="torre-scrl" style={{display:'flex',flexDirection:'column',gap:5,maxHeight:360,overflowY:'auto'}}>
+                                {ultimasOps.length===0 && <div style={{textAlign:'center',padding:24,color:'#9ca3af',fontSize:12}}>📭 Nenhum registro no período</div>}
+                                {ultimasOps.map((o,i) => {
+                                    const sc = o.status==='verde'?GREEN:o.status==='amarelo'?AMBER:RED;
+                                    const nomeOrig = (o.operacao||'').trim();
+                                    const nomeBase = normalizarNome(nomeOrig);
+                                    const sufixo = nomeOrig !== nomeBase ? nomeOrig.replace(nomeBase,'').trim() : null;
+                                    return (
+                                        <div key={i} className="torre-last-row" style={{padding:'10px 12px',borderRadius:8,background:'#faf5ff',border:'1px solid #ede9fe',display:'flex',alignItems:'center',gap:10}}>
+                                            <div style={{width:9,height:9,borderRadius:'50%',background:sc,flexShrink:0,boxShadow:`0 0 6px ${sc}55`}}/>
+                                            <div style={{flex:1,minWidth:0}}>
+                                                <div style={{display:'flex',alignItems:'center',gap:5,flexWrap:'nowrap'}}>
+                                                    <span style={{fontSize:12,fontWeight:700,color:'#1f2937',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nomeBase||'—'}</span>
+                                                    {sufixo && <span style={{background:'#ddd6fe',color:PURPLE,fontSize:9,fontWeight:700,padding:'1px 5px',borderRadius:99,flexShrink:0}}>🚛{sufixo}</span>}
+                                                </div>
+                                                <div style={{fontSize:9,color:'#9ca3af',marginTop:1}}>{fmtFull(o.data)} · {o.inicio||'--'} → {o.termino||'--'}</div>
+                                            </div>
+                                            <div style={{textAlign:'right',flexShrink:0}}>
+                                                <div style={{fontSize:12,fontWeight:800,color:PURPLE}}>{fmtN(o.vol||0)}</div>
+                                                <div style={{fontSize:9,color:'#9ca3af'}}>{fmtN(o.nf||0)} NFs</div>
+                                            </div>
                                         </div>
-                                        <div className="torre-resumo-lbl">variação absoluta</div>
-                                    </div>
-                                    <div className="torre-resumo-item">
-                                        <div style={{fontSize:'18px',fontWeight:'700',color:tendencia.up?'#34d399':tendencia.down?'#f87171':'#fbbf24'}}>
-                                            {tendencia.up ? '📈 Crescendo' : tendencia.down ? '📉 Caindo' : '➡️ Estável'}
-                                        </div>
-                                        <div className="torre-resumo-lbl">tendência geral</div>
-                                    </div>
-                                </div>
+                                    );
+                                })}
+                            </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                {/* ══ TABELA RESUMO DIÁRIO ══ */}
+                <div style={cardStyle}>
+                    <div style={cardTitleStyle}>📅 Resumo Diário — Período Selecionado</div>
+                    <div className="torre-scrl" style={{overflowX:'auto'}}>
+                        <table className="torre-table">
+                            <thead>
+                                <tr>
+                                    {['Data','Ops','Volume','NFs','Cubagem m³','SLA %','✅ No Prazo','⚠️ Atenção','🚨 Crítico'].map(h=>(
+                                        <th key={h}>{h}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {evolucao.length===0 && (
+                                    <tr><td colSpan="9" style={{textAlign:'center',padding:24,color:'#9ca3af'}}>Nenhum dado no período selecionado</td></tr>
+                                )}
+                                {[...evolucao].reverse().map((d,i) => {
+                                    const sla = d.total>0?(d.verde/d.total*100):0;
+                                    const isH = d.data===hoje;
+                                    return (
+                                        <tr key={d.data} className="torre-tbl-row" style={{background:isH?'#faf5ff':'transparent'}}>
+                                            <td style={{fontWeight:isH?800:500,color:isH?PURPLE:'#374151',whiteSpace:'nowrap'}}>
+                                                {fmtFull(d.data)}
+                                                {isH && <span style={{marginLeft:6,fontSize:9,background:'#ede9fe',color:PURPLE,padding:'1px 6px',borderRadius:99,fontWeight:700}}>HOJE</span>}
+                                            </td>
+                                            <td style={{fontWeight:700}}>{d.total}</td>
+                                            <td style={{fontWeight:800,color:PURPLE}}>{fmtN(d.vol)}</td>
+                                            <td style={{fontWeight:800,color:'#3b82f6'}}>{fmtN(d.nf)}</td>
+                                            <td style={{color:AMBER,fontWeight:700}}>{d.cub.toFixed(1)}</td>
+                                            <td><span style={pillStyle(sla)}>{sla.toFixed(1)}%</span></td>
+                                            <td style={{fontWeight:700,color:GREEN}}>{d.verde}</td>
+                                            <td style={{fontWeight:700,color:AMBER}}>{d.amarelo}</td>
+                                            <td style={{fontWeight:700,color:RED}}>{d.vermelho}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                            {evolucao.length>0 && (
+                                <tfoot>
+                                    <tr style={{background:'#faf5ff',borderTop:'2px solid #ede9fe'}}>
+                                        <td style={{color:PURPLE,fontWeight:900}}>TOTAL</td>
+                                        <td style={{fontWeight:900}}>{kpi.total}</td>
+                                        <td style={{fontWeight:900,color:PURPLE}}>{fmtN(kpi.volTotal)}</td>
+                                        <td style={{fontWeight:900,color:'#3b82f6'}}>{fmtN(kpi.nfTotal)}</td>
+                                        <td style={{fontWeight:900,color:AMBER}}>{kpi.cubTotal.toFixed(1)}</td>
+                                        <td><span style={{...pillStyle(kpi.sla),fontWeight:900}}>{kpi.sla.toFixed(1)}%</span></td>
+                                        <td style={{fontWeight:900,color:GREEN}}>{kpi.verde}</td>
+                                        <td style={{fontWeight:900,color:AMBER}}>{kpi.amarelo}</td>
+                                        <td style={{fontWeight:900,color:RED}}>{kpi.vermelho}</td>
+                                    </tr>
+                                </tfoot>
                             )}
-                            <div className="torre-chart-panel">
-                                <div className="torre-chart-header">
-                                    <div className="torre-chart-title">{mIcon} Evolução Geral — {mLabel}</div>
-                                    <span style={{fontSize:'11px',color:'#9ca3af'}}>{torredatasUnicas.length} dias · {torreOpsUnicas.length} operações</span>
+                        </table>
+                    </div>
+                </div>
+
+                {/* ══ MODAL DETALHAMENTO TORRE ══ */}
+                {torreModal && (
+                    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',backdropFilter:'blur(4px)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+                        onClick={e=>{if(e.target===e.currentTarget)setTorreModal(null);}}>
+                        <div style={{background:'#fff',borderRadius:18,width:'100%',maxWidth:960,maxHeight:'85vh',overflow:'hidden',display:'flex',flexDirection:'column',boxShadow:'0 24px 60px rgba(0,0,0,0.25)'}}>
+                            <div style={{padding:'18px 22px',background:'linear-gradient(135deg,#4c1d95,#7c3aed)',color:'#fff',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
+                                <div>
+                                    <div style={{fontWeight:800,fontSize:16}}>{torreModal.titulo}</div>
+                                    <div style={{fontSize:12,opacity:0.8,marginTop:2}}>{torreModal.dados.length} registro(s) · {fmtFull(dataIni)} → {fmtFull(dataFim)} · {opFiltro}</div>
                                 </div>
-                                <div style={{position:'relative', height:'320px'}}>
-                                    {torredatasUnicas.length > 0
-                                        ? <canvas ref={chartMultiRef}></canvas>
-                                        : <div className="torre-empty" style={{padding:'30px'}}><p>Sem dados</p></div>
-                                    }
-                                </div>
+                                <button onClick={()=>setTorreModal(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'#fff',borderRadius:8,padding:'6px 14px',cursor:'pointer',fontWeight:700,fontSize:14}}>✕ Fechar</button>
                             </div>
-                            {/* Tabela diária */}
-                            <div className="torre-chart-panel">
-                                <div className="torre-chart-header">
-                                    <div className="torre-chart-title">📋 Detalhe diário do período</div>
-                                    <span style={{fontSize:'11px',color:'#9ca3af'}}>{dadosPorData.length} dias</span>
-                                </div>
-                                <div style={{overflowX:'auto',maxHeight:'340px',overflowY:'auto'}}>
-                                    <table className="torre-table">
-                                        <thead><tr>
-                                            <th>Data</th>
-                                            <th>Total ops</th>
-                                            {metrica==='pontualidade' && <><th>✅ Prazo</th><th>❌ Atraso</th><th>⏳ Pendente</th><th>Pontualidade</th></>}
-                                            {metrica==='nf'      && <th>NFs</th>}
-                                            {metrica==='vol'     && <th>Volumes</th>}
-                                            {metrica==='cubagem' && <th>Cubagem m³</th>}
-                                        </tr></thead>
+                            <div style={{overflowY:'auto',flex:1}}>
+                                {torreModal.dados.length===0 ? (
+                                    <div style={{textAlign:'center',padding:60,color:'#94a3b8'}}>
+                                        <div style={{fontSize:40,marginBottom:8}}>📭</div>
+                                        <p>Nenhum registro encontrado para este filtro</p>
+                                    </div>
+                                ) : (
+                                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                                        <thead>
+                                            <tr>
+                                                {torreModal.colunas.map(c=>(
+                                                    <th key={c} style={{background:'linear-gradient(135deg,#4c1d95,#6d28d9)',color:'#fff',padding:'10px 14px',textAlign:'left',fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.05em',position:'sticky',top:0,zIndex:1}}>{c}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
                                         <tbody>
-                                            {[...dadosPorData].reverse().map(d=>{
-                                                const taxa=d.total>0?d.verde/d.total*100:0;
-                                                const cor=taxa>=80?'#10b981':taxa>=60?'#f59e0b':'#ef4444';
-                                                return (
-                                                    <tr key={d.data}>
-                                                        <td><strong>{fmtData(d.data)}</strong></td>
-                                                        <td>{d.total}</td>
-                                                        {metrica==='pontualidade' && <>
-                                                            <td style={{color:'#065f46',fontWeight:'700'}}>{d.verde}</td>
-                                                            <td style={{color:'#991b1b',fontWeight:'700'}}>{d.vermelho}</td>
-                                                            <td style={{color:'#92400e',fontWeight:'700'}}>{d.amarelo}</td>
-                                                            <td><div style={{display:'flex',alignItems:'center',gap:'8px'}}><div className="torre-progress-bar" style={{width:'60px'}}><div className="torre-progress-fill" style={{width:taxa+'%',background:cor}}></div></div><span style={{fontWeight:'700',color:cor}}>{taxa.toFixed(1)}%</span></div></td>
-                                                        </>}
-                                                        {metrica==='nf'      && <td style={{fontWeight:'700',color:'#3b82f6'}}>{d.nf.toLocaleString('pt-BR')}</td>}
-                                                        {metrica==='vol'     && <td style={{fontWeight:'700',color:'#10b981'}}>{d.vol.toLocaleString('pt-BR')}</td>}
-                                                        {metrica==='cubagem' && <td style={{fontWeight:'700',color:'#f59e0b'}}>{d.cub.toFixed(2)}</td>}
-                                                    </tr>
-                                                );
-                                            })}
+                                            {torreModal.dados.map((row,i)=>renderTorreModalRow(torreModal.tipo,row,i))}
                                         </tbody>
                                     </table>
-                                </div>
+                                )}
                             </div>
-                        </>)}
-                    </>)}
+                            <div style={{padding:'12px 18px',background:'#f8fafc',borderTop:'1px solid #e2e8f0',display:'flex',gap:8,justifyContent:'flex-end',flexShrink:0}}>
+                                <button onClick={()=>setTorreModal(null)} style={{background:'#f1f5f9',color:'#475569',border:'none',borderRadius:8,padding:'7px 18px',cursor:'pointer',fontWeight:700,fontSize:12}}>Fechar</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 </div>
             );
         }
         // ========== FIM TORRE DE CONTROLE ==========
+
+
 
         // ========== DASHBOARD COM FILTROS AVANÇADOS ==========
 
