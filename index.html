@@ -2969,9 +2969,9 @@
             const [antecipacoes, setAntecipacoes] = useState(() => {
                 try {
                     const saved = localStorage.getItem('antecipacoes_' + dataSelecionada);
-                    return saved ? JSON.parse(saved) : { nf: 0, vol: 0, cubagem: 0, nfReal: 0, volReal: 0, cubagemReal: 0, vmNF: 0, croosNF: 0, vmVol: 0, croosVol: 0, vmCub: 0, croosCub: 0 };
+                    return saved ? JSON.parse(saved) : { nf: 0, vol: 0, cubagem: 0, nfReal: 0, volReal: 0, cubagemReal: 0, vmNF: 0, croosNF: 0, tzNF: 0, vmVol: 0, croosVol: 0, tzVol: 0, vmCub: 0, croosCub: 0, tzCub: 0 };
                 } catch(e) {
-                    return { nf: 0, vol: 0, cubagem: 0, nfReal: 0, volReal: 0, cubagemReal: 0, vmNF: 0, croosNF: 0, vmVol: 0, croosVol: 0, vmCub: 0, croosCub: 0 };
+                    return { nf: 0, vol: 0, cubagem: 0, nfReal: 0, volReal: 0, cubagemReal: 0, vmNF: 0, croosNF: 0, tzNF: 0, vmVol: 0, croosVol: 0, tzVol: 0, vmCub: 0, croosCub: 0, tzCub: 0 };
                 }
             });
             
@@ -2979,9 +2979,9 @@
             useEffect(() => {
                 try {
                     const saved = localStorage.getItem('antecipacoes_' + dataSelecionada);
-                    setAntecipacoes(saved ? JSON.parse(saved) : { nf: 0, vol: 0, cubagem: 0, nfReal: 0, volReal: 0, cubagemReal: 0, vmNF: 0, croosNF: 0, vmVol: 0, croosVol: 0, vmCub: 0, croosCub: 0 });
+                    setAntecipacoes(saved ? JSON.parse(saved) : { nf: 0, vol: 0, cubagem: 0, nfReal: 0, volReal: 0, cubagemReal: 0, vmNF: 0, croosNF: 0, tzNF: 0, vmVol: 0, croosVol: 0, tzVol: 0, vmCub: 0, croosCub: 0, tzCub: 0 });
                 } catch(e) {
-                    setAntecipacoes({ nf: 0, vol: 0, cubagem: 0, nfReal: 0, volReal: 0, cubagemReal: 0, vmNF: 0, croosNF: 0, vmVol: 0, croosVol: 0, vmCub: 0, croosCub: 0 });
+                    setAntecipacoes({ nf: 0, vol: 0, cubagem: 0, nfReal: 0, volReal: 0, cubagemReal: 0, vmNF: 0, croosNF: 0, tzNF: 0, vmVol: 0, croosVol: 0, tzVol: 0, vmCub: 0, croosCub: 0, tzCub: 0 });
                 }
             }, [dataSelecionada]);
             
@@ -3650,29 +3650,37 @@
                                     autoFocus
                                 />
                             )}
-                            <div className="mt-1 text-xs opacity-70 cursor-pointer hover:opacity-100 underline select-none" onClick={() => setMostrarVmCroos(prev => prev === 'nf' ? null : 'nf')}>VM / TS</div>
+                            <div className="mt-1 text-xs opacity-70 cursor-pointer hover:opacity-100 underline select-none" onClick={() => setMostrarVmCroos(prev => prev === 'nf' ? null : 'nf')}>VM / TS / TZ</div>
                             {mostrarVmCroos === 'nf' && (
                                 <div className="mt-2 flex gap-1">
                                     <input
                                         type="number"
                                         value={antecipacoes.vmNF || ''}
                                         onChange={(e) => salvarAntecipacoes({...antecipacoes, vmNF: parseInt(e.target.value) || 0})}
-                                        className="w-1/2 px-2 py-1 rounded text-gray-800 text-xs font-bold focus:outline-none"
+                                        className="w-1/3 px-2 py-1 rounded text-gray-800 text-xs font-bold focus:outline-none"
                                         placeholder="VM"
                                     />
                                     <input
                                         type="number"
                                         value={antecipacoes.croosNF || ''}
                                         onChange={(e) => salvarAntecipacoes({...antecipacoes, croosNF: parseInt(e.target.value) || 0})}
-                                        className="w-1/2 px-2 py-1 rounded text-gray-800 text-xs font-bold focus:outline-none"
+                                        className="w-1/3 px-2 py-1 rounded text-gray-800 text-xs font-bold focus:outline-none"
                                         placeholder="TS"
+                                    />
+                                    <input
+                                        type="number"
+                                        value={antecipacoes.tzNF || ''}
+                                        onChange={(e) => salvarAntecipacoes({...antecipacoes, tzNF: parseInt(e.target.value) || 0})}
+                                        className="w-1/3 px-2 py-1 rounded text-gray-800 text-xs font-bold focus:outline-none"
+                                        placeholder="TZ"
                                     />
                                 </div>
                             )}
-                            {mostrarVmCroos === 'nf' && (antecipacoes.vmNF > 0 || antecipacoes.croosNF > 0) && (
-                                <div className="mt-1 text-xs opacity-80" style={{display:'flex',gap:'6px'}}>
+                            {mostrarVmCroos === 'nf' && (antecipacoes.vmNF > 0 || antecipacoes.croosNF > 0 || antecipacoes.tzNF > 0) && (
+                                <div className="mt-1 text-xs opacity-80" style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
                                     {antecipacoes.vmNF > 0 && <span style={{background:'rgba(255,255,255,0.2)',borderRadius:'6px',padding:'2px 6px'}}>VM: {antecipacoes.vmNF}</span>}
                                     {antecipacoes.croosNF > 0 && <span style={{background:'rgba(255,255,255,0.2)',borderRadius:'6px',padding:'2px 6px'}}>TS: {antecipacoes.croosNF}</span>}
+                                    {antecipacoes.tzNF > 0 && <span style={{background:'rgba(255,255,255,0.2)',borderRadius:'6px',padding:'2px 6px'}}>TZ: {antecipacoes.tzNF}</span>}
                                 </div>
                             )}
                         </div>
@@ -3690,29 +3698,37 @@
                                     autoFocus
                                 />
                             )}
-                            <div className="mt-1 text-xs opacity-70 cursor-pointer hover:opacity-100 underline select-none" onClick={() => setMostrarVmCroos(prev => prev === 'vol' ? null : 'vol')}>VM / TS</div>
+                            <div className="mt-1 text-xs opacity-70 cursor-pointer hover:opacity-100 underline select-none" onClick={() => setMostrarVmCroos(prev => prev === 'vol' ? null : 'vol')}>VM / TS / TZ</div>
                             {mostrarVmCroos === 'vol' && (
                                 <div className="mt-2 flex gap-1">
                                     <input
                                         type="number"
                                         value={antecipacoes.vmVol || ''}
                                         onChange={(e) => salvarAntecipacoes({...antecipacoes, vmVol: parseInt(e.target.value) || 0})}
-                                        className="w-1/2 px-2 py-1 rounded text-gray-800 text-xs font-bold focus:outline-none"
+                                        className="w-1/3 px-2 py-1 rounded text-gray-800 text-xs font-bold focus:outline-none"
                                         placeholder="VM"
                                     />
                                     <input
                                         type="number"
                                         value={antecipacoes.croosVol || ''}
                                         onChange={(e) => salvarAntecipacoes({...antecipacoes, croosVol: parseInt(e.target.value) || 0})}
-                                        className="w-1/2 px-2 py-1 rounded text-gray-800 text-xs font-bold focus:outline-none"
+                                        className="w-1/3 px-2 py-1 rounded text-gray-800 text-xs font-bold focus:outline-none"
                                         placeholder="TS"
+                                    />
+                                    <input
+                                        type="number"
+                                        value={antecipacoes.tzVol || ''}
+                                        onChange={(e) => salvarAntecipacoes({...antecipacoes, tzVol: parseInt(e.target.value) || 0})}
+                                        className="w-1/3 px-2 py-1 rounded text-gray-800 text-xs font-bold focus:outline-none"
+                                        placeholder="TZ"
                                     />
                                 </div>
                             )}
-                            {mostrarVmCroos === 'vol' && (antecipacoes.vmVol > 0 || antecipacoes.croosVol > 0) && (
-                                <div className="mt-1 text-xs opacity-80" style={{display:'flex',gap:'6px'}}>
+                            {mostrarVmCroos === 'vol' && (antecipacoes.vmVol > 0 || antecipacoes.croosVol > 0 || antecipacoes.tzVol > 0) && (
+                                <div className="mt-1 text-xs opacity-80" style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
                                     {antecipacoes.vmVol > 0 && <span style={{background:'rgba(255,255,255,0.2)',borderRadius:'6px',padding:'2px 6px'}}>VM: {antecipacoes.vmVol}</span>}
                                     {antecipacoes.croosVol > 0 && <span style={{background:'rgba(255,255,255,0.2)',borderRadius:'6px',padding:'2px 6px'}}>TS: {antecipacoes.croosVol}</span>}
+                                    {antecipacoes.tzVol > 0 && <span style={{background:'rgba(255,255,255,0.2)',borderRadius:'6px',padding:'2px 6px'}}>TZ: {antecipacoes.tzVol}</span>}
                                 </div>
                             )}
                         </div>
@@ -3731,7 +3747,7 @@
                                     autoFocus
                                 />
                             )}
-                            <div className="mt-1 text-xs opacity-70 cursor-pointer hover:opacity-100 underline select-none" onClick={() => setMostrarVmCroos(prev => prev === 'cub' ? null : 'cub')}>VM / TS</div>
+                            <div className="mt-1 text-xs opacity-70 cursor-pointer hover:opacity-100 underline select-none" onClick={() => setMostrarVmCroos(prev => prev === 'cub' ? null : 'cub')}>VM / TS / TZ</div>
                             {mostrarVmCroos === 'cub' && (
                                 <div className="mt-2 flex gap-1">
                                     <input
@@ -3739,7 +3755,7 @@
                                         step="0.01"
                                         value={antecipacoes.vmCub || ''}
                                         onChange={(e) => salvarAntecipacoes({...antecipacoes, vmCub: parseFloat(e.target.value) || 0})}
-                                        className="w-1/2 px-2 py-1 rounded text-gray-800 text-xs font-bold focus:outline-none"
+                                        className="w-1/3 px-2 py-1 rounded text-gray-800 text-xs font-bold focus:outline-none"
                                         placeholder="VM"
                                     />
                                     <input
@@ -3747,15 +3763,24 @@
                                         step="0.01"
                                         value={antecipacoes.croosCub || ''}
                                         onChange={(e) => salvarAntecipacoes({...antecipacoes, croosCub: parseFloat(e.target.value) || 0})}
-                                        className="w-1/2 px-2 py-1 rounded text-gray-800 text-xs font-bold focus:outline-none"
+                                        className="w-1/3 px-2 py-1 rounded text-gray-800 text-xs font-bold focus:outline-none"
                                         placeholder="TS"
+                                    />
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        value={antecipacoes.tzCub || ''}
+                                        onChange={(e) => salvarAntecipacoes({...antecipacoes, tzCub: parseFloat(e.target.value) || 0})}
+                                        className="w-1/3 px-2 py-1 rounded text-gray-800 text-xs font-bold focus:outline-none"
+                                        placeholder="TZ"
                                     />
                                 </div>
                             )}
-                            {mostrarVmCroos === 'cub' && (antecipacoes.vmCub > 0 || antecipacoes.croosCub > 0) && (
-                                <div className="mt-1 text-xs opacity-80" style={{display:'flex',gap:'6px'}}>
+                            {mostrarVmCroos === 'cub' && (antecipacoes.vmCub > 0 || antecipacoes.croosCub > 0 || antecipacoes.tzCub > 0) && (
+                                <div className="mt-1 text-xs opacity-80" style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
                                     {antecipacoes.vmCub > 0 && <span style={{background:'rgba(255,255,255,0.2)',borderRadius:'6px',padding:'2px 6px'}}>VM: {parseFloat(antecipacoes.vmCub).toFixed(2)}</span>}
                                     {antecipacoes.croosCub > 0 && <span style={{background:'rgba(255,255,255,0.2)',borderRadius:'6px',padding:'2px 6px'}}>TS: {parseFloat(antecipacoes.croosCub).toFixed(2)}</span>}
+                                    {antecipacoes.tzCub > 0 && <span style={{background:'rgba(255,255,255,0.2)',borderRadius:'6px',padding:'2px 6px'}}>TZ: {parseFloat(antecipacoes.tzCub).toFixed(2)}</span>}
                                 </div>
                             )}
                         </div>
