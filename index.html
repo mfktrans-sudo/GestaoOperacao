@@ -4427,13 +4427,14 @@
                                         <th className="px-4 py-2 text-left text-sm font-bold">Término</th>
                                         <th className="px-4 py-2 text-left text-sm font-bold">Meta</th>
                                         <th className="px-4 py-2 text-left text-sm font-bold">🔍 Conferentes</th>
+                                        <th className="px-4 py-2 text-left text-sm font-bold">🚪 Doca</th>
                                         <th className="px-4 py-2 text-left text-sm font-bold">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {operacoesFiltradas.length === 0 ? (
                                         <tr>
-                                            <td colSpan="10" className="text-center py-8 text-gray-500">
+                                            <td colSpan="11" className="text-center py-8 text-gray-500">
                                                 Nenhum dado encontrado com os filtros selecionados
                                             </td>
                                         </tr>
@@ -4449,6 +4450,7 @@
                                                 <td className="px-4 py-2 text-sm">{op.termino}</td>
                                                 <td className="px-4 py-2 text-sm">{op.meta}</td>
                                                 <td className="px-4 py-2 text-sm">{op.conferentes || <span style={{color:'#94a3b8'}}>—</span>}</td>
+                                                <td className="px-4 py-2 text-sm">{op.doca || <span style={{color:'#94a3b8'}}>—</span>}</td>
                                                 <td className="px-4 py-2">
                                                     <span className={`px-2 py-1 rounded-full text-xs font-bold text-white ${
                                                         op.status === 'verde' ? 'bg-green-500' :
@@ -5127,10 +5129,25 @@
                 inicio: '',
                 termino: '',
                 conferentes: '',
+                doca: '',
                 obs: ''
             });
 
             const [mensagem, setMensagem] = useState('');
+            const [historicoDoca, setHistoricoDoca] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('historicoDoca') || '[]'); } catch { return []; }
+            });
+            const [showSugestoesDoca, setShowSugestoesDoca] = useState(false);
+
+            const salvarHistoricoDoca = (doca) => {
+                if (!doca || !doca.trim()) return;
+                const docas = doca.split(/[,;]/).map(d => d.trim()).filter(Boolean);
+                setHistoricoDoca(prev => {
+                    const novos = [...new Set([...prev, ...docas])].slice(0, 30);
+                    try { localStorage.setItem('historicoDoca', JSON.stringify(novos)); } catch {}
+                    return novos;
+                });
+            };
 
             const handleChange = (e) => {
                 const { name, value } = e.target;
@@ -5154,11 +5171,13 @@
                     vol: parseInt(formData.vol) || 0,
                     cubagem: parseFloat(formData.cubagem) || 0,
                     conferentes: formData.conferentes || '',
+                    doca: formData.doca || '',
                     meta: meta,
                     status: calcularStatus(meta, formData.termino)
                 };
 
                 await onSalvar(novaOperacao);
+                if (formData.doca) salvarHistoricoDoca(formData.doca);
                 
                 setMensagem('✅ Operação cadastrada com sucesso!');
                 const _nowR = new Date(); const _brtR = new Date(_nowR.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
@@ -5172,6 +5191,7 @@
                     inicio: '',
                     termino: '',
                     conferentes: '',
+                    doca: '',
                     obs: ''
                 });
 
@@ -5291,6 +5311,34 @@
                                 />
                             </div>
 
+                            <div style={{position:'relative'}}>
+                                <label className="block text-sm font-bold mb-2">🚪 Doca de Carregamento</label>
+                                <input
+                                    type="text"
+                                    name="doca"
+                                    value={formData.doca}
+                                    onChange={(e) => { handleChange(e); setShowSugestoesDoca(true); }}
+                                    onFocus={() => setShowSugestoesDoca(true)}
+                                    onBlur={() => setTimeout(() => setShowSugestoesDoca(false), 200)}
+                                    className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
+                                    placeholder="Número/identificação da doca..."
+                                    autoComplete="off"
+                                />
+                                {showSugestoesDoca && historicoDoca.length > 0 && (
+                                    <div style={{position:'absolute',top:'100%',left:0,right:0,background:'white',border:'2px solid #667eea',borderRadius:'8px',boxShadow:'0 4px 12px rgba(0,0,0,0.15)',zIndex:999,maxHeight:'160px',overflowY:'auto'}}>
+                                        <div style={{padding:'4px 8px',fontSize:'10px',fontWeight:'700',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.05em',borderBottom:'1px solid #f3f4f6'}}>Histórico de docas</div>
+                                        {historicoDoca.filter(d => !formData.doca || d.toLowerCase().includes((formData.doca||'').toLowerCase())).map((doca, i) => (
+                                            <div key={i}
+                                                onMouseDown={() => { setFormData(prev => ({...prev, doca})); setShowSugestoesDoca(false); }}
+                                                style={{padding:'7px 10px',cursor:'pointer',fontSize:'13px',color:'#374151',borderBottom:'1px solid #f9fafb'}}
+                                                onMouseEnter={e => e.currentTarget.style.background='#f5f3ff'}
+                                                onMouseLeave={e => e.currentTarget.style.background='white'}
+                                            >🚪 {doca}</div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="md:col-span-2">
                                 <label className="block text-sm font-bold mb-2">Observações</label>
                                 <textarea 
@@ -5324,6 +5372,10 @@
                 try { return JSON.parse(localStorage.getItem('historicoConferentes') || '[]'); } catch { return []; }
             });
             const [showSugestoes, setShowSugestoes] = useState(false);
+            const [historicoDoca, setHistoricoDoca] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('historicoDoca') || '[]'); } catch { return []; }
+            });
+            const [showSugestoesDoca, setShowSugestoesDoca] = useState(false);
 
             const salvarHistoricoConferente = (nome) => {
                 if (!nome || !nome.trim()) return;
@@ -5331,6 +5383,16 @@
                 setHistoricoConferentes(prev => {
                     const novos = [...new Set([...prev, ...nomes])].slice(0, 30);
                     try { localStorage.setItem('historicoConferentes', JSON.stringify(novos)); } catch {}
+                    return novos;
+                });
+            };
+
+            const salvarHistoricoDocaEditar = (doca) => {
+                if (!doca || !doca.trim()) return;
+                const docas = doca.split(/[,;]/).map(d => d.trim()).filter(Boolean);
+                setHistoricoDoca(prev => {
+                    const novos = [...new Set([...prev, ...docas])].slice(0, 30);
+                    try { localStorage.setItem('historicoDoca', JSON.stringify(novos)); } catch {}
                     return novos;
                 });
             };
@@ -5363,6 +5425,7 @@
                     status: calcularStatus(meta, dadosEdicao.termino)
                 };
                 if (dadosEdicao.conferentes) salvarHistoricoConferente(dadosEdicao.conferentes);
+                if (dadosEdicao.doca) salvarHistoricoDocaEditar(dadosEdicao.doca);
                 await onEditar(operacaoAtualizada);
                 setEditando(null);
                 setShowSugestoes(false);
@@ -5404,6 +5467,7 @@
                                     <th className="px-4 py-3 text-left">Início</th>
                                     <th className="px-4 py-3 text-left">Término</th>
                                     <th className="px-4 py-3 text-left">🔍 Conferentes</th>
+                                    <th className="px-4 py-3 text-left">🚪 Doca</th>
                                     <th className="px-4 py-3 text-left">Status</th>
                                     <th className="px-4 py-3 text-left">Ações</th>
                                 </tr>
@@ -5411,7 +5475,7 @@
                             <tbody>
                                 {operacoesFiltradas.length === 0 ? (
                                     <tr>
-                                        <td colSpan="10" className="text-center py-8 text-gray-500">
+                                        <td colSpan="11" className="text-center py-8 text-gray-500">
                                             Nenhuma operação encontrada
                                         </td>
                                     </tr>
@@ -5502,6 +5566,31 @@
                                                             </div>
                                                         )}
                                                     </td>
+                                                    <td className="px-4 py-3" style={{position:'relative',minWidth:'160px'}}>
+                                                        <input
+                                                            type="text"
+                                                            value={dadosEdicao.doca || ''}
+                                                            onChange={(e) => { handleChange('doca', e.target.value); setShowSugestoesDoca(true); }}
+                                                            onFocus={() => setShowSugestoesDoca(true)}
+                                                            onBlur={() => setTimeout(() => setShowSugestoesDoca(false), 200)}
+                                                            className="w-full p-2 border rounded input-edit"
+                                                            placeholder="Doca..."
+                                                            autoComplete="off"
+                                                        />
+                                                        {showSugestoesDoca && historicoDoca.length > 0 && (
+                                                            <div style={{position:'absolute',top:'100%',left:0,right:0,background:'white',border:'2px solid #667eea',borderRadius:'8px',boxShadow:'0 4px 12px rgba(0,0,0,0.15)',zIndex:999,maxHeight:'160px',overflowY:'auto'}}>
+                                                                <div style={{padding:'4px 8px',fontSize:'10px',fontWeight:'700',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.05em',borderBottom:'1px solid #f3f4f6'}}>Histórico de docas</div>
+                                                                {historicoDoca.filter(d => !dadosEdicao.doca || d.toLowerCase().includes((dadosEdicao.doca||'').toLowerCase())).map((doca, i) => (
+                                                                    <div key={i}
+                                                                        onMouseDown={() => { handleChange('doca', doca); setShowSugestoesDoca(false); }}
+                                                                        style={{padding:'7px 10px',cursor:'pointer',fontSize:'13px',color:'#374151',borderBottom:'1px solid #f9fafb'}}
+                                                                        onMouseEnter={e => e.currentTarget.style.background='#f5f3ff'}
+                                                                        onMouseLeave={e => e.currentTarget.style.background='white'}
+                                                                    >🚪 {doca}</div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </td>
                                                     <td className="px-4 py-3">
                                                         <span className={`px-3 py-1 rounded-full text-white text-xs font-bold status-${calcularStatus(dadosEdicao.meta, dadosEdicao.termino)}`}>
                                                             {calcularStatus(dadosEdicao.meta, dadosEdicao.termino).toUpperCase()}
@@ -5534,6 +5623,7 @@
                                                     <td className="px-4 py-3">{op.inicio}</td>
                                                     <td className="px-4 py-3">{op.termino}</td>
                                                     <td className="px-4 py-3">{op.conferentes || <span style={{color:'#94a3b8'}}>—</span>}</td>
+                                                    <td className="px-4 py-3">{op.doca || <span style={{color:'#94a3b8'}}>—</span>}</td>
                                                     <td className="px-4 py-3">
                                                         <span className={`px-3 py-1 rounded-full text-white text-xs font-bold status-${op.status}`}>
                                                             {op.status.toUpperCase()}
