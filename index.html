@@ -1507,8 +1507,10 @@
 
             const refLine  = useRef(null); const refBar   = useRef(null);
             const refDonut = useRef(null); const refArea  = useRef(null);
+            const refNF    = useRef(null); const refCub   = useRef(null);
             const instLine = useRef(null); const instBar  = useRef(null);
             const instDonut= useRef(null); const instArea = useRef(null);
+            const instNF   = useRef(null); const instCub  = useRef(null);
             const kill = ref => { try { if(ref.current){ref.current.destroy();ref.current=null;} } catch(e){} };
 
             const fmtN    = n => { const v=Number(n)||0; return Math.round(v).toLocaleString('pt-BR'); };
@@ -1552,6 +1554,7 @@
                         datasets:[
                             {label:'Volumetria',data:evolucao.map(d=>d.vol),backgroundColor:'rgba(124,58,237,0.7)',borderRadius:5,borderSkipped:false},
                             {label:'Notas Fiscais',data:evolucao.map(d=>d.nf),backgroundColor:'rgba(167,139,250,0.7)',borderRadius:5,borderSkipped:false},
+                            {label:'Cubagem m³',data:evolucao.map(d=>d.cub),backgroundColor:'rgba(245,158,11,0.7)',borderRadius:5,borderSkipped:false},
                         ]},
                     options:{responsive:true,maintainAspectRatio:false,
                         plugins:{legend:{labels:{color:'#6b7280',font:{size:10},boxWidth:10,padding:10}},tooltip:{backgroundColor:'#2d1b69',titleColor:'#c4b5fd'}},
@@ -1574,19 +1577,36 @@
             }, [kpi.verde, kpi.amarelo, kpi.vermelho]);
 
             useEffect(() => {
-                kill(instArea);
-                if (!refArea.current || !evolucao.length) return;
-                instArea.current = new Chart(refArea.current, {
+                kill(instNF);
+                if (!refNF.current || !evolucao.length) return;
+                instNF.current = new Chart(refNF.current, {
                     type:'line',
                     data:{ labels: evolucao.map(d=>fmtD(d.data)),
-                        datasets:[{label:'SLA %',
-                            data:evolucao.map(d=>d.total>0?(d.verde/d.total*100):0),
-                            borderColor:GREEN,backgroundColor:GREEN_L,tension:0.45,fill:true,
-                            pointRadius:2,pointHoverRadius:6,borderWidth:2.5}]},
+                        datasets:[{label:'Notas Fiscais',data:evolucao.map(d=>d.nf),
+                            borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,0.15)',tension:0.45,fill:true,
+                            pointRadius:3,pointHoverRadius:7,pointBackgroundColor:'#3b82f6',
+                            pointBorderColor:'#fff',pointBorderWidth:2,borderWidth:2.5}]},
                     options:{responsive:true,maintainAspectRatio:false,
-                        plugins:{legend:{display:false},tooltip:{backgroundColor:'#2d1b69',titleColor:'#c4b5fd',bodyColor:GREEN,callbacks:{label:c=>' SLA: '+c.raw.toFixed(1)+'%'}}},
-                        scales:{x:{grid:{color:'rgba(124,58,237,0.07)'},ticks:{color:'#9ca3af',font:{size:10},maxTicksLimit:10}},
-                            y:{min:0,max:100,grid:{color:'rgba(124,58,237,0.07)'},ticks:{color:'#9ca3af',font:{size:9},callback:v=>v+'%'}}}}
+                        plugins:{legend:{display:false},tooltip:{backgroundColor:'#1e3a5f',titleColor:'#93c5fd',bodyColor:'#3b82f6',callbacks:{label:c=>' '+fmtN(c.raw)+' NFs'}}},
+                        scales:{x:{grid:{color:'rgba(59,130,246,0.07)'},ticks:{color:'#9ca3af',font:{size:10},maxTicksLimit:10}},
+                            y:{grid:{color:'rgba(59,130,246,0.07)'},ticks:{color:'#9ca3af',font:{size:9},callback:v=>fmtN(v)},beginAtZero:true}}}
+                });
+            }, [evolucao]);
+
+            useEffect(() => {
+                kill(instCub);
+                if (!refCub.current || !evolucao.length) return;
+                instCub.current = new Chart(refCub.current, {
+                    type:'line',
+                    data:{ labels: evolucao.map(d=>fmtD(d.data)),
+                        datasets:[{label:'Cubagem m³',data:evolucao.map(d=>d.cub),
+                            borderColor:AMBER,backgroundColor:'rgba(245,158,11,0.15)',tension:0.45,fill:true,
+                            pointRadius:3,pointHoverRadius:7,pointBackgroundColor:AMBER,
+                            pointBorderColor:'#fff',pointBorderWidth:2,borderWidth:2.5}]},
+                    options:{responsive:true,maintainAspectRatio:false,
+                        plugins:{legend:{display:false},tooltip:{backgroundColor:'#451a03',titleColor:'#fcd34d',bodyColor:AMBER,callbacks:{label:c=>' '+c.raw.toFixed(2)+' m³'}}},
+                        scales:{x:{grid:{color:'rgba(245,158,11,0.07)'},ticks:{color:'#9ca3af',font:{size:10},maxTicksLimit:10}},
+                            y:{grid:{color:'rgba(245,158,11,0.07)'},ticks:{color:'#9ca3af',font:{size:9},callback:v=>v.toFixed(1)+' m³'},beginAtZero:true}}}
                 });
             }, [evolucao]);
 
@@ -1855,22 +1875,34 @@
                     </div>
                     <div style={cardStyle}>
                         <div style={cardTitleStyle}>
-                            <span>📉 Evolução de SLA %</span>
-                            <span style={pillStyle(kpi.sla)}>{kpi.sla.toFixed(1)}% geral</span>
+                            <span>📄 Evolução de Notas Fiscais</span>
+                            <span style={{background:'#dbeafe',color:'#1d4ed8',borderRadius:20,padding:'3px 10px',fontSize:10,fontWeight:700}}>{fmtN(kpi.nfTotal)} NFs</span>
                         </div>
                         <div style={{position:'relative',height:200}}>
-                            {evolucao.length>0 ? <canvas ref={refArea}/> : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'#9ca3af',fontSize:12}}>Sem dados no período</div>}
+                            {evolucao.length>0 ? <canvas ref={refNF}/> : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'#9ca3af',fontSize:12}}>Sem dados no período</div>}
                         </div>
+                    </div>
+                </div>
+
+                {/* ══ GRÁFICO EVOLUÇÃO CUBAGEM ══ */}
+                <div style={cardStyle}>
+                    <div style={cardTitleStyle}>
+                        <span>📐 Evolução de Cubagem (m³)</span>
+                        <span style={{background:'#fef3c7',color:'#92400e',borderRadius:20,padding:'3px 10px',fontSize:10,fontWeight:700}}>{kpi.cubTotal.toFixed(1)} m³ total</span>
+                    </div>
+                    <div style={{position:'relative',height:200}}>
+                        {evolucao.length>0 ? <canvas ref={refCub}/> : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'#9ca3af',fontSize:12}}>Sem dados no período</div>}
                     </div>
                 </div>
 
                 {/* ══ GRÁFICO BARRAS ══ */}
                 <div style={cardStyle}>
                     <div style={cardTitleStyle}>
-                        <span>📊 Volumetria × Notas Fiscais por Dia</span>
+                        <span>📊 Volumetria × Notas Fiscais × Cubagem por Dia</span>
                         <div style={{display:'flex',gap:10,fontSize:10,color:'#6b7280'}}>
                             <span style={{display:'flex',alignItems:'center',gap:4}}><span style={{width:10,height:10,borderRadius:2,background:'rgba(124,58,237,0.7)',display:'inline-block'}}/> Volumetria</span>
                             <span style={{display:'flex',alignItems:'center',gap:4}}><span style={{width:10,height:10,borderRadius:2,background:'rgba(167,139,250,0.7)',display:'inline-block'}}/> Notas Fiscais</span>
+                            <span style={{display:'flex',alignItems:'center',gap:4}}><span style={{width:10,height:10,borderRadius:2,background:'rgba(245,158,11,0.7)',display:'inline-block'}}/> Cubagem m³</span>
                         </div>
                     </div>
                     <div style={{position:'relative',height:200}}>
