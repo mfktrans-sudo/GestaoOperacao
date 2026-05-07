@@ -1202,7 +1202,7 @@
                         </header>
 
                         <nav className="flex gap-2 mb-6 flex-wrap">
-                            {['torre', 'dashboard', 'performance', 'otimizacao', 'graficos', 'capacidade', 'cadastrar', 'editar', 'gerenciar', 'relatorios', 'upload', 'configuracoes'].map(aba => (
+                            {['torre', 'dashboard', 'performance', 'gradediaria', 'graficos', 'capacidade', 'cadastrar', 'editar', 'gerenciar', 'relatorios', 'upload', 'configuracoes'].map(aba => (
                                 <button
                                     key={aba}
                                     onClick={() => trocarAba(aba)}
@@ -1214,7 +1214,7 @@
                                     }
                                     {aba === 'dashboard' && <><span className="icon-bounce inline-block">📊</span> Dashboard</>}
                                     {aba === 'performance' && <><span className="icon-pulse inline-block">🏆</span> Performance</>}
-                                    {aba === 'otimizacao' && <><span className="icon-bounce inline-block">🚚</span> Otimização</>}
+                                    {aba === 'gradediaria' && <><span className="icon-bounce inline-block">📅</span> Grade Diária</>}
                                     {aba === 'graficos' && <><span className="icon-pulse inline-block">📈</span> Gráficos</>}
                                     {aba === 'capacidade' && <><span className="icon-bounce inline-block">👥</span> Capacidade</>}
                                     {aba === 'cadastrar' && <><span className="icon-bounce inline-block">➕</span> Cadastrar</>}
@@ -1242,8 +1242,8 @@
                             {abaSelecionada === 'performance' && (
                                 <Performance operacoes={operacoes} listaOperacoes={listaOperacoes} />
                             )}
-                            {abaSelecionada === 'otimizacao' && (
-                                <Otimizacao />
+                            {abaSelecionada === 'gradediaria' && (
+                                <GradeDiaria />
                             )}
                             {abaSelecionada === 'graficos' && (
                                 <Graficos operacoes={operacoes} listaOperacoes={listaOperacoes} />
@@ -2135,6 +2135,305 @@
         // ========== FIM TORRE DE CONTROLE ==========
 
 
+
+        // ========== GRADE DIÁRIA ==========
+        function GradeDiaria() {
+            const { useState, useEffect } = React;
+
+            const DIAS = [
+                { key: 'dom', label: 'Domingo',   emoji: '☀️',  cor: '#7c3aed', corLight: '#ede9fe', corBorder: '#a78bfa' },
+                { key: 'seg', label: 'Segunda',   emoji: '📦',  cor: '#1d4ed8', corLight: '#dbeafe', corBorder: '#93c5fd' },
+                { key: 'ter', label: 'Terça',     emoji: '🚚',  cor: '#0f766e', corLight: '#d1fae5', corBorder: '#6ee7b7' },
+                { key: 'qua', label: 'Quarta',    emoji: '⚙️',  cor: '#b45309', corLight: '#fef3c7', corBorder: '#fcd34d' },
+                { key: 'qui', label: 'Quinta',    emoji: '📊',  cor: '#be185d', corLight: '#fce7f3', corBorder: '#f9a8d4' },
+                { key: 'sex', label: 'Sexta',     emoji: '✅',  cor: '#15803d', corLight: '#dcfce7', corBorder: '#86efac' },
+                { key: 'sab', label: 'Sábado',    emoji: '🔒',  cor: '#6b7280', corLight: '#f3f4f6', corBorder: '#d1d5db', inativo: true },
+            ];
+
+            const STORAGE_KEY = 'gradeDiaria_v1';
+            const SABADO_KEY  = 'gradeDiaria_sabadoAtivo_v1';
+
+            const [diaSelecionado, setDiaSelecionado] = useState('dom');
+            const [sabadoAtivo, setSabadoAtivo]       = useState(() => {
+                try { return localStorage.getItem(SABADO_KEY) === 'true'; } catch(e) { return false; }
+            });
+            const [grades, setGrades] = useState(() => {
+                try {
+                    const s = localStorage.getItem(STORAGE_KEY);
+                    if (s) return JSON.parse(s);
+                } catch(e) {}
+                const init = {};
+                DIAS.forEach(d => { init[d.key] = []; });
+                return init;
+            });
+            const [novaOp, setNovaOp]     = useState({ nome: '', horario: '', meta: '', observacao: '', tipo: 'loja' });
+            const [editIdx, setEditIdx]   = useState(null);
+            const [editOp, setEditOp]     = useState(null);
+            const [confirmDel, setConfirmDel] = useState(null);
+
+            useEffect(() => {
+                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(grades)); } catch(e) {}
+            }, [grades]);
+
+            useEffect(() => {
+                try { localStorage.setItem(SABADO_KEY, String(sabadoAtivo)); } catch(e) {}
+                if (!sabadoAtivo && diaSelecionado === 'sab') setDiaSelecionado('dom');
+            }, [sabadoAtivo]);
+
+            const diasVisiveis = DIAS.filter(d => d.key !== 'sab' || sabadoAtivo);
+            const diaAtual = DIAS.find(d => d.key === diaSelecionado) || DIAS[0];
+
+            const adicionarOp = () => {
+                if (!novaOp.nome.trim()) return;
+                setGrades(g => ({ ...g, [diaSelecionado]: [...(g[diaSelecionado]||[]), { ...novaOp, id: Date.now() }] }));
+                setNovaOp({ nome: '', horario: '', meta: '', observacao: '', tipo: 'loja' });
+            };
+
+            const deletarOp = (idx) => {
+                setGrades(g => ({ ...g, [diaSelecionado]: g[diaSelecionado].filter((_,i)=>i!==idx) }));
+                setConfirmDel(null);
+            };
+
+            const salvarEdicao = () => {
+                if (editIdx === null || !editOp) return;
+                setGrades(g => {
+                    const arr = [...(g[diaSelecionado]||[])];
+                    arr[editIdx] = { ...editOp };
+                    return { ...g, [diaSelecionado]: arr };
+                });
+                setEditIdx(null);
+                setEditOp(null);
+            };
+
+            const moverOp = (idx, dir) => {
+                setGrades(g => {
+                    const arr = [...(g[diaSelecionado]||[])];
+                    const destino = idx + dir;
+                    if (destino < 0 || destino >= arr.length) return g;
+                    [arr[idx], arr[destino]] = [arr[destino], arr[idx]];
+                    return { ...g, [diaSelecionado]: arr };
+                });
+            };
+
+            const opsDia = grades[diaSelecionado] || [];
+
+            return (
+                <div style={{fontFamily:"'Inter',-apple-system,sans-serif"}}>
+                    {/* Cabeçalho */}
+                    <div style={{background:'linear-gradient(135deg,#1a0a3e 0%,#2d1b69 50%,#1a0a3e 100%)',borderRadius:'16px',padding:'20px 28px',marginBottom:'20px',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'12px',boxShadow:'0 8px 32px rgba(102,65,234,0.35)'}}>
+                        <div>
+                            <div style={{fontSize:'22px',fontWeight:'800',color:'#fff',letterSpacing:'-0.3px'}}>📅 Grade Diária de Operações</div>
+                            <div style={{fontSize:'12px',color:'rgba(200,180,255,0.8)',marginTop:'2px'}}>Escala Semanal · Dom → Sex{sabadoAtivo?' → Sáb':''}</div>
+                        </div>
+                        <div style={{display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap'}}>
+                            <span style={{background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.2)',borderRadius:'20px',padding:'5px 14px',fontSize:'12px',color:'#e0d5ff',fontWeight:'600'}}>
+                                {opsDia.length} operação{opsDia.length!==1?'s':''} hoje
+                            </span>
+                            <button
+                                onClick={() => setSabadoAtivo(v => !v)}
+                                style={{background: sabadoAtivo ? '#10b981' : 'rgba(255,255,255,0.15)', border:'1.5px solid '+(sabadoAtivo?'#059669':'rgba(255,255,255,0.3)'), borderRadius:'20px', padding:'5px 14px', fontSize:'12px', color:'#fff', fontWeight:'700', cursor:'pointer', transition:'all 0.2s'}}
+                            >
+                                {sabadoAtivo ? '🔓 Sábado Ativo' : '🔒 Ativar Sábado'}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Seletor de dias - botões lado a lado em destaque */}
+                    <div style={{display:'flex',gap:'8px',marginBottom:'20px',flexWrap:'wrap'}}>
+                        {diasVisiveis.map(dia => {
+                            const ativo = diaSelecionado === dia.key;
+                            const qtd   = (grades[dia.key]||[]).length;
+                            return (
+                                <button
+                                    key={dia.key}
+                                    onClick={() => setDiaSelecionado(dia.key)}
+                                    style={{
+                                        flex:'1 1 100px',
+                                        minWidth:'90px',
+                                        padding:'14px 10px',
+                                        borderRadius:'14px',
+                                        border: ativo ? `2.5px solid ${dia.cor}` : `2px solid ${dia.corBorder}`,
+                                        background: ativo ? dia.cor : dia.corLight,
+                                        color: ativo ? '#fff' : dia.cor,
+                                        fontWeight:'800',
+                                        fontSize:'13px',
+                                        cursor:'pointer',
+                                        transition:'all 0.18s',
+                                        boxShadow: ativo ? `0 6px 20px ${dia.cor}55` : '0 2px 8px rgba(0,0,0,0.06)',
+                                        display:'flex',
+                                        flexDirection:'column',
+                                        alignItems:'center',
+                                        gap:'4px',
+                                        transform: ativo ? 'translateY(-3px) scale(1.04)' : 'none',
+                                    }}
+                                >
+                                    <span style={{fontSize:'20px'}}>{dia.emoji}</span>
+                                    <span>{dia.label}</span>
+                                    <span style={{fontSize:'11px',fontWeight:'600',opacity:0.8}}>
+                                        {qtd > 0 ? `${qtd} op.` : '—'}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Painel do dia selecionado */}
+                    <div style={{background:'#fff',border:`2px solid ${diaAtual.corBorder}`,borderRadius:'16px',overflow:'hidden',boxShadow:`0 4px 20px ${diaAtual.cor}18`}}>
+                        {/* Header do dia */}
+                        <div style={{background:`linear-gradient(135deg,${diaAtual.cor},${diaAtual.corBorder})`,padding:'16px 22px',display:'flex',alignItems:'center',gap:'12px'}}>
+                            <span style={{fontSize:'28px'}}>{diaAtual.emoji}</span>
+                            <div>
+                                <div style={{fontSize:'18px',fontWeight:'800',color:'#fff'}}>{diaAtual.label}</div>
+                                <div style={{fontSize:'12px',color:'rgba(255,255,255,0.8)'}}>{opsDia.length} operação{opsDia.length!==1?'s':''} cadastrada{opsDia.length!==1?'s':''}</div>
+                            </div>
+                        </div>
+
+                        {/* Formulário de adição */}
+                        <div style={{padding:'18px 22px',background:diaAtual.corLight,borderBottom:`1px solid ${diaAtual.corBorder}`}}>
+                            <div style={{fontSize:'12px',fontWeight:'700',color:diaAtual.cor,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:'10px'}}>➕ Nova Operação</div>
+                            <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr',gap:'10px',marginBottom:'10px'}}>
+                                <input
+                                    placeholder="Nome da operação *"
+                                    value={novaOp.nome}
+                                    onChange={e => setNovaOp(p=>({...p,nome:e.target.value}))}
+                                    onKeyDown={e => e.key==='Enter' && adicionarOp()}
+                                    style={{border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'8px',padding:'8px 12px',fontSize:'13px',outline:'none',fontFamily:'inherit'}}
+                                />
+                                <input
+                                    placeholder="Horário (ex: 08:00)"
+                                    value={novaOp.horario}
+                                    onChange={e => setNovaOp(p=>({...p,horario:e.target.value}))}
+                                    style={{border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'8px',padding:'8px 12px',fontSize:'13px',outline:'none',fontFamily:'inherit'}}
+                                />
+                                <input
+                                    placeholder="Meta (ex: 12:00)"
+                                    value={novaOp.meta}
+                                    onChange={e => setNovaOp(p=>({...p,meta:e.target.value}))}
+                                    style={{border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'8px',padding:'8px 12px',fontSize:'13px',outline:'none',fontFamily:'inherit'}}
+                                />
+                                <select
+                                    value={novaOp.tipo}
+                                    onChange={e => setNovaOp(p=>({...p,tipo:e.target.value}))}
+                                    style={{border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'8px',padding:'8px 12px',fontSize:'13px',outline:'none',fontFamily:'inherit',background:'#fff',cursor:'pointer',fontWeight:'700',color: novaOp.tipo==='loja'?'#1d4ed8':'#b45309'}}
+                                >
+                                    <option value="loja">🏪 Loja</option>
+                                    <option value="cd">🏭 CD</option>
+                                </select>
+                            </div>
+                            <div style={{display:'flex',gap:'10px'}}>
+                                <input
+                                    placeholder="Observação (opcional)"
+                                    value={novaOp.observacao}
+                                    onChange={e => setNovaOp(p=>({...p,observacao:e.target.value}))}
+                                    onKeyDown={e => e.key==='Enter' && adicionarOp()}
+                                    style={{flex:1,border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'8px',padding:'8px 12px',fontSize:'13px',outline:'none',fontFamily:'inherit'}}
+                                />
+                                <button
+                                    onClick={adicionarOp}
+                                    style={{background:diaAtual.cor,color:'#fff',border:'none',borderRadius:'8px',padding:'8px 20px',fontWeight:'800',fontSize:'13px',cursor:'pointer',whiteSpace:'nowrap',transition:'all 0.15s',fontFamily:'inherit'}}
+                                >
+                                    + Adicionar
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Lista de operações */}
+                        <div style={{padding:'18px 22px'}}>
+                            {opsDia.length === 0 ? (
+                                <div style={{textAlign:'center',padding:'40px 20px',color:'#9ca3af'}}>
+                                    <div style={{fontSize:'40px',marginBottom:'10px'}}>📋</div>
+                                    <div style={{fontWeight:'700',fontSize:'15px',marginBottom:'4px'}}>Nenhuma operação cadastrada</div>
+                                    <div style={{fontSize:'13px'}}>Use o formulário acima para adicionar operações para {diaAtual.label}</div>
+                                </div>
+                            ) : (
+                                <div style={{display:'flex',flexDirection:'column',gap:'10px'}}>
+                                    {opsDia.map((op, idx) => (
+                                        <div key={op.id || idx} style={{border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'12px',overflow:'hidden',transition:'all 0.2s',boxShadow:'0 2px 8px rgba(0,0,0,0.05)'}}>
+                                            {editIdx === idx ? (
+                                                /* Modo edição */
+                                                <div style={{padding:'14px 16px',background:diaAtual.corLight}}>
+                                                    <div style={{fontSize:'12px',fontWeight:'700',color:diaAtual.cor,marginBottom:'10px'}}>✏️ Editando operação</div>
+                                                    <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr',gap:'8px',marginBottom:'8px'}}>
+                                                        <input value={editOp.nome} onChange={e=>setEditOp(p=>({...p,nome:e.target.value}))} placeholder="Nome" style={{border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'6px',padding:'6px 10px',fontSize:'12px',outline:'none',fontFamily:'inherit'}}/>
+                                                        <input value={editOp.horario} onChange={e=>setEditOp(p=>({...p,horario:e.target.value}))} placeholder="Horário" style={{border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'6px',padding:'6px 10px',fontSize:'12px',outline:'none',fontFamily:'inherit'}}/>
+                                                        <input value={editOp.meta} onChange={e=>setEditOp(p=>({...p,meta:e.target.value}))} placeholder="Meta" style={{border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'6px',padding:'6px 10px',fontSize:'12px',outline:'none',fontFamily:'inherit'}}/>
+                                                        <select value={editOp.tipo||'loja'} onChange={e=>setEditOp(p=>({...p,tipo:e.target.value}))} style={{border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'6px',padding:'6px 10px',fontSize:'12px',outline:'none',fontFamily:'inherit',background:'#fff',cursor:'pointer',fontWeight:'700',color:(editOp.tipo||'loja')==='loja'?'#1d4ed8':'#b45309'}}>
+                                                            <option value="loja">🏪 Loja</option>
+                                                            <option value="cd">🏭 CD</option>
+                                                        </select>
+                                                    </div>
+                                                    <div style={{display:'flex',gap:'8px'}}>
+                                                        <input value={editOp.observacao} onChange={e=>setEditOp(p=>({...p,observacao:e.target.value}))} placeholder="Observação" style={{flex:1,border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'6px',padding:'6px 10px',fontSize:'12px',outline:'none',fontFamily:'inherit'}}/>
+                                                        <button onClick={salvarEdicao} style={{background:diaAtual.cor,color:'#fff',border:'none',borderRadius:'6px',padding:'6px 16px',fontWeight:'700',fontSize:'12px',cursor:'pointer',fontFamily:'inherit'}}>Salvar</button>
+                                                        <button onClick={()=>{setEditIdx(null);setEditOp(null);}} style={{background:'#f1f5f9',color:'#64748b',border:'none',borderRadius:'6px',padding:'6px 12px',fontWeight:'700',fontSize:'12px',cursor:'pointer',fontFamily:'inherit'}}>Cancelar</button>
+                                                    </div>
+                                                </div>
+                                            ) : confirmDel === idx ? (
+                                                /* Confirmação exclusão */
+                                                <div style={{padding:'14px 16px',background:'#fef2f2',display:'flex',alignItems:'center',gap:'12px',flexWrap:'wrap'}}>
+                                                    <span style={{fontSize:'13px',color:'#dc2626',fontWeight:'600',flex:1}}>⚠️ Excluir "{op.nome}"?</span>
+                                                    <button onClick={()=>deletarOp(idx)} style={{background:'#dc2626',color:'#fff',border:'none',borderRadius:'6px',padding:'6px 14px',fontWeight:'700',fontSize:'12px',cursor:'pointer',fontFamily:'inherit'}}>Excluir</button>
+                                                    <button onClick={()=>setConfirmDel(null)} style={{background:'#f1f5f9',color:'#64748b',border:'none',borderRadius:'6px',padding:'6px 12px',fontWeight:'700',fontSize:'12px',cursor:'pointer',fontFamily:'inherit'}}>Cancelar</button>
+                                                </div>
+                                            ) : (
+                                                /* Visualização normal */
+                                                <div style={{padding:'14px 16px',display:'flex',alignItems:'center',gap:'12px',flexWrap:'wrap'}}>
+                                                    {/* Número da ordem */}
+                                                    <div style={{width:'28px',height:'28px',borderRadius:'50%',background:diaAtual.cor,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'800',fontSize:'13px',flexShrink:0}}>
+                                                        {idx+1}
+                                                    </div>
+                                                    {/* Dados */}
+                                                    <div style={{flex:1,minWidth:'120px'}}>
+                                                        <div style={{display:'flex',alignItems:'center',gap:'6px',flexWrap:'wrap'}}>
+                                                            <span style={{fontWeight:'700',fontSize:'14px',color:'#1f2937'}}>{op.nome}</span>
+                                                            {(op.tipo||'loja')==='loja'
+                                                                ? <span style={{background:'#dbeafe',color:'#1d4ed8',padding:'2px 8px',borderRadius:'10px',fontSize:'10px',fontWeight:'800',letterSpacing:'0.04em'}}>🏪 LOJA</span>
+                                                                : <span style={{background:'#fef3c7',color:'#b45309',padding:'2px 8px',borderRadius:'10px',fontSize:'10px',fontWeight:'800',letterSpacing:'0.04em'}}>🏭 CD</span>
+                                                            }
+                                                        </div>
+                                                        {op.observacao && <div style={{fontSize:'12px',color:'#6b7280',marginTop:'2px'}}>{op.observacao}</div>}
+                                                    </div>
+                                                    {/* Tags horário/meta */}
+                                                    <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
+                                                        {op.horario && (
+                                                            <span style={{background:'#dbeafe',color:'#1d4ed8',padding:'3px 10px',borderRadius:'12px',fontSize:'11px',fontWeight:'700'}}>🕐 {op.horario}</span>
+                                                        )}
+                                                        {op.meta && (
+                                                            <span style={{background:'#d1fae5',color:'#065f46',padding:'3px 10px',borderRadius:'12px',fontSize:'11px',fontWeight:'700'}}>🎯 {op.meta}</span>
+                                                        )}
+                                                    </div>
+                                                    {/* Ações */}
+                                                    <div style={{display:'flex',gap:'4px',flexShrink:0}}>
+                                                        <button onClick={()=>moverOp(idx,-1)} disabled={idx===0} style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:'6px',width:'28px',height:'28px',cursor:idx===0?'default':'pointer',opacity:idx===0?0.35:1,fontSize:'12px',display:'flex',alignItems:'center',justifyContent:'center'}}>↑</button>
+                                                        <button onClick={()=>moverOp(idx,1)} disabled={idx===opsDia.length-1} style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:'6px',width:'28px',height:'28px',cursor:idx===opsDia.length-1?'default':'pointer',opacity:idx===opsDia.length-1?0.35:1,fontSize:'12px',display:'flex',alignItems:'center',justifyContent:'center'}}>↓</button>
+                                                        <button onClick={()=>{setEditIdx(idx);setEditOp({...op});}} style={{background:'#ede9fe',border:'none',borderRadius:'6px',width:'28px',height:'28px',cursor:'pointer',fontSize:'12px',display:'flex',alignItems:'center',justifyContent:'center',color:'#7c3aed'}}>✏️</button>
+                                                        <button onClick={()=>setConfirmDel(idx)} style={{background:'#fef2f2',border:'none',borderRadius:'6px',width:'28px',height:'28px',cursor:'pointer',fontSize:'12px',display:'flex',alignItems:'center',justifyContent:'center',color:'#dc2626'}}>🗑</button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Resumo da semana */}
+                    <div style={{marginTop:'16px',background:'#f8fafc',borderRadius:'12px',padding:'14px 18px',border:'1px solid #e2e8f0',display:'flex',gap:'10px',flexWrap:'wrap',alignItems:'center'}}>
+                        <span style={{fontWeight:'700',fontSize:'13px',color:'#374151'}}>📊 Resumo da Semana:</span>
+                        {diasVisiveis.map(d => (
+                            <span key={d.key} style={{fontSize:'12px'}}>
+                                <strong style={{color:d.cor}}>{d.label}</strong>: {(grades[d.key]||[]).length} op.
+                            </span>
+                        ))}
+                        <span style={{marginLeft:'auto',fontSize:'12px',fontWeight:'700',color:'#667eea'}}>
+                            Total: {diasVisiveis.reduce((acc,d)=>acc+(grades[d.key]||[]).length,0)} operações
+                        </span>
+                    </div>
+                </div>
+            );
+        }
+        // ========== FIM GRADE DIÁRIA ==========
 
         // ========== DASHBOARD COM FILTROS AVANÇADOS ==========
 
