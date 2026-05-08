@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Gestão de Operações - Com Filtros Avançados</title>
+    <title>Sistema de Gestão de Operações - V20</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -2138,7 +2138,7 @@
 
         // ========== GRADE DIÁRIA ==========
         function GradeDiaria() {
-            const { useState, useEffect } = React;
+            const { useState, useEffect, useRef } = React;
 
             const DIAS = [
                 { key: 'dom', label: 'Domingo',   emoji: '☀️',  cor: '#7c3aed', corLight: '#ede9fe', corBorder: '#a78bfa' },
@@ -2150,35 +2150,72 @@
                 { key: 'sab', label: 'Sábado',    emoji: '🔒',  cor: '#6b7280', corLight: '#f3f4f6', corBorder: '#d1d5db', inativo: true },
             ];
 
-            const STORAGE_KEY = 'gradeDiaria_v1';
-            const SABADO_KEY  = 'gradeDiaria_sabadoAtivo_v1';
-
-            const [diaSelecionado, setDiaSelecionado] = useState('dom');
-            const [sabadoAtivo, setSabadoAtivo]       = useState(() => {
-                try { return localStorage.getItem(SABADO_KEY) === 'true'; } catch(e) { return false; }
-            });
-            const [grades, setGrades] = useState(() => {
-                try {
-                    const s = localStorage.getItem(STORAGE_KEY);
-                    if (s) return JSON.parse(s);
-                } catch(e) {}
+            const initGrades = () => {
                 const init = {};
                 DIAS.forEach(d => { init[d.key] = []; });
                 return init;
-            });
+            };
+
+            const [diaSelecionado, setDiaSelecionado] = useState('dom');
+            const [sabadoAtivo, setSabadoAtivo]       = useState(false);
+            const [grades, setGrades]                 = useState(initGrades);
             const [novaOp, setNovaOp]     = useState({ nome: '', horario: '', meta: '', observacao: '', tipo: 'loja' });
             const [editIdx, setEditIdx]   = useState(null);
             const [editOp, setEditOp]     = useState(null);
             const [confirmDel, setConfirmDel] = useState(null);
             const [diaExpandido, setDiaExpandido] = useState(null);
             const [mostrarFormulario, setMostrarFormulario] = useState(false);
+            const [carregando, setCarregando] = useState(true);
+            const [salvando, setSalvando]     = useState(false);
+            const [msgStatus, setMsgStatus]   = useState('');
+            const saveTimeout = useRef(null);
+
+            // ── Carrega do Firestore ao montar ──────────────────────────
+            useEffect(() => {
+                const db  = window.__firebaseDb;
+                const fns = window.__firebaseFns;
+                if (!db || !fns) { setCarregando(false); return; }
+                const { doc, getDoc } = fns;
+                (async () => {
+                    try {
+                        const snap = await getDoc(doc(db, 'configuracoes', 'gradeDiaria'));
+                        if (snap.exists()) {
+                            const data = snap.data();
+                            if (data.grades)      setGrades(g => ({ ...initGrades(), ...data.grades }));
+                            if (data.sabadoAtivo !== undefined) setSabadoAtivo(!!data.sabadoAtivo);
+                        }
+                    } catch(e) { console.error('Erro ao carregar Grade Diária:', e); }
+                    finally { setCarregando(false); }
+                })();
+            }, []);
+
+            // ── Salva no Firestore sempre que grades ou sabadoAtivo mudar ─
+            const salvarNoFirestore = (novasGrades, novoSabado) => {
+                const db  = window.__firebaseDb;
+                const fns = window.__firebaseFns;
+                if (!db || !fns) return;
+                const { doc, setDoc } = fns;
+                if (saveTimeout.current) clearTimeout(saveTimeout.current);
+                setSalvando(true);
+                saveTimeout.current = setTimeout(async () => {
+                    try {
+                        await setDoc(doc(db, 'configuracoes', 'gradeDiaria'), {
+                            grades: novasGrades,
+                            sabadoAtivo: novoSabado,
+                            updatedAt: new Date().toISOString()
+                        }, { merge: true });
+                        setMsgStatus('✅ Salvo');
+                    } catch(e) {
+                        console.error('Erro ao salvar Grade Diária:', e);
+                        setMsgStatus('❌ Erro ao salvar');
+                    } finally {
+                        setSalvando(false);
+                        setTimeout(() => setMsgStatus(''), 2500);
+                    }
+                }, 600);
+            };
 
             useEffect(() => {
-                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(grades)); } catch(e) {}
-            }, [grades]);
-
-            useEffect(() => {
-                try { localStorage.setItem(SABADO_KEY, String(sabadoAtivo)); } catch(e) {}
                 if (!sabadoAtivo && diaSelecionado === 'sab') setDiaSelecionado('dom');
             }, [sabadoAtivo]);
 
@@ -2187,12 +2224,20 @@
 
             const adicionarOp = () => {
                 if (!novaOp.nome.trim()) return;
-                setGrades(g => ({ ...g, [diaSelecionado]: [...(g[diaSelecionado]||[]), { ...novaOp, id: Date.now() }] }));
+                setGrades(g => {
+                    const novas = { ...g, [diaSelecionado]: [...(g[diaSelecionado]||[]), { ...novaOp, id: Date.now() }] };
+                    salvarNoFirestore(novas, sabadoAtivo);
+                    return novas;
+                });
                 setNovaOp({ nome: '', horario: '', meta: '', observacao: '', tipo: 'loja' });
             };
 
             const deletarOp = (idx) => {
-                setGrades(g => ({ ...g, [diaSelecionado]: g[diaSelecionado].filter((_,i)=>i!==idx) }));
+                setGrades(g => {
+                    const novas = { ...g, [diaSelecionado]: g[diaSelecionado].filter((_,i)=>i!==idx) };
+                    salvarNoFirestore(novas, sabadoAtivo);
+                    return novas;
+                });
                 setConfirmDel(null);
             };
 
@@ -2201,7 +2246,9 @@
                 setGrades(g => {
                     const arr = [...(g[diaSelecionado]||[])];
                     arr[editIdx] = { ...editOp };
-                    return { ...g, [diaSelecionado]: arr };
+                    const novas = { ...g, [diaSelecionado]: arr };
+                    salvarNoFirestore(novas, sabadoAtivo);
+                    return novas;
                 });
                 setEditIdx(null);
                 setEditOp(null);
@@ -2213,9 +2260,24 @@
                     const destino = idx + dir;
                     if (destino < 0 || destino >= arr.length) return g;
                     [arr[idx], arr[destino]] = [arr[destino], arr[idx]];
-                    return { ...g, [diaSelecionado]: arr };
+                    const novas = { ...g, [diaSelecionado]: arr };
+                    salvarNoFirestore(novas, sabadoAtivo);
+                    return novas;
                 });
             };
+
+            const toggleSabado = () => {
+                const novo = !sabadoAtivo;
+                setSabadoAtivo(novo);
+                salvarNoFirestore(grades, novo);
+            };
+
+            if (carregando) return (
+                <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'80px 20px',gap:'16px'}}>
+                    <div style={{width:'48px',height:'48px',border:'5px solid #ede9fe',borderTop:'5px solid #7c3aed',borderRadius:'50%',animation:'rotate 1s linear infinite'}}></div>
+                    <span style={{color:'#7c3aed',fontWeight:'700',fontSize:'15px'}}>Carregando Grade Diária do Firebase...</span>
+                </div>
+            );
 
             const opsDia = grades[diaSelecionado] || [];
 
@@ -2228,11 +2290,21 @@
                             <div style={{fontSize:'12px',color:'rgba(200,180,255,0.8)',marginTop:'2px'}}>Escala Semanal · Dom → Sex{sabadoAtivo?' → Sáb':''}</div>
                         </div>
                         <div style={{display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap'}}>
+                            {msgStatus && (
+                                <span style={{background: msgStatus.startsWith('✅') ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)', border:'1px solid rgba(255,255,255,0.3)', borderRadius:'20px', padding:'5px 14px', fontSize:'12px', color:'#fff', fontWeight:'700'}}>
+                                    {msgStatus}
+                                </span>
+                            )}
+                            {salvando && (
+                                <span style={{background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.2)',borderRadius:'20px',padding:'5px 14px',fontSize:'12px',color:'#e0d5ff',fontWeight:'600'}}>
+                                    ⏳ Salvando...
+                                </span>
+                            )}
                             <span style={{background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.2)',borderRadius:'20px',padding:'5px 14px',fontSize:'12px',color:'#e0d5ff',fontWeight:'600'}}>
                                 {opsDia.length} operação{opsDia.length!==1?'s':''} hoje
                             </span>
                             <button
-                                onClick={() => setSabadoAtivo(v => !v)}
+                                onClick={toggleSabado}
                                 style={{background: sabadoAtivo ? '#10b981' : 'rgba(255,255,255,0.15)', border:'1.5px solid '+(sabadoAtivo?'#059669':'rgba(255,255,255,0.3)'), borderRadius:'20px', padding:'5px 14px', fontSize:'12px', color:'#fff', fontWeight:'700', cursor:'pointer', transition:'all 0.2s'}}
                             >
                                 {sabadoAtivo ? '🔓 Sábado Ativo' : '🔒 Ativar Sábado'}
