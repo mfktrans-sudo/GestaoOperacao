@@ -2170,6 +2170,8 @@
             const [editIdx, setEditIdx]   = useState(null);
             const [editOp, setEditOp]     = useState(null);
             const [confirmDel, setConfirmDel] = useState(null);
+            const [diaExpandido, setDiaExpandido] = useState(null);
+            const [mostrarFormulario, setMostrarFormulario] = useState(false);
 
             useEffect(() => {
                 try { localStorage.setItem(STORAGE_KEY, JSON.stringify(grades)); } catch(e) {}
@@ -2238,184 +2240,186 @@
                         </div>
                     </div>
 
-                    {/* Seletor de dias - botões lado a lado em destaque */}
-                    <div style={{display:'flex',gap:'8px',marginBottom:'20px',flexWrap:'wrap'}}>
+                    {/* Seletor de dias - acordeão */}
+                    <div style={{display:'flex',flexDirection:'column',gap:'8px',marginBottom:'20px'}}>
                         {diasVisiveis.map(dia => {
-                            const ativo = diaSelecionado === dia.key;
-                            const qtd   = (grades[dia.key]||[]).length;
+                            const aberto = diaExpandido === dia.key;
+                            const qtd    = (grades[dia.key]||[]).length;
+                            const opsDiaLocal = grades[dia.key] || [];
                             return (
-                                <button
-                                    key={dia.key}
-                                    onClick={() => setDiaSelecionado(dia.key)}
-                                    style={{
-                                        flex:'1 1 100px',
-                                        minWidth:'90px',
-                                        padding:'14px 10px',
-                                        borderRadius:'14px',
-                                        border: ativo ? `2.5px solid ${dia.cor}` : `2px solid ${dia.corBorder}`,
-                                        background: ativo ? dia.cor : dia.corLight,
-                                        color: ativo ? '#fff' : dia.cor,
-                                        fontWeight:'800',
-                                        fontSize:'13px',
-                                        cursor:'pointer',
-                                        transition:'all 0.18s',
-                                        boxShadow: ativo ? `0 6px 20px ${dia.cor}55` : '0 2px 8px rgba(0,0,0,0.06)',
-                                        display:'flex',
-                                        flexDirection:'column',
-                                        alignItems:'center',
-                                        gap:'4px',
-                                        transform: ativo ? 'translateY(-3px) scale(1.04)' : 'none',
-                                    }}
-                                >
-                                    <span style={{fontSize:'20px'}}>{dia.emoji}</span>
-                                    <span>{dia.label}</span>
-                                    <span style={{fontSize:'11px',fontWeight:'600',opacity:0.8}}>
-                                        {qtd > 0 ? `${qtd} op.` : '—'}
-                                    </span>
-                                </button>
-                            );
-                        })}
-                    </div>
+                                <div key={dia.key} style={{borderRadius:'14px',overflow:'hidden',border:`2px solid ${aberto ? dia.cor : dia.corBorder}`,boxShadow: aberto ? `0 6px 20px ${dia.cor}33` : '0 2px 8px rgba(0,0,0,0.06)',transition:'all 0.2s'}}>
+                                    {/* Linha do dia - clicável */}
+                                    <button
+                                        onClick={() => {
+                                            setDiaExpandido(aberto ? null : dia.key);
+                                            setDiaSelecionado(dia.key);
+                                            setMostrarFormulario(false);
+                                            setEditIdx(null); setEditOp(null); setConfirmDel(null);
+                                        }}
+                                        style={{
+                                            width:'100%',
+                                            padding:'14px 20px',
+                                            background: aberto ? dia.cor : dia.corLight,
+                                            color: aberto ? '#fff' : dia.cor,
+                                            border:'none',
+                                            fontWeight:'800',
+                                            fontSize:'14px',
+                                            cursor:'pointer',
+                                            display:'flex',
+                                            alignItems:'center',
+                                            gap:'12px',
+                                            textAlign:'left',
+                                            transition:'all 0.18s',
+                                        }}
+                                    >
+                                        <span style={{fontSize:'22px'}}>{dia.emoji}</span>
+                                        <span style={{flex:1}}>{dia.label}</span>
+                                        <span style={{fontSize:'12px',fontWeight:'600',opacity:0.85,background: aberto ? 'rgba(255,255,255,0.25)' : `${dia.cor}22`,padding:'3px 10px',borderRadius:'12px'}}>
+                                            {qtd > 0 ? `${qtd} op.` : '—'}
+                                        </span>
+                                        <span style={{fontSize:'16px',transition:'transform 0.2s',transform: aberto ? 'rotate(180deg)' : 'rotate(0deg)'}}>▾</span>
+                                    </button>
 
-                    {/* Painel do dia selecionado */}
-                    <div style={{background:'#fff',border:`2px solid ${diaAtual.corBorder}`,borderRadius:'16px',overflow:'hidden',boxShadow:`0 4px 20px ${diaAtual.cor}18`}}>
-                        {/* Header do dia */}
-                        <div style={{background:`linear-gradient(135deg,${diaAtual.cor},${diaAtual.corBorder})`,padding:'16px 22px',display:'flex',alignItems:'center',gap:'12px'}}>
-                            <span style={{fontSize:'28px'}}>{diaAtual.emoji}</span>
-                            <div>
-                                <div style={{fontSize:'18px',fontWeight:'800',color:'#fff'}}>{diaAtual.label}</div>
-                                <div style={{fontSize:'12px',color:'rgba(255,255,255,0.8)'}}>{opsDia.length} operação{opsDia.length!==1?'s':''} cadastrada{opsDia.length!==1?'s':''}</div>
-                            </div>
-                        </div>
+                                    {/* Conteúdo expandido */}
+                                    {aberto && (
+                                        <div style={{background:'#fff',padding:'16px 20px',borderTop:`1px solid ${dia.corBorder}`}}>
+                                            {/* Botão para mostrar/esconder formulário */}
+                                            <div style={{marginBottom:'12px',display:'flex',alignItems:'center',gap:'10px'}}>
+                                                <button
+                                                    onClick={() => setMostrarFormulario(v => !v)}
+                                                    style={{background: mostrarFormulario ? '#f1f5f9' : dia.cor, color: mostrarFormulario ? '#64748b' : '#fff', border:'none', borderRadius:'8px', padding:'7px 16px', fontWeight:'700', fontSize:'12px', cursor:'pointer', display:'flex', alignItems:'center', gap:'6px', transition:'all 0.15s'}}
+                                                >
+                                                    {mostrarFormulario ? '✕ Fechar formulário' : '➕ Nova Operação'}
+                                                </button>
+                                                {qtd > 0 && <span style={{fontSize:'12px',color:'#94a3b8'}}>{qtd} operação{qtd!==1?'s':''} cadastrada{qtd!==1?'s':''}</span>}
+                                            </div>
 
-                        {/* Formulário de adição */}
-                        <div style={{padding:'18px 22px',background:diaAtual.corLight,borderBottom:`1px solid ${diaAtual.corBorder}`}}>
-                            <div style={{fontSize:'12px',fontWeight:'700',color:diaAtual.cor,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:'10px'}}>➕ Nova Operação</div>
-                            <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr',gap:'10px',marginBottom:'10px'}}>
-                                <input
-                                    placeholder="Nome da operação *"
-                                    value={novaOp.nome}
-                                    onChange={e => setNovaOp(p=>({...p,nome:e.target.value}))}
-                                    onKeyDown={e => e.key==='Enter' && adicionarOp()}
-                                    style={{border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'8px',padding:'8px 12px',fontSize:'13px',outline:'none',fontFamily:'inherit'}}
-                                />
-                                <input
-                                    placeholder="Horário (ex: 08:00)"
-                                    value={novaOp.horario}
-                                    onChange={e => setNovaOp(p=>({...p,horario:e.target.value}))}
-                                    style={{border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'8px',padding:'8px 12px',fontSize:'13px',outline:'none',fontFamily:'inherit'}}
-                                />
-                                <input
-                                    placeholder="Meta (ex: 12:00)"
-                                    value={novaOp.meta}
-                                    onChange={e => setNovaOp(p=>({...p,meta:e.target.value}))}
-                                    style={{border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'8px',padding:'8px 12px',fontSize:'13px',outline:'none',fontFamily:'inherit'}}
-                                />
-                                <select
-                                    value={novaOp.tipo}
-                                    onChange={e => setNovaOp(p=>({...p,tipo:e.target.value}))}
-                                    style={{border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'8px',padding:'8px 12px',fontSize:'13px',outline:'none',fontFamily:'inherit',background:'#fff',cursor:'pointer',fontWeight:'700',color: novaOp.tipo==='loja'?'#1d4ed8':'#b45309'}}
-                                >
-                                    <option value="loja">🏪 Loja</option>
-                                    <option value="cd">🏭 CD</option>
-                                </select>
-                            </div>
-                            <div style={{display:'flex',gap:'10px'}}>
-                                <input
-                                    placeholder="Observação (opcional)"
-                                    value={novaOp.observacao}
-                                    onChange={e => setNovaOp(p=>({...p,observacao:e.target.value}))}
-                                    onKeyDown={e => e.key==='Enter' && adicionarOp()}
-                                    style={{flex:1,border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'8px',padding:'8px 12px',fontSize:'13px',outline:'none',fontFamily:'inherit'}}
-                                />
-                                <button
-                                    onClick={adicionarOp}
-                                    style={{background:diaAtual.cor,color:'#fff',border:'none',borderRadius:'8px',padding:'8px 20px',fontWeight:'800',fontSize:'13px',cursor:'pointer',whiteSpace:'nowrap',transition:'all 0.15s',fontFamily:'inherit'}}
-                                >
-                                    + Adicionar
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Lista de operações */}
-                        <div style={{padding:'18px 22px'}}>
-                            {opsDia.length === 0 ? (
-                                <div style={{textAlign:'center',padding:'40px 20px',color:'#9ca3af'}}>
-                                    <div style={{fontSize:'40px',marginBottom:'10px'}}>📋</div>
-                                    <div style={{fontWeight:'700',fontSize:'15px',marginBottom:'4px'}}>Nenhuma operação cadastrada</div>
-                                    <div style={{fontSize:'13px'}}>Use o formulário acima para adicionar operações para {diaAtual.label}</div>
-                                </div>
-                            ) : (
-                                <div style={{display:'flex',flexDirection:'column',gap:'10px'}}>
-                                    {opsDia.map((op, idx) => (
-                                        <div key={op.id || idx} style={{border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'12px',overflow:'hidden',transition:'all 0.2s',boxShadow:'0 2px 8px rgba(0,0,0,0.05)'}}>
-                                            {editIdx === idx ? (
-                                                /* Modo edição */
-                                                <div style={{padding:'14px 16px',background:diaAtual.corLight}}>
-                                                    <div style={{fontSize:'12px',fontWeight:'700',color:diaAtual.cor,marginBottom:'10px'}}>✏️ Editando operação</div>
-                                                    <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr',gap:'8px',marginBottom:'8px'}}>
-                                                        <input value={editOp.nome} onChange={e=>setEditOp(p=>({...p,nome:e.target.value}))} placeholder="Nome" style={{border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'6px',padding:'6px 10px',fontSize:'12px',outline:'none',fontFamily:'inherit'}}/>
-                                                        <input value={editOp.horario} onChange={e=>setEditOp(p=>({...p,horario:e.target.value}))} placeholder="Horário" style={{border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'6px',padding:'6px 10px',fontSize:'12px',outline:'none',fontFamily:'inherit'}}/>
-                                                        <input value={editOp.meta} onChange={e=>setEditOp(p=>({...p,meta:e.target.value}))} placeholder="Meta" style={{border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'6px',padding:'6px 10px',fontSize:'12px',outline:'none',fontFamily:'inherit'}}/>
-                                                        <select value={editOp.tipo||'loja'} onChange={e=>setEditOp(p=>({...p,tipo:e.target.value}))} style={{border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'6px',padding:'6px 10px',fontSize:'12px',outline:'none',fontFamily:'inherit',background:'#fff',cursor:'pointer',fontWeight:'700',color:(editOp.tipo||'loja')==='loja'?'#1d4ed8':'#b45309'}}>
+                                            {/* Formulário de adição (oculto por padrão) */}
+                                            {mostrarFormulario && (
+                                                <div style={{background:dia.corLight,borderRadius:'10px',padding:'16px',marginBottom:'14px',border:`1px solid ${dia.corBorder}`}}>
+                                                    <div style={{fontSize:'12px',fontWeight:'700',color:dia.cor,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:'10px'}}>➕ Nova Operação</div>
+                                                    <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr',gap:'10px',marginBottom:'10px'}}>
+                                                        <input
+                                                            placeholder="Nome da operação *"
+                                                            value={novaOp.nome}
+                                                            onChange={e => setNovaOp(p=>({...p,nome:e.target.value}))}
+                                                            onKeyDown={e => e.key==='Enter' && adicionarOp()}
+                                                            style={{border:`1.5px solid ${dia.corBorder}`,borderRadius:'8px',padding:'8px 12px',fontSize:'13px',outline:'none',fontFamily:'inherit'}}
+                                                        />
+                                                        <input
+                                                            placeholder="Horário (ex: 08:00)"
+                                                            value={novaOp.horario}
+                                                            onChange={e => setNovaOp(p=>({...p,horario:e.target.value}))}
+                                                            style={{border:`1.5px solid ${dia.corBorder}`,borderRadius:'8px',padding:'8px 12px',fontSize:'13px',outline:'none',fontFamily:'inherit'}}
+                                                        />
+                                                        <input
+                                                            placeholder="Meta (ex: 12:00)"
+                                                            value={novaOp.meta}
+                                                            onChange={e => setNovaOp(p=>({...p,meta:e.target.value}))}
+                                                            style={{border:`1.5px solid ${dia.corBorder}`,borderRadius:'8px',padding:'8px 12px',fontSize:'13px',outline:'none',fontFamily:'inherit'}}
+                                                        />
+                                                        <select
+                                                            value={novaOp.tipo}
+                                                            onChange={e => setNovaOp(p=>({...p,tipo:e.target.value}))}
+                                                            style={{border:`1.5px solid ${dia.corBorder}`,borderRadius:'8px',padding:'8px 12px',fontSize:'13px',outline:'none',fontFamily:'inherit',background:'#fff',cursor:'pointer',fontWeight:'700',color: novaOp.tipo==='loja'?'#1d4ed8':'#b45309'}}
+                                                        >
                                                             <option value="loja">🏪 Loja</option>
                                                             <option value="cd">🏭 CD</option>
                                                         </select>
                                                     </div>
-                                                    <div style={{display:'flex',gap:'8px'}}>
-                                                        <input value={editOp.observacao} onChange={e=>setEditOp(p=>({...p,observacao:e.target.value}))} placeholder="Observação" style={{flex:1,border:`1.5px solid ${diaAtual.corBorder}`,borderRadius:'6px',padding:'6px 10px',fontSize:'12px',outline:'none',fontFamily:'inherit'}}/>
-                                                        <button onClick={salvarEdicao} style={{background:diaAtual.cor,color:'#fff',border:'none',borderRadius:'6px',padding:'6px 16px',fontWeight:'700',fontSize:'12px',cursor:'pointer',fontFamily:'inherit'}}>Salvar</button>
-                                                        <button onClick={()=>{setEditIdx(null);setEditOp(null);}} style={{background:'#f1f5f9',color:'#64748b',border:'none',borderRadius:'6px',padding:'6px 12px',fontWeight:'700',fontSize:'12px',cursor:'pointer',fontFamily:'inherit'}}>Cancelar</button>
-                                                    </div>
-                                                </div>
-                                            ) : confirmDel === idx ? (
-                                                /* Confirmação exclusão */
-                                                <div style={{padding:'14px 16px',background:'#fef2f2',display:'flex',alignItems:'center',gap:'12px',flexWrap:'wrap'}}>
-                                                    <span style={{fontSize:'13px',color:'#dc2626',fontWeight:'600',flex:1}}>⚠️ Excluir "{op.nome}"?</span>
-                                                    <button onClick={()=>deletarOp(idx)} style={{background:'#dc2626',color:'#fff',border:'none',borderRadius:'6px',padding:'6px 14px',fontWeight:'700',fontSize:'12px',cursor:'pointer',fontFamily:'inherit'}}>Excluir</button>
-                                                    <button onClick={()=>setConfirmDel(null)} style={{background:'#f1f5f9',color:'#64748b',border:'none',borderRadius:'6px',padding:'6px 12px',fontWeight:'700',fontSize:'12px',cursor:'pointer',fontFamily:'inherit'}}>Cancelar</button>
-                                                </div>
-                                            ) : (
-                                                /* Visualização normal */
-                                                <div style={{padding:'14px 16px',display:'flex',alignItems:'center',gap:'12px',flexWrap:'wrap'}}>
-                                                    {/* Número da ordem */}
-                                                    <div style={{width:'28px',height:'28px',borderRadius:'50%',background:diaAtual.cor,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'800',fontSize:'13px',flexShrink:0}}>
-                                                        {idx+1}
-                                                    </div>
-                                                    {/* Dados */}
-                                                    <div style={{flex:1,minWidth:'120px'}}>
-                                                        <div style={{display:'flex',alignItems:'center',gap:'6px',flexWrap:'wrap'}}>
-                                                            <span style={{fontWeight:'700',fontSize:'14px',color:'#1f2937'}}>{op.nome}</span>
-                                                            {(op.tipo||'loja')==='loja'
-                                                                ? <span style={{background:'#dbeafe',color:'#1d4ed8',padding:'2px 8px',borderRadius:'10px',fontSize:'10px',fontWeight:'800',letterSpacing:'0.04em'}}>🏪 LOJA</span>
-                                                                : <span style={{background:'#fef3c7',color:'#b45309',padding:'2px 8px',borderRadius:'10px',fontSize:'10px',fontWeight:'800',letterSpacing:'0.04em'}}>🏭 CD</span>
-                                                            }
-                                                        </div>
-                                                        {op.observacao && <div style={{fontSize:'12px',color:'#6b7280',marginTop:'2px'}}>{op.observacao}</div>}
-                                                    </div>
-                                                    {/* Tags horário/meta */}
-                                                    <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
-                                                        {op.horario && (
-                                                            <span style={{background:'#dbeafe',color:'#1d4ed8',padding:'3px 10px',borderRadius:'12px',fontSize:'11px',fontWeight:'700'}}>🕐 {op.horario}</span>
-                                                        )}
-                                                        {op.meta && (
-                                                            <span style={{background:'#d1fae5',color:'#065f46',padding:'3px 10px',borderRadius:'12px',fontSize:'11px',fontWeight:'700'}}>🎯 {op.meta}</span>
-                                                        )}
-                                                    </div>
-                                                    {/* Ações */}
-                                                    <div style={{display:'flex',gap:'4px',flexShrink:0}}>
-                                                        <button onClick={()=>moverOp(idx,-1)} disabled={idx===0} style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:'6px',width:'28px',height:'28px',cursor:idx===0?'default':'pointer',opacity:idx===0?0.35:1,fontSize:'12px',display:'flex',alignItems:'center',justifyContent:'center'}}>↑</button>
-                                                        <button onClick={()=>moverOp(idx,1)} disabled={idx===opsDia.length-1} style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:'6px',width:'28px',height:'28px',cursor:idx===opsDia.length-1?'default':'pointer',opacity:idx===opsDia.length-1?0.35:1,fontSize:'12px',display:'flex',alignItems:'center',justifyContent:'center'}}>↓</button>
-                                                        <button onClick={()=>{setEditIdx(idx);setEditOp({...op});}} style={{background:'#ede9fe',border:'none',borderRadius:'6px',width:'28px',height:'28px',cursor:'pointer',fontSize:'12px',display:'flex',alignItems:'center',justifyContent:'center',color:'#7c3aed'}}>✏️</button>
-                                                        <button onClick={()=>setConfirmDel(idx)} style={{background:'#fef2f2',border:'none',borderRadius:'6px',width:'28px',height:'28px',cursor:'pointer',fontSize:'12px',display:'flex',alignItems:'center',justifyContent:'center',color:'#dc2626'}}>🗑</button>
+                                                    <div style={{display:'flex',gap:'10px'}}>
+                                                        <input
+                                                            placeholder="Observação (opcional)"
+                                                            value={novaOp.observacao}
+                                                            onChange={e => setNovaOp(p=>({...p,observacao:e.target.value}))}
+                                                            onKeyDown={e => e.key==='Enter' && adicionarOp()}
+                                                            style={{flex:1,border:`1.5px solid ${dia.corBorder}`,borderRadius:'8px',padding:'8px 12px',fontSize:'13px',outline:'none',fontFamily:'inherit'}}
+                                                        />
+                                                        <button
+                                                            onClick={adicionarOp}
+                                                            style={{background:dia.cor,color:'#fff',border:'none',borderRadius:'8px',padding:'8px 20px',fontWeight:'800',fontSize:'13px',cursor:'pointer',whiteSpace:'nowrap',transition:'all 0.15s',fontFamily:'inherit'}}
+                                                        >
+                                                            + Adicionar
+                                                        </button>
                                                     </div>
                                                 </div>
                                             )}
+
+                                            {/* Lista de operações */}
+                                            {opsDiaLocal.length === 0 ? (
+                                                <div style={{textAlign:'center',padding:'30px 20px',color:'#9ca3af'}}>
+                                                    <div style={{fontSize:'36px',marginBottom:'8px'}}>📋</div>
+                                                    <div style={{fontWeight:'700',fontSize:'14px',marginBottom:'4px'}}>Nenhuma operação cadastrada</div>
+                                                    <div style={{fontSize:'12px'}}>Clique em "➕ Nova Operação" para adicionar para {dia.label}</div>
+                                                </div>
+                                            ) : (
+                                                <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
+                                                    {opsDiaLocal.map((op, idx) => (
+                                                        <div key={op.id || idx} style={{border:`1.5px solid ${dia.corBorder}`,borderRadius:'12px',overflow:'hidden',transition:'all 0.2s',boxShadow:'0 2px 8px rgba(0,0,0,0.05)'}}>
+                                                            {editIdx === idx ? (
+                                                                <div style={{padding:'14px 16px',background:dia.corLight}}>
+                                                                    <div style={{fontSize:'12px',fontWeight:'700',color:dia.cor,marginBottom:'10px'}}>✏️ Editando operação</div>
+                                                                    <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr',gap:'8px',marginBottom:'8px'}}>
+                                                                        <input value={editOp.nome} onChange={e=>setEditOp(p=>({...p,nome:e.target.value}))} placeholder="Nome" style={{border:`1.5px solid ${dia.corBorder}`,borderRadius:'6px',padding:'6px 10px',fontSize:'12px',outline:'none',fontFamily:'inherit'}}/>
+                                                                        <input value={editOp.horario} onChange={e=>setEditOp(p=>({...p,horario:e.target.value}))} placeholder="Horário" style={{border:`1.5px solid ${dia.corBorder}`,borderRadius:'6px',padding:'6px 10px',fontSize:'12px',outline:'none',fontFamily:'inherit'}}/>
+                                                                        <input value={editOp.meta} onChange={e=>setEditOp(p=>({...p,meta:e.target.value}))} placeholder="Meta" style={{border:`1.5px solid ${dia.corBorder}`,borderRadius:'6px',padding:'6px 10px',fontSize:'12px',outline:'none',fontFamily:'inherit'}}/>
+                                                                        <select value={editOp.tipo||'loja'} onChange={e=>setEditOp(p=>({...p,tipo:e.target.value}))} style={{border:`1.5px solid ${dia.corBorder}`,borderRadius:'6px',padding:'6px 10px',fontSize:'12px',outline:'none',fontFamily:'inherit',background:'#fff',cursor:'pointer',fontWeight:'700',color:(editOp.tipo||'loja')==='loja'?'#1d4ed8':'#b45309'}}>
+                                                                            <option value="loja">🏪 Loja</option>
+                                                                            <option value="cd">🏭 CD</option>
+                                                                        </select>
+                                                                    </div>
+                                                                    <div style={{display:'flex',gap:'8px'}}>
+                                                                        <input value={editOp.observacao} onChange={e=>setEditOp(p=>({...p,observacao:e.target.value}))} placeholder="Observação" style={{flex:1,border:`1.5px solid ${dia.corBorder}`,borderRadius:'6px',padding:'6px 10px',fontSize:'12px',outline:'none',fontFamily:'inherit'}}/>
+                                                                        <button onClick={salvarEdicao} style={{background:dia.cor,color:'#fff',border:'none',borderRadius:'6px',padding:'6px 16px',fontWeight:'700',fontSize:'12px',cursor:'pointer',fontFamily:'inherit'}}>Salvar</button>
+                                                                        <button onClick={()=>{setEditIdx(null);setEditOp(null);}} style={{background:'#f1f5f9',color:'#64748b',border:'none',borderRadius:'6px',padding:'6px 12px',fontWeight:'700',fontSize:'12px',cursor:'pointer',fontFamily:'inherit'}}>Cancelar</button>
+                                                                    </div>
+                                                                </div>
+                                                            ) : confirmDel === idx ? (
+                                                                <div style={{padding:'14px 16px',background:'#fef2f2',display:'flex',alignItems:'center',gap:'12px',flexWrap:'wrap'}}>
+                                                                    <span style={{fontSize:'13px',color:'#dc2626',fontWeight:'600',flex:1}}>⚠️ Excluir "{op.nome}"?</span>
+                                                                    <button onClick={()=>deletarOp(idx)} style={{background:'#dc2626',color:'#fff',border:'none',borderRadius:'6px',padding:'6px 14px',fontWeight:'700',fontSize:'12px',cursor:'pointer',fontFamily:'inherit'}}>Excluir</button>
+                                                                    <button onClick={()=>setConfirmDel(null)} style={{background:'#f1f5f9',color:'#64748b',border:'none',borderRadius:'6px',padding:'6px 12px',fontWeight:'700',fontSize:'12px',cursor:'pointer',fontFamily:'inherit'}}>Cancelar</button>
+                                                                </div>
+                                                            ) : (
+                                                                <div style={{padding:'14px 16px',display:'flex',alignItems:'center',gap:'12px',flexWrap:'wrap'}}>
+                                                                    <div style={{width:'28px',height:'28px',borderRadius:'50%',background:dia.cor,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'800',fontSize:'13px',flexShrink:0}}>
+                                                                        {idx+1}
+                                                                    </div>
+                                                                    <div style={{flex:1,minWidth:'120px'}}>
+                                                                        <div style={{display:'flex',alignItems:'center',gap:'6px',flexWrap:'wrap'}}>
+                                                                            <span style={{fontWeight:'700',fontSize:'14px',color:'#1f2937'}}>{op.nome}</span>
+                                                                            {(op.tipo||'loja')==='loja'
+                                                                                ? <span style={{background:'#dbeafe',color:'#1d4ed8',padding:'2px 8px',borderRadius:'10px',fontSize:'10px',fontWeight:'800',letterSpacing:'0.04em'}}>🏪 LOJA</span>
+                                                                                : <span style={{background:'#fef3c7',color:'#b45309',padding:'2px 8px',borderRadius:'10px',fontSize:'10px',fontWeight:'800',letterSpacing:'0.04em'}}>🏭 CD</span>
+                                                                            }
+                                                                        </div>
+                                                                        {op.observacao && <div style={{fontSize:'12px',color:'#6b7280',marginTop:'2px'}}>{op.observacao}</div>}
+                                                                    </div>
+                                                                    <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
+                                                                        {op.horario && (
+                                                                            <span style={{background:'#dbeafe',color:'#1d4ed8',padding:'3px 10px',borderRadius:'12px',fontSize:'11px',fontWeight:'700'}}>🕐 {op.horario}</span>
+                                                                        )}
+                                                                        {op.meta && (
+                                                                            <span style={{background:'#d1fae5',color:'#065f46',padding:'3px 10px',borderRadius:'12px',fontSize:'11px',fontWeight:'700'}}>🎯 {op.meta}</span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div style={{display:'flex',gap:'4px',flexShrink:0}}>
+                                                                        <button onClick={()=>moverOp(idx,-1)} disabled={idx===0} style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:'6px',width:'28px',height:'28px',cursor:idx===0?'default':'pointer',opacity:idx===0?0.35:1,fontSize:'12px',display:'flex',alignItems:'center',justifyContent:'center'}}>↑</button>
+                                                                        <button onClick={()=>moverOp(idx,1)} disabled={idx===opsDiaLocal.length-1} style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:'6px',width:'28px',height:'28px',cursor:idx===opsDiaLocal.length-1?'default':'pointer',opacity:idx===opsDiaLocal.length-1?0.35:1,fontSize:'12px',display:'flex',alignItems:'center',justifyContent:'center'}}>↓</button>
+                                                                        <button onClick={()=>{setEditIdx(idx);setEditOp({...op});}} style={{background:'#ede9fe',border:'none',borderRadius:'6px',width:'28px',height:'28px',cursor:'pointer',fontSize:'12px',display:'flex',alignItems:'center',justifyContent:'center',color:'#7c3aed'}}>✏️</button>
+                                                                        <button onClick={()=>setConfirmDel(idx)} style={{background:'#fef2f2',border:'none',borderRadius:'6px',width:'28px',height:'28px',cursor:'pointer',fontSize:'12px',display:'flex',alignItems:'center',justifyContent:'center',color:'#dc2626'}}>🗑</button>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
-                                    ))}
+                                    )}
                                 </div>
-                            )}
-                        </div>
+                            );
+                        })}
                     </div>
 
                     {/* Resumo da semana */}
@@ -5675,6 +5679,7 @@
                 try { return JSON.parse(localStorage.getItem('historicoDoca') || '[]'); } catch { return []; }
             });
             const [showSugestoesDoca, setShowSugestoesDoca] = useState(false);
+            const [confirmandoDeletar, setConfirmandoDeletar] = useState(null);
 
             const salvarHistoricoConferente = (nome) => {
                 if (!nome || !nome.trim()) return;
@@ -5713,8 +5718,13 @@
             }, [operacoes, filtro]);
 
             const handleEditar = (op) => {
-                setEditando(op.id);
-                setDadosEdicao({ ...op });
+                if (editando === op.id) {
+                    setEditando(null);
+                    setDadosEdicao({});
+                } else {
+                    setEditando(op.id);
+                    setDadosEdicao({ ...op });
+                }
             };
 
             const handleSalvar = async () => {
@@ -5780,179 +5790,161 @@
                                     </tr>
                                 ) : (
                                     operacoesFiltradas.map((op) => (
-                                        <tr key={op.id} className="border-b hover:bg-gray-50 editable-row">
-                                            {editando === op.id ? (
-                                                <>
-                                                    <td className="px-4 py-3">
-                                                        <input 
-                                                            type="date"
-                                                            value={dadosEdicao.data}
-                                                            onChange={(e) => handleChange('data', e.target.value)}
-                                                            className="w-full p-2 border rounded input-edit"
-                                                        />
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <input 
-                                                            type="text"
-                                                            value={dadosEdicao.operacao}
-                                                            onChange={(e) => handleChange('operacao', e.target.value)}
-                                                            className="w-full p-2 border rounded input-edit"
-                                                        />
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <input 
-                                                            type="number"
-                                                            value={dadosEdicao.nf}
-                                                            onChange={(e) => handleChange('nf', parseInt(e.target.value))}
-                                                            className="w-full p-2 border rounded input-edit"
-                                                        />
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <input 
-                                                            type="number"
-                                                            value={dadosEdicao.vol}
-                                                            onChange={(e) => handleChange('vol', parseInt(e.target.value))}
-                                                            className="w-full p-2 border rounded input-edit"
-                                                        />
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <input 
-                                                            type="number"
-                                                            step="0.01"
-                                                            value={dadosEdicao.cubagem}
-                                                            onChange={(e) => handleChange('cubagem', parseFloat(e.target.value))}
-                                                            className="w-full p-2 border rounded input-edit"
-                                                        />
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <input 
-                                                            type="time"
-                                                            value={dadosEdicao.inicio}
-                                                            onChange={(e) => handleChange('inicio', e.target.value)}
-                                                            className="w-full p-2 border rounded input-edit"
-                                                        />
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <input 
-                                                            type="time"
-                                                            value={dadosEdicao.termino}
-                                                            onChange={(e) => handleChange('termino', e.target.value)}
-                                                            className="w-full p-2 border rounded input-edit"
-                                                        />
-                                                    </td>
-                                                    <td className="px-4 py-3" style={{position:'relative',minWidth:'180px'}}>
-                                                        <input
-                                                            type="text"
-                                                            value={dadosEdicao.conferentes || ''}
-                                                            onChange={(e) => { handleChange('conferentes', e.target.value); setShowSugestoes(true); }}
-                                                            onFocus={() => setShowSugestoes(true)}
-                                                            onBlur={() => setTimeout(() => setShowSugestoes(false), 200)}
-                                                            className="w-full p-2 border rounded input-edit"
-                                                            placeholder="Nome(s) do(s) conferente(s)..."
-                                                            autoComplete="off"
-                                                        />
-                                                        {showSugestoes && historicoConferentes.length > 0 && (
-                                                            <div style={{position:'absolute',top:'100%',left:0,right:0,background:'white',border:'2px solid #667eea',borderRadius:'8px',boxShadow:'0 4px 12px rgba(0,0,0,0.15)',zIndex:999,maxHeight:'160px',overflowY:'auto'}}>
-                                                                <div style={{padding:'4px 8px',fontSize:'10px',fontWeight:'700',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.05em',borderBottom:'1px solid #f3f4f6'}}>Histórico de conferentes</div>
-                                                                {historicoConferentes.filter(n => !dadosEdicao.conferentes || n.toLowerCase().includes((dadosEdicao.conferentes||'').toLowerCase())).map((nome, i) => (
-                                                                    <div key={i}
-                                                                        onMouseDown={() => { handleChange('conferentes', nome); setShowSugestoes(false); }}
-                                                                        style={{padding:'7px 10px',cursor:'pointer',fontSize:'13px',color:'#374151',borderBottom:'1px solid #f9fafb'}}
-                                                                        onMouseEnter={e => e.currentTarget.style.background='#f5f3ff'}
-                                                                        onMouseLeave={e => e.currentTarget.style.background='white'}
-                                                                    >🔍 {nome}</div>
-                                                                ))}
+                                        <React.Fragment key={op.id}>
+                                            <tr className={`border-b editable-row${editando === op.id ? ' bg-blue-50' : ' hover:bg-gray-50'}`}>
+                                                <td className="px-4 py-3">{formatarData(op.data)}</td>
+                                                <td className="px-4 py-3 font-medium">{op.operacao}</td>
+                                                <td className="px-4 py-3">{op.nf}</td>
+                                                <td className="px-4 py-3">{op.vol}</td>
+                                                <td className="px-4 py-3">{op.cubagem}</td>
+                                                <td className="px-4 py-3">{op.inicio}</td>
+                                                <td className="px-4 py-3">{op.termino}</td>
+                                                <td className="px-4 py-3">{op.conferentes || <span style={{color:'#94a3b8'}}>—</span>}</td>
+                                                <td className="px-4 py-3">{op.doca || <span style={{color:'#94a3b8'}}>—</span>}</td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`px-3 py-1 rounded-full text-white text-xs font-bold status-${op.status}`}>
+                                                        {op.status.toUpperCase()}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="flex gap-2">
+                                                        <button 
+                                                            onClick={() => handleEditar(op)}
+                                                            title={editando === op.id ? 'Fechar edição' : 'Editar'}
+                                                            style={{background: editando === op.id ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'linear-gradient(135deg,#3b82f6,#6366f1)',color:'white',border:'none',borderRadius:'7px',padding:'5px 11px',fontWeight:'700',fontSize:'13px',cursor:'pointer',boxShadow:'0 2px 6px rgba(99,102,241,0.35)',transition:'all 0.18s'}}
+                                                            onMouseEnter={e=>{e.currentTarget.style.transform='scale(1.1)';}}
+                                                            onMouseLeave={e=>{e.currentTarget.style.transform='scale(1)';}}
+                                                        >{editando === op.id ? '✕' : '✏️'}</button>
+                                                        {confirmandoDeletar === op.id ? (
+                                                            <div style={{display:'flex',gap:'4px',alignItems:'center'}}>
+                                                                <button
+                                                                    onClick={() => { onDeletar(op.id); setConfirmandoDeletar(null); }}
+                                                                    title="Confirmar exclusão"
+                                                                    style={{background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'white',border:'none',borderRadius:'7px',padding:'5px 9px',fontWeight:'700',fontSize:'11px',cursor:'pointer',whiteSpace:'nowrap'}}
+                                                                >✓ Sim</button>
+                                                                <button
+                                                                    onClick={() => setConfirmandoDeletar(null)}
+                                                                    title="Cancelar"
+                                                                    style={{background:'#6b7280',color:'white',border:'none',borderRadius:'7px',padding:'5px 9px',fontWeight:'700',fontSize:'11px',cursor:'pointer'}}
+                                                                >✗ Não</button>
                                                             </div>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-4 py-3" style={{position:'relative',minWidth:'160px'}}>
-                                                        <input
-                                                            type="text"
-                                                            value={dadosEdicao.doca || ''}
-                                                            onChange={(e) => { handleChange('doca', e.target.value); setShowSugestoesDoca(true); }}
-                                                            onFocus={() => setShowSugestoesDoca(true)}
-                                                            onBlur={() => setTimeout(() => setShowSugestoesDoca(false), 200)}
-                                                            className="w-full p-2 border rounded input-edit"
-                                                            placeholder="Doca..."
-                                                            autoComplete="off"
-                                                        />
-                                                        {showSugestoesDoca && historicoDoca.length > 0 && (
-                                                            <div style={{position:'absolute',top:'100%',left:0,right:0,background:'white',border:'2px solid #667eea',borderRadius:'8px',boxShadow:'0 4px 12px rgba(0,0,0,0.15)',zIndex:999,maxHeight:'160px',overflowY:'auto'}}>
-                                                                <div style={{padding:'4px 8px',fontSize:'10px',fontWeight:'700',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.05em',borderBottom:'1px solid #f3f4f6'}}>Histórico de docas</div>
-                                                                {historicoDoca.filter(d => !dadosEdicao.doca || d.toLowerCase().includes((dadosEdicao.doca||'').toLowerCase())).map((doca, i) => (
-                                                                    <div key={i}
-                                                                        onMouseDown={() => { handleChange('doca', doca); setShowSugestoesDoca(false); }}
-                                                                        style={{padding:'7px 10px',cursor:'pointer',fontSize:'13px',color:'#374151',borderBottom:'1px solid #f9fafb'}}
-                                                                        onMouseEnter={e => e.currentTarget.style.background='#f5f3ff'}
-                                                                        onMouseLeave={e => e.currentTarget.style.background='white'}
-                                                                    >🚪 {doca}</div>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <span className={`px-3 py-1 rounded-full text-white text-xs font-bold status-${calcularStatus(dadosEdicao.meta, dadosEdicao.termino)}`}>
-                                                            {calcularStatus(dadosEdicao.meta, dadosEdicao.termino).toUpperCase()}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <div className="flex gap-2">
+                                                        ) : (
                                                             <button 
-                                                                onClick={handleSalvar}
-                                                                className="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 btn-animated"
-                                                            >
-                                                                ✓
-                                                            </button>
-                                                            <button 
-                                                                onClick={handleCancelar}
-                                                                className="bg-gray-500 text-white px-3 py-1 rounded hover:bg-gray-600 btn-animated"
-                                                            >
-                                                                ✗
-                                                            </button>
-                                                        </div>
-                                                    </td>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <td className="px-4 py-3">{formatarData(op.data)}</td>
-                                                    <td className="px-4 py-3 font-medium">{op.operacao}</td>
-                                                    <td className="px-4 py-3">{op.nf}</td>
-                                                    <td className="px-4 py-3">{op.vol}</td>
-                                                    <td className="px-4 py-3">{op.cubagem}</td>
-                                                    <td className="px-4 py-3">{op.inicio}</td>
-                                                    <td className="px-4 py-3">{op.termino}</td>
-                                                    <td className="px-4 py-3">{op.conferentes || <span style={{color:'#94a3b8'}}>—</span>}</td>
-                                                    <td className="px-4 py-3">{op.doca || <span style={{color:'#94a3b8'}}>—</span>}</td>
-                                                    <td className="px-4 py-3">
-                                                        <span className={`px-3 py-1 rounded-full text-white text-xs font-bold status-${op.status}`}>
-                                                            {op.status.toUpperCase()}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <div className="flex gap-2">
-                                                            <button 
-                                                                onClick={() => handleEditar(op)}
-                                                                title="Editar"
-                                                                style={{background:'linear-gradient(135deg,#3b82f6,#6366f1)',color:'white',border:'none',borderRadius:'7px',padding:'5px 11px',fontWeight:'700',fontSize:'13px',cursor:'pointer',boxShadow:'0 2px 6px rgba(99,102,241,0.35)',transition:'all 0.18s'}}
-                                                                onMouseEnter={e=>{e.currentTarget.style.transform='scale(1.1)';e.currentTarget.style.boxShadow='0 4px 12px rgba(99,102,241,0.5)';}}
-                                                                onMouseLeave={e=>{e.currentTarget.style.transform='scale(1)';e.currentTarget.style.boxShadow='0 2px 6px rgba(99,102,241,0.35)';}}
-                                                            >✏️</button>
-                                                            <button 
-                                                                onClick={() => {
-                                                                    if (confirm('Deseja realmente deletar esta operação?')) {
-                                                                        onDeletar(op.id);
-                                                                    }
-                                                                }}
+                                                                onClick={() => setConfirmandoDeletar(op.id)}
                                                                 title="Excluir"
                                                                 style={{background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'white',border:'none',borderRadius:'7px',padding:'5px 11px',fontWeight:'700',fontSize:'13px',cursor:'pointer',boxShadow:'0 2px 6px rgba(220,38,38,0.3)',transition:'all 0.18s'}}
-                                                                onMouseEnter={e=>{e.currentTarget.style.transform='scale(1.1)';e.currentTarget.style.boxShadow='0 4px 12px rgba(220,38,38,0.5)';}}
-                                                                onMouseLeave={e=>{e.currentTarget.style.transform='scale(1)';e.currentTarget.style.boxShadow='0 2px 6px rgba(220,38,38,0.3)';}}
+                                                                onMouseEnter={e=>{e.currentTarget.style.transform='scale(1.1)';}}
+                                                                onMouseLeave={e=>{e.currentTarget.style.transform='scale(1)';}}
                                                             >🗑</button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {editando === op.id && (
+                                                <tr>
+                                                    <td colSpan="11" style={{padding:'0',background:'#f0f4ff',borderBottom:'2px solid #667eea'}}>
+                                                        <div style={{padding:'18px 20px',borderLeft:'4px solid #667eea'}}>
+                                                            <div style={{fontWeight:'800',fontSize:'13px',color:'#667eea',marginBottom:'14px'}}>✏️ Editando: {dadosEdicao.operacao}</div>
+                                                            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'10px',marginBottom:'12px'}}>
+                                                                <div>
+                                                                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Data</label>
+                                                                    <input type="date" value={dadosEdicao.data} onChange={(e) => handleChange('data', e.target.value)} className="w-full p-2 border rounded input-edit" />
+                                                                </div>
+                                                                <div>
+                                                                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Operação</label>
+                                                                    <input type="text" value={dadosEdicao.operacao} onChange={(e) => handleChange('operacao', e.target.value)} className="w-full p-2 border rounded input-edit" />
+                                                                </div>
+                                                                <div>
+                                                                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>NF</label>
+                                                                    <input type="number" value={dadosEdicao.nf} onChange={(e) => handleChange('nf', parseInt(e.target.value))} className="w-full p-2 border rounded input-edit" />
+                                                                </div>
+                                                                <div>
+                                                                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Volume</label>
+                                                                    <input type="number" value={dadosEdicao.vol} onChange={(e) => handleChange('vol', parseInt(e.target.value))} className="w-full p-2 border rounded input-edit" />
+                                                                </div>
+                                                                <div>
+                                                                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Cubagem</label>
+                                                                    <input type="number" step="0.01" value={dadosEdicao.cubagem} onChange={(e) => handleChange('cubagem', parseFloat(e.target.value))} className="w-full p-2 border rounded input-edit" />
+                                                                </div>
+                                                                <div>
+                                                                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Início</label>
+                                                                    <input type="time" value={dadosEdicao.inicio} onChange={(e) => handleChange('inicio', e.target.value)} className="w-full p-2 border rounded input-edit" />
+                                                                </div>
+                                                                <div>
+                                                                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Término</label>
+                                                                    <input type="time" value={dadosEdicao.termino} onChange={(e) => handleChange('termino', e.target.value)} className="w-full p-2 border rounded input-edit" />
+                                                                </div>
+                                                                <div style={{position:'relative',minWidth:'160px'}}>
+                                                                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Conferentes</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={dadosEdicao.conferentes || ''}
+                                                                        onChange={(e) => { handleChange('conferentes', e.target.value); setShowSugestoes(true); }}
+                                                                        onFocus={() => setShowSugestoes(true)}
+                                                                        onBlur={() => setTimeout(() => setShowSugestoes(false), 200)}
+                                                                        className="w-full p-2 border rounded input-edit"
+                                                                        placeholder="Nome(s)..."
+                                                                        autoComplete="off"
+                                                                    />
+                                                                    {showSugestoes && historicoConferentes.length > 0 && (
+                                                                        <div style={{position:'absolute',top:'100%',left:0,right:0,background:'white',border:'2px solid #667eea',borderRadius:'8px',boxShadow:'0 4px 12px rgba(0,0,0,0.15)',zIndex:999,maxHeight:'160px',overflowY:'auto'}}>
+                                                                            <div style={{padding:'4px 8px',fontSize:'10px',fontWeight:'700',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.05em',borderBottom:'1px solid #f3f4f6'}}>Histórico de conferentes</div>
+                                                                            {historicoConferentes.filter(n => !dadosEdicao.conferentes || n.toLowerCase().includes((dadosEdicao.conferentes||'').toLowerCase())).map((nome, i) => (
+                                                                                <div key={i}
+                                                                                    onMouseDown={() => { handleChange('conferentes', nome); setShowSugestoes(false); }}
+                                                                                    style={{padding:'7px 10px',cursor:'pointer',fontSize:'13px',color:'#374151',borderBottom:'1px solid #f9fafb'}}
+                                                                                    onMouseEnter={e => e.currentTarget.style.background='#f5f3ff'}
+                                                                                    onMouseLeave={e => e.currentTarget.style.background='white'}
+                                                                                >🔍 {nome}</div>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                <div style={{position:'relative',minWidth:'140px'}}>
+                                                                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Doca</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={dadosEdicao.doca || ''}
+                                                                        onChange={(e) => { handleChange('doca', e.target.value); setShowSugestoesDoca(true); }}
+                                                                        onFocus={() => setShowSugestoesDoca(true)}
+                                                                        onBlur={() => setTimeout(() => setShowSugestoesDoca(false), 200)}
+                                                                        className="w-full p-2 border rounded input-edit"
+                                                                        placeholder="Doca..."
+                                                                        autoComplete="off"
+                                                                    />
+                                                                    {showSugestoesDoca && historicoDoca.length > 0 && (
+                                                                        <div style={{position:'absolute',top:'100%',left:0,right:0,background:'white',border:'2px solid #667eea',borderRadius:'8px',boxShadow:'0 4px 12px rgba(0,0,0,0.15)',zIndex:999,maxHeight:'160px',overflowY:'auto'}}>
+                                                                            <div style={{padding:'4px 8px',fontSize:'10px',fontWeight:'700',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.05em',borderBottom:'1px solid #f3f4f6'}}>Histórico de docas</div>
+                                                                            {historicoDoca.filter(d => !dadosEdicao.doca || d.toLowerCase().includes((dadosEdicao.doca||'').toLowerCase())).map((doca, i) => (
+                                                                                <div key={i}
+                                                                                    onMouseDown={() => { handleChange('doca', doca); setShowSugestoesDoca(false); }}
+                                                                                    style={{padding:'7px 10px',cursor:'pointer',fontSize:'13px',color:'#374151',borderBottom:'1px solid #f9fafb'}}
+                                                                                    onMouseEnter={e => e.currentTarget.style.background='#f5f3ff'}
+                                                                                    onMouseLeave={e => e.currentTarget.style.background='white'}
+                                                                                >🚪 {doca}</div>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <div style={{display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap',paddingTop:'10px',borderTop:'1px solid #c7d2fe'}}>
+                                                                <span style={{fontSize:'12px',color:'#6b7280'}}>Status calculado: <strong style={{color: calcularStatus(dadosEdicao.meta,dadosEdicao.termino)==='verde'?'#10b981':calcularStatus(dadosEdicao.meta,dadosEdicao.termino)==='vermelho'?'#ef4444':'#f59e0b'}}>{calcularStatus(dadosEdicao.meta, dadosEdicao.termino).toUpperCase()}</strong></span>
+                                                                <div style={{marginLeft:'auto',display:'flex',gap:'8px'}}>
+                                                                    <button
+                                                                        onClick={handleSalvar}
+                                                                        style={{background:'linear-gradient(135deg,#10b981,#059669)',color:'white',border:'none',borderRadius:'8px',padding:'8px 20px',fontWeight:'800',fontSize:'13px',cursor:'pointer',boxShadow:'0 2px 8px rgba(16,185,129,0.4)',display:'flex',alignItems:'center',gap:'6px'}}
+                                                                    >✓ Salvar Alterações</button>
+                                                                    <button
+                                                                        onClick={handleCancelar}
+                                                                        style={{background:'#6b7280',color:'white',border:'none',borderRadius:'8px',padding:'8px 16px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}
+                                                                    >✗ Cancelar</button>
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     </td>
-                                                </>
+                                                </tr>
                                             )}
-                                        </tr>
+                                        </React.Fragment>
                                     ))
                                 )}
                             </tbody>
