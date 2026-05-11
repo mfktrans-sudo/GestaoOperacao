@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Gestão de Operações - V20</title>
+    <title>Sistema de Gestão de Operações - Com Filtros Avançados</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -1202,7 +1202,7 @@
                         </header>
 
                         <nav className="flex gap-2 mb-6 flex-wrap">
-                            {['torre', 'dashboard', 'performance', 'gradediaria', 'graficos', 'capacidade', 'cadastrar', 'editar', 'gerenciar', 'relatorios', 'upload', 'configuracoes'].map(aba => (
+                            {['torre', 'dashboard', 'opDescriminadas', 'performance', 'gradediaria', 'graficos', 'capacidade', 'cadastrar', 'editar', 'gerenciar', 'relatorios', 'upload', 'configuracoes'].map(aba => (
                                 <button
                                     key={aba}
                                     onClick={() => trocarAba(aba)}
@@ -1213,6 +1213,7 @@
                                     {aba === 'torre' && <><span className="icon-pulse inline-block">🗼</span> Torre de Controle</>
                                     }
                                     {aba === 'dashboard' && <><span className="icon-bounce inline-block">📊</span> Dashboard</>}
+                                    {aba === 'opDescriminadas' && <><span className="icon-pulse inline-block">📋</span> Op. Descriminadas</>}
                                     {aba === 'performance' && <><span className="icon-pulse inline-block">🏆</span> Performance</>}
                                     {aba === 'gradediaria' && <><span className="icon-bounce inline-block">📅</span> Grade Diária</>}
                                     {aba === 'graficos' && <><span className="icon-pulse inline-block">📈</span> Gráficos</>}
@@ -1234,6 +1235,14 @@
                             {abaSelecionada === 'dashboard' && (
                                 <Dashboard 
                                     operacoes={operacoes} 
+                                    dataSelecionada={dataSelecionada}
+                                    setDataSelecionada={setDataSelecionada}
+                                    listaOperacoes={listaOperacoes}
+                                />
+                            )}
+                            {abaSelecionada === 'opDescriminadas' && (
+                                <OpDescriminadas
+                                    operacoes={operacoes}
                                     dataSelecionada={dataSelecionada}
                                     setDataSelecionada={setDataSelecionada}
                                     listaOperacoes={listaOperacoes}
@@ -1289,6 +1298,259 @@
                 </div>
             );
         }
+
+
+        // ========== OPERAÇÕES DESCRIMINADAS ==========
+
+        // InputNum fora do componente pai para evitar recriação a cada render (fix de foco/tab)
+        function InputNum({label, value, onChange, step, color, placeholder}) {
+            const [local, setLocal] = React.useState(String(value !== undefined && value !== null ? value : ''));
+            React.useEffect(() => {
+                setLocal(String(value !== undefined && value !== null ? value : ''));
+            }, [value]);
+            const commit = React.useCallback((val) => {
+                const v = step ? parseFloat(val) || 0 : parseInt(val) || 0;
+                onChange(v);
+            }, [onChange, step]);
+            return (
+                <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                    <label style={{fontSize:10,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.05em'}}>{label}</label>
+                    <input
+                        type="number" step={step||1} min="0"
+                        value={local}
+                        onChange={e => setLocal(e.target.value)}
+                        onBlur={e => commit(e.target.value)}
+                        placeholder={placeholder||'0'}
+                        style={{border:'1.5px solid #ddd6fe',borderRadius:8,padding:'8px 10px',fontSize:14,fontWeight:700,color:color||'#1f2937',outline:'none',width:'100%',background:'#faf5ff',fontFamily:'inherit'}}
+                    />
+                </div>
+            );
+        }
+
+        function OpDescriminadas({ operacoes, dataSelecionada, setDataSelecionada, listaOperacoes }) {
+            const { useState, useEffect, useMemo, useCallback } = React;
+
+            // Shared key with Dashboard antecipações — so the totals feed directly into Dashboard cards
+            const makeKey = (data) => 'antecipacoes_' + data;
+            const defaultAnt = { nf: 0, vol: 0, cubagem: 0, nfReal: 0, volReal: 0, cubagemReal: 0, vmNF: 0, croosNF: 0, tzNF: 0, vmVol: 0, croosVol: 0, tzVol: 0, vmCub: 0, croosCub: 0, tzCub: 0 };
+
+            const [dados, setDados] = useState(() => {
+                try { const s = localStorage.getItem(makeKey(dataSelecionada)); return s ? JSON.parse(s) : { ...defaultAnt }; }
+                catch(e) { return { ...defaultAnt }; }
+            });
+
+            // Reload when date changes
+            useEffect(() => {
+                try { const s = localStorage.getItem(makeKey(dataSelecionada)); setDados(s ? JSON.parse(s) : { ...defaultAnt }); }
+                catch(e) { setDados({ ...defaultAnt }); }
+            }, [dataSelecionada]);
+
+            const salvar = useCallback((novo) => {
+                setDados(novo);
+                try { localStorage.setItem(makeKey(dataSelecionada), JSON.stringify(novo)); } catch(e) {}
+            }, [dataSelecionada]);
+
+            const num = (v) => Number(v) || 0;
+            const flt = (v) => parseFloat(v) || 0;
+
+            // Totais calculados (operações do dia via Firebase)
+            const opsHoje = useMemo(() => operacoes.filter(o => o.data === dataSelecionada), [operacoes, dataSelecionada]);
+            const totalNFBase   = useMemo(() => opsHoje.reduce((a,o)=>a+num(o.nf),0), [opsHoje]);
+            const totalVolBase  = useMemo(() => opsHoje.reduce((a,o)=>a+num(o.vol),0), [opsHoje]);
+            const totalCubBase  = useMemo(() => opsHoje.reduce((a,o)=>a+flt(o.cubagem),0), [opsHoje]);
+
+            // Totais VM+TS+TZ discriminados (o que alimenta os botões do dashboard via antecipacoes)
+            const totalVmTsNF  = num(dados.vmNF)  + num(dados.croosNF) + num(dados.tzNF);
+            const totalVmTsVol = num(dados.vmVol)  + num(dados.croosVol) + num(dados.tzVol);
+            const totalVmTsCub = flt(dados.vmCub)  + flt(dados.croosCub) + flt(dados.tzCub);
+
+            const PURPLE = '#7c3aed'; const BLUE = '#3b82f6'; const AMBER = '#f59e0b'; const GREEN = '#10b981';
+            const card = {background:'#fff',borderRadius:14,padding:20,border:'1.5px solid #ede9fe',marginBottom:14};
+            const title = {fontSize:12,fontWeight:700,color:PURPLE,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:14,display:'flex',alignItems:'center',justifyContent:'space-between'};
+
+            const SumRow = ({label, vm, ts, tz, total, color}) => (
+                <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',background:'#f8fafc',borderRadius:10,marginTop:6}}>
+                    <span style={{fontSize:11,fontWeight:700,color:'#6b7280',minWidth:90}}>{label}</span>
+                    <span style={{fontSize:11,color:'#9ca3af'}}>TS: <strong style={{color}}>{ts}</strong></span>
+                    <span style={{fontSize:11,color:'#9ca3af'}}>VM: <strong style={{color}}>{vm}</strong></span>
+                    <span style={{fontSize:11,color:'#9ca3af'}}>TZ: <strong style={{color}}>{tz}</strong></span>
+                    <span style={{marginLeft:'auto',fontSize:14,fontWeight:900,color,background:'#ede9fe',borderRadius:8,padding:'4px 12px'}}>{total}</span>
+                </div>
+            );
+
+            return (
+                <div style={{fontFamily:"'Inter',-apple-system,sans-serif"}}>
+                    {/* Header */}
+                    <div style={{background:'linear-gradient(135deg,#1a0a3e 0%,#2d1b69 50%,#1a0a3e 100%)',borderRadius:16,padding:'20px 28px',marginBottom:20,display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12,boxShadow:'0 8px 32px rgba(102,65,234,0.35)'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:14}}>
+                            <div style={{background:'linear-gradient(135deg,#667eea,#764ba2)',width:46,height:46,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,flexShrink:0}}>📋</div>
+                            <div>
+                                <div style={{fontSize:22,fontWeight:800,color:'#fff',letterSpacing:'-0.3px'}}>Operações Descriminadas</div>
+                                <div style={{fontSize:12,color:'rgba(200,180,255,0.8)',marginTop:2}}>Preencha VM / TS / TZ e Antecipação — os totais aparecem nos botões do Dashboard</div>
+                            </div>
+                        </div>
+                        <div style={{display:'flex',alignItems:'center',gap:10}}>
+                            <span style={{fontSize:11,fontWeight:700,color:'#e9d5ff'}}>📅 Data:</span>
+                            <input type="date" value={dataSelecionada} onChange={e=>setDataSelecionada(e.target.value)}
+                                style={{padding:'7px 12px',borderRadius:10,border:'1.5px solid rgba(255,255,255,0.4)',background:'rgba(255,255,255,0.15)',color:'#fff',fontSize:13,fontWeight:700,outline:'none'}}/>
+                        </div>
+                    </div>
+
+                    {/* Info banner */}
+                    <div style={{background:'#ede9fe',borderRadius:12,padding:'12px 18px',marginBottom:16,display:'flex',alignItems:'center',gap:10,border:'1.5px solid #c4b5fd'}}>
+                        <span style={{fontSize:18}}>🔗</span>
+                        <span style={{fontSize:12,fontWeight:600,color:'#4c1d95'}}>
+                            Os valores preenchidos aqui alimentam diretamente os botões <strong>Total NF</strong>, <strong>Total Volume</strong> e <strong>Total Cubagem</strong> no Dashboard. Clique neles para ver o detalhamento completo, exatamente como antes.
+                        </span>
+                    </div>
+
+                    {/* ── SEÇÃO: NOTAS FISCAIS ── */}
+                    <div style={card}>
+                        <div style={title}>
+                            <span>📄 Notas Fiscais — Discriminado por Modalidade</span>
+                            <span style={{background:'#dbeafe',color:BLUE,borderRadius:20,padding:'3px 12px',fontSize:11,fontWeight:700}}>
+                                Total NF: {totalNFBase.toLocaleString('pt-BR')} (Firebase) + {totalVmTsNF.toLocaleString('pt-BR')} (VM/TS/TZ)
+                            </span>
+                        </div>
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>
+                            <InputNum label="TS — NF" value={dados.croosNF} color={BLUE}
+                                onChange={v => salvar({...dados, croosNF: v})} />
+                            <InputNum label="VM — NF" value={dados.vmNF} color={BLUE}
+                                onChange={v => salvar({...dados, vmNF: v})} />
+                            <InputNum label="TZ — NF" value={dados.tzNF} color={BLUE}
+                                onChange={v => salvar({...dados, tzNF: v})} />
+                        </div>
+                        <SumRow label="Subtotal NF"
+                            vm={num(dados.vmNF).toLocaleString('pt-BR')}
+                            ts={num(dados.croosNF).toLocaleString('pt-BR')}
+                            tz={num(dados.tzNF).toLocaleString('pt-BR')}
+                            total={totalVmTsNF.toLocaleString('pt-BR')}
+                            color={BLUE} />
+                        {/* Antecipação NF */}
+                        <div style={{marginTop:12,padding:'12px 14px',background:'#f0f9ff',borderRadius:10,border:'1px solid #bfdbfe'}}>
+                            <div style={{fontSize:11,fontWeight:700,color:'#1d4ed8',marginBottom:8}}>🚀 Antecipação de NF</div>
+                            <InputNum label="NF Antecipada" value={dados.nf} color='#1d4ed8'
+                                onChange={v => salvar({...dados, nf: v})} />
+                            {num(dados.nf) > 0 && (
+                                <div style={{marginTop:6,fontSize:11,color:'#1d4ed8',fontWeight:700}}>
+                                    NF Total projetada: {(totalNFBase + totalVmTsNF + num(dados.nf)).toLocaleString('pt-BR')}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* ── SEÇÃO: VOLUMETRIA ── */}
+                    <div style={card}>
+                        <div style={title}>
+                            <span>📦 Volumetria — Discriminado por Modalidade</span>
+                            <span style={{background:'#ede9fe',color:PURPLE,borderRadius:20,padding:'3px 12px',fontSize:11,fontWeight:700}}>
+                                Total Vol: {totalVolBase.toLocaleString('pt-BR')} (Firebase) + {totalVmTsVol.toLocaleString('pt-BR')} (VM/TS/TZ)
+                            </span>
+                        </div>
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>
+                            <InputNum label="TS — Volume" value={dados.croosVol} color={PURPLE}
+                                onChange={v => salvar({...dados, croosVol: v})} />
+                            <InputNum label="VM — Volume" value={dados.vmVol} color={PURPLE}
+                                onChange={v => salvar({...dados, vmVol: v})} />
+                            <InputNum label="TZ — Volume" value={dados.tzVol} color={PURPLE}
+                                onChange={v => salvar({...dados, tzVol: v})} />
+                        </div>
+                        <SumRow label="Subtotal Vol"
+                            vm={num(dados.vmVol).toLocaleString('pt-BR')}
+                            ts={num(dados.croosVol).toLocaleString('pt-BR')}
+                            tz={num(dados.tzVol).toLocaleString('pt-BR')}
+                            total={totalVmTsVol.toLocaleString('pt-BR')}
+                            color={PURPLE} />
+                        {/* Antecipação Vol */}
+                        <div style={{marginTop:12,padding:'12px 14px',background:'#faf5ff',borderRadius:10,border:'1px solid #ddd6fe'}}>
+                            <div style={{fontSize:11,fontWeight:700,color:PURPLE,marginBottom:8}}>🚀 Antecipação de Volume</div>
+                            <InputNum label="Volume Antecipado" value={dados.vol} color={PURPLE}
+                                onChange={v => salvar({...dados, vol: v})} />
+                            {num(dados.vol) > 0 && (
+                                <div style={{marginTop:6,fontSize:11,color:PURPLE,fontWeight:700}}>
+                                    Vol. Total projetado: {(totalVolBase + totalVmTsVol + num(dados.vol)).toLocaleString('pt-BR')}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* ── SEÇÃO: CUBAGEM ── */}
+                    <div style={card}>
+                        <div style={title}>
+                            <span>📐 Cubagem (m³) — Discriminado por Modalidade</span>
+                            <span style={{background:'#fef3c7',color:'#92400e',borderRadius:20,padding:'3px 12px',fontSize:11,fontWeight:700}}>
+                                Total: {totalCubBase.toFixed(2)} (Firebase) + {totalVmTsCub.toFixed(2)} m³ (VM/TS/TZ)
+                            </span>
+                        </div>
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>
+                            <InputNum label="TS — Cubagem (m³)" value={dados.croosCub} color={AMBER} step="0.01"
+                                onChange={v => salvar({...dados, croosCub: v})} />
+                            <InputNum label="VM — Cubagem (m³)" value={dados.vmCub} color={AMBER} step="0.01"
+                                onChange={v => salvar({...dados, vmCub: v})} />
+                            <InputNum label="TZ — Cubagem (m³)" value={dados.tzCub} color={AMBER} step="0.01"
+                                onChange={v => salvar({...dados, tzCub: v})} />
+                        </div>
+                        <SumRow label="Subtotal m³"
+                            vm={flt(dados.vmCub).toFixed(2)}
+                            ts={flt(dados.croosCub).toFixed(2)}
+                            tz={flt(dados.tzCub).toFixed(2)}
+                            total={totalVmTsCub.toFixed(2)+' m³'}
+                            color={AMBER} />
+                        {/* Antecipação Cubagem */}
+                        <div style={{marginTop:12,padding:'12px 14px',background:'#fffbeb',borderRadius:10,border:'1px solid #fde68a'}}>
+                            <div style={{fontSize:11,fontWeight:700,color:'#92400e',marginBottom:8}}>🚀 Antecipação de Cubagem</div>
+                            <InputNum label="Cubagem Antecipada (m³)" value={dados.cubagem} color={AMBER} step="0.01"
+                                onChange={v => salvar({...dados, cubagem: v})} />
+                            {flt(dados.cubagem) > 0 && (
+                                <div style={{marginTop:6,fontSize:11,color:AMBER,fontWeight:700}}>
+                                    Cub. Total projetada: {(totalCubBase + totalVmTsCub + flt(dados.cubagem)).toFixed(2)} m³
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* ── RESUMO CONSOLIDADO ── */}
+                    <div style={{background:'linear-gradient(135deg,#2d1b69 0%,#4c1d95 100%)',borderRadius:14,padding:'18px 22px',color:'#fff',marginBottom:14}}>
+                        <div style={{fontSize:13,fontWeight:800,marginBottom:14,opacity:0.9,textTransform:'uppercase',letterSpacing:'0.05em'}}>📊 Resumo Consolidado — {dataSelecionada.split('-').reverse().join('/')}</div>
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12}}>
+                            {[
+                                {label:'Total NF', vm:num(dados.vmNF), ts:num(dados.croosNF), tz:num(dados.tzNF), ant:num(dados.nf), base:totalNFBase, fmt:v=>Math.round(v).toLocaleString('pt-BR'), color:'#93c5fd', unit:''},
+                                {label:'Total Volume', vm:num(dados.vmVol), ts:num(dados.croosVol), tz:num(dados.tzVol), ant:num(dados.vol), base:totalVolBase, fmt:v=>Math.round(v).toLocaleString('pt-BR'), color:'#c4b5fd', unit:''},
+                                {label:'Total Cubagem', vm:flt(dados.vmCub), ts:flt(dados.croosCub), tz:flt(dados.tzCub), ant:flt(dados.cubagem), base:totalCubBase, fmt:v=>v.toFixed(2), color:'#fcd34d', unit:' m³'},
+                            ].map(x => {
+                                const total = x.vm + x.ts + x.tz + x.ant;
+                                return (
+                                    <div key={x.label} style={{background:'rgba(255,255,255,0.1)',borderRadius:12,padding:'14px 16px'}}>
+                                        <div style={{fontSize:10,fontWeight:700,opacity:0.7,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>{x.label}</div>
+                                        <div style={{fontSize:26,fontWeight:900,color:x.color,lineHeight:1}}>{x.fmt(total)}{x.unit}</div>
+                                        <div style={{marginTop:8,display:'flex',flexDirection:'column',gap:3}}>
+                                            <div style={{fontSize:10,opacity:0.7}}>Firebase: <strong style={{color:'#fff'}}>{x.fmt(x.base)}{x.unit}</strong></div>
+                                            {x.vm>0 && <div style={{fontSize:10,opacity:0.7}}>VM: <strong style={{color:x.color}}>{x.fmt(x.vm)}{x.unit}</strong></div>}
+                                            {x.ts>0 && <div style={{fontSize:10,opacity:0.7}}>TS: <strong style={{color:x.color}}>{x.fmt(x.ts)}{x.unit}</strong></div>}
+                                            {x.tz>0 && <div style={{fontSize:10,opacity:0.7}}>TZ: <strong style={{color:x.color}}>{x.fmt(x.tz)}{x.unit}</strong></div>}
+                                            {x.ant>0 && <div style={{fontSize:10,opacity:0.7}}>Antecipação: <strong style={{color:'#86efac'}}>{x.fmt(x.ant)}{x.unit}</strong></div>}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <div style={{marginTop:14,padding:'10px 14px',background:'rgba(255,255,255,0.08)',borderRadius:10,fontSize:11,color:'rgba(255,255,255,0.75)'}}>
+                            💡 Os valores de VM / TS / TZ e Antecipação acima estão sincronizados com os botões <strong style={{color:'#fff'}}>Total NF</strong>, <strong style={{color:'#fff'}}>Total Volume</strong> e <strong style={{color:'#fff'}}>Total Cubagem</strong> no Dashboard. Clique neles para ver o detalhamento completo.
+                        </div>
+                    </div>
+
+                    {/* Botão limpar */}
+                    <div style={{display:'flex',justifyContent:'flex-end'}}>
+                        <button
+                            onClick={() => { if(window.confirm('Limpar todos os valores discriminados desta data?')) salvar({...defaultAnt}); }}
+                            style={{background:'#fee2e2',color:'#dc2626',border:'1.5px solid #fca5a5',borderRadius:10,padding:'8px 18px',fontWeight:700,fontSize:12,cursor:'pointer'}}>
+                            🗑️ Limpar valores desta data
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+        // ========== FIM OPERAÇÕES DESCRIMINADAS ==========
 
 
         // ========== TORRE DE CONTROLE — V13 PALETA ORIGINAL ==========
@@ -2138,7 +2400,7 @@
 
         // ========== GRADE DIÁRIA ==========
         function GradeDiaria() {
-            const { useState, useEffect, useRef } = React;
+            const { useState, useEffect } = React;
 
             const DIAS = [
                 { key: 'dom', label: 'Domingo',   emoji: '☀️',  cor: '#7c3aed', corLight: '#ede9fe', corBorder: '#a78bfa' },
@@ -2150,72 +2412,35 @@
                 { key: 'sab', label: 'Sábado',    emoji: '🔒',  cor: '#6b7280', corLight: '#f3f4f6', corBorder: '#d1d5db', inativo: true },
             ];
 
-            const initGrades = () => {
+            const STORAGE_KEY = 'gradeDiaria_v1';
+            const SABADO_KEY  = 'gradeDiaria_sabadoAtivo_v1';
+
+            const [diaSelecionado, setDiaSelecionado] = useState('dom');
+            const [sabadoAtivo, setSabadoAtivo]       = useState(() => {
+                try { return localStorage.getItem(SABADO_KEY) === 'true'; } catch(e) { return false; }
+            });
+            const [grades, setGrades] = useState(() => {
+                try {
+                    const s = localStorage.getItem(STORAGE_KEY);
+                    if (s) return JSON.parse(s);
+                } catch(e) {}
                 const init = {};
                 DIAS.forEach(d => { init[d.key] = []; });
                 return init;
-            };
-
-            const [diaSelecionado, setDiaSelecionado] = useState('dom');
-            const [sabadoAtivo, setSabadoAtivo]       = useState(false);
-            const [grades, setGrades]                 = useState(initGrades);
+            });
             const [novaOp, setNovaOp]     = useState({ nome: '', horario: '', meta: '', observacao: '', tipo: 'loja' });
             const [editIdx, setEditIdx]   = useState(null);
             const [editOp, setEditOp]     = useState(null);
             const [confirmDel, setConfirmDel] = useState(null);
             const [diaExpandido, setDiaExpandido] = useState(null);
             const [mostrarFormulario, setMostrarFormulario] = useState(false);
-            const [carregando, setCarregando] = useState(true);
-            const [salvando, setSalvando]     = useState(false);
-            const [msgStatus, setMsgStatus]   = useState('');
-            const saveTimeout = useRef(null);
-
-            // ── Carrega do Firestore ao montar ──────────────────────────
-            useEffect(() => {
-                const db  = window.__firebaseDb;
-                const fns = window.__firebaseFns;
-                if (!db || !fns) { setCarregando(false); return; }
-                const { doc, getDoc } = fns;
-                (async () => {
-                    try {
-                        const snap = await getDoc(doc(db, 'configuracoes', 'gradeDiaria'));
-                        if (snap.exists()) {
-                            const data = snap.data();
-                            if (data.grades)      setGrades(g => ({ ...initGrades(), ...data.grades }));
-                            if (data.sabadoAtivo !== undefined) setSabadoAtivo(!!data.sabadoAtivo);
-                        }
-                    } catch(e) { console.error('Erro ao carregar Grade Diária:', e); }
-                    finally { setCarregando(false); }
-                })();
-            }, []);
-
-            // ── Salva no Firestore sempre que grades ou sabadoAtivo mudar ─
-            const salvarNoFirestore = (novasGrades, novoSabado) => {
-                const db  = window.__firebaseDb;
-                const fns = window.__firebaseFns;
-                if (!db || !fns) return;
-                const { doc, setDoc } = fns;
-                if (saveTimeout.current) clearTimeout(saveTimeout.current);
-                setSalvando(true);
-                saveTimeout.current = setTimeout(async () => {
-                    try {
-                        await setDoc(doc(db, 'configuracoes', 'gradeDiaria'), {
-                            grades: novasGrades,
-                            sabadoAtivo: novoSabado,
-                            updatedAt: new Date().toISOString()
-                        }, { merge: true });
-                        setMsgStatus('✅ Salvo');
-                    } catch(e) {
-                        console.error('Erro ao salvar Grade Diária:', e);
-                        setMsgStatus('❌ Erro ao salvar');
-                    } finally {
-                        setSalvando(false);
-                        setTimeout(() => setMsgStatus(''), 2500);
-                    }
-                }, 600);
-            };
 
             useEffect(() => {
+                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(grades)); } catch(e) {}
+            }, [grades]);
+
+            useEffect(() => {
+                try { localStorage.setItem(SABADO_KEY, String(sabadoAtivo)); } catch(e) {}
                 if (!sabadoAtivo && diaSelecionado === 'sab') setDiaSelecionado('dom');
             }, [sabadoAtivo]);
 
@@ -2224,20 +2449,12 @@
 
             const adicionarOp = () => {
                 if (!novaOp.nome.trim()) return;
-                setGrades(g => {
-                    const novas = { ...g, [diaSelecionado]: [...(g[diaSelecionado]||[]), { ...novaOp, id: Date.now() }] };
-                    salvarNoFirestore(novas, sabadoAtivo);
-                    return novas;
-                });
+                setGrades(g => ({ ...g, [diaSelecionado]: [...(g[diaSelecionado]||[]), { ...novaOp, id: Date.now() }] }));
                 setNovaOp({ nome: '', horario: '', meta: '', observacao: '', tipo: 'loja' });
             };
 
             const deletarOp = (idx) => {
-                setGrades(g => {
-                    const novas = { ...g, [diaSelecionado]: g[diaSelecionado].filter((_,i)=>i!==idx) };
-                    salvarNoFirestore(novas, sabadoAtivo);
-                    return novas;
-                });
+                setGrades(g => ({ ...g, [diaSelecionado]: g[diaSelecionado].filter((_,i)=>i!==idx) }));
                 setConfirmDel(null);
             };
 
@@ -2246,9 +2463,7 @@
                 setGrades(g => {
                     const arr = [...(g[diaSelecionado]||[])];
                     arr[editIdx] = { ...editOp };
-                    const novas = { ...g, [diaSelecionado]: arr };
-                    salvarNoFirestore(novas, sabadoAtivo);
-                    return novas;
+                    return { ...g, [diaSelecionado]: arr };
                 });
                 setEditIdx(null);
                 setEditOp(null);
@@ -2260,24 +2475,9 @@
                     const destino = idx + dir;
                     if (destino < 0 || destino >= arr.length) return g;
                     [arr[idx], arr[destino]] = [arr[destino], arr[idx]];
-                    const novas = { ...g, [diaSelecionado]: arr };
-                    salvarNoFirestore(novas, sabadoAtivo);
-                    return novas;
+                    return { ...g, [diaSelecionado]: arr };
                 });
             };
-
-            const toggleSabado = () => {
-                const novo = !sabadoAtivo;
-                setSabadoAtivo(novo);
-                salvarNoFirestore(grades, novo);
-            };
-
-            if (carregando) return (
-                <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'80px 20px',gap:'16px'}}>
-                    <div style={{width:'48px',height:'48px',border:'5px solid #ede9fe',borderTop:'5px solid #7c3aed',borderRadius:'50%',animation:'rotate 1s linear infinite'}}></div>
-                    <span style={{color:'#7c3aed',fontWeight:'700',fontSize:'15px'}}>Carregando Grade Diária do Firebase...</span>
-                </div>
-            );
 
             const opsDia = grades[diaSelecionado] || [];
 
@@ -2290,21 +2490,11 @@
                             <div style={{fontSize:'12px',color:'rgba(200,180,255,0.8)',marginTop:'2px'}}>Escala Semanal · Dom → Sex{sabadoAtivo?' → Sáb':''}</div>
                         </div>
                         <div style={{display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap'}}>
-                            {msgStatus && (
-                                <span style={{background: msgStatus.startsWith('✅') ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)', border:'1px solid rgba(255,255,255,0.3)', borderRadius:'20px', padding:'5px 14px', fontSize:'12px', color:'#fff', fontWeight:'700'}}>
-                                    {msgStatus}
-                                </span>
-                            )}
-                            {salvando && (
-                                <span style={{background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.2)',borderRadius:'20px',padding:'5px 14px',fontSize:'12px',color:'#e0d5ff',fontWeight:'600'}}>
-                                    ⏳ Salvando...
-                                </span>
-                            )}
                             <span style={{background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.2)',borderRadius:'20px',padding:'5px 14px',fontSize:'12px',color:'#e0d5ff',fontWeight:'600'}}>
                                 {opsDia.length} operação{opsDia.length!==1?'s':''} hoje
                             </span>
                             <button
-                                onClick={toggleSabado}
+                                onClick={() => setSabadoAtivo(v => !v)}
                                 style={{background: sabadoAtivo ? '#10b981' : 'rgba(255,255,255,0.15)', border:'1.5px solid '+(sabadoAtivo?'#059669':'rgba(255,255,255,0.3)'), borderRadius:'20px', padding:'5px 14px', fontSize:'12px', color:'#fff', fontWeight:'700', cursor:'pointer', transition:'all 0.2s'}}
                             >
                                 {sabadoAtivo ? '🔓 Sábado Ativo' : '🔒 Ativar Sábado'}
@@ -3735,33 +3925,73 @@
 
                 const newInstances = {};
 
-                // Gráfico de Status
+                // Gráfico TS / VM / TZ (dados de Op. Descriminadas)
                 if (chartRefs.status.current) {
+                    const ant = antecipacoes;
+                    const tsNF  = parseInt(ant.croosNF)  || 0;
+                    const vmNF  = parseInt(ant.vmNF)     || 0;
+                    const tzNF  = parseInt(ant.tzNF)     || 0;
+                    const tsVol = parseInt(ant.croosVol) || 0;
+                    const vmVol = parseInt(ant.vmVol)    || 0;
+                    const tzVol = parseInt(ant.tzVol)    || 0;
+                    const tsCub = parseFloat(ant.croosCub) || 0;
+                    const vmCub = parseFloat(ant.vmCub)    || 0;
+                    const tzCub = parseFloat(ant.tzCub)    || 0;
                     const ctx = chartRefs.status.current.getContext('2d');
                     newInstances.status = new Chart(ctx, {
-                        type: 'doughnut',
+                        type: 'bar',
                         data: {
-                            labels: ['No Prazo', 'Atrasado', 'Pendente'],
-                            datasets: [{
-                                data: [indicadores.verde, indicadores.vermelho, indicadores.amarelo],
-                                backgroundColor: ['#10b981', '#ef4444', '#f59e0b'],
-                                borderWidth: 0
-                            }]
+                            labels: ['TS', 'VM', 'TZ'],
+                            datasets: [
+                                {
+                                    label: 'NF',
+                                    data: [tsNF, vmNF, tzNF],
+                                    backgroundColor: 'rgba(99,102,241,0.8)',
+                                    borderColor: '#4f46e5',
+                                    borderWidth: 2,
+                                    borderRadius: 6,
+                                    borderSkipped: false,
+                                },
+                                {
+                                    label: 'Volume',
+                                    data: [tsVol, vmVol, tzVol],
+                                    backgroundColor: 'rgba(124,58,237,0.75)',
+                                    borderColor: '#7c3aed',
+                                    borderWidth: 2,
+                                    borderRadius: 6,
+                                    borderSkipped: false,
+                                },
+                                {
+                                    label: 'Cubagem m³',
+                                    data: [tsCub, vmCub, tzCub],
+                                    backgroundColor: 'rgba(245,158,11,0.75)',
+                                    borderColor: '#f59e0b',
+                                    borderWidth: 2,
+                                    borderRadius: 6,
+                                    borderSkipped: false,
+                                },
+                            ]
                         },
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
                             plugins: {
-                                legend: {
-                                    position: 'bottom'
-                                },
-                                title: {
-                                    display: true,
-                                    text: 'Status das Operações',
-                                    font: { size: 16, weight: 'bold' }
+                                legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } },
+                                title: { display: true, text: 'TS / VM / TZ — Descriminado', font: { size: 15, weight: 'bold' } },
+                                datalabels: {
+                                    anchor: 'end',
+                                    align: 'top',
+                                    font: { size: 11, weight: 'bold' },
+                                    color: '#1e293b',
+                                    formatter: (value) => value > 0 ? value.toLocaleString('pt-BR') : ''
                                 }
+                            },
+                            scales: {
+                                x: { grid: { display: false }, ticks: { font: { size: 12, weight: 'bold' } } },
+                                y: { beginAtZero: true, ticks: { callback: v => v.toLocaleString('pt-BR') } }
                             }
-                        }
+                        },
+                        plugins: [ChartDataLabels]
                     });
                 }
 
@@ -3999,7 +4229,7 @@
                         if (chart) chart.destroy();
                     });
                 };
-            }, [operacoesFiltradas, indicadores, dadosEvolucao]);
+            }, [operacoesFiltradas, indicadores, dadosEvolucao, antecipacoes]);
 
             return (
                 <div className="animate-fade-in">
