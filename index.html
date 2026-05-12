@@ -3893,12 +3893,13 @@
                             <div className="mt-2 text-xs opacity-70 cursor-pointer hover:opacity-100 underline select-none" onClick={() => setMostrarAntecipacoes(prev => prev === 'cub' ? null : 'cub')}>Antecipação</div>
                             {mostrarAntecipacoes === 'cub' && (
                                 <input
-                                    type="number"
-                                    step="0.01"
+                                    type="text"
+                                    inputMode="decimal"
                                     value={antecipacoes.cubagem || ''}
-                                    onChange={(e) => salvarAntecipacoes({...antecipacoes, cubagem: parseFloat(e.target.value) || 0})}
+                                    onChange={(e) => { const val = e.target.value.replace(/[^0-9.,]/g, ''); salvarAntecipacoes({...antecipacoes, cubagem: val}); }}
+                                    onBlur={(e) => { const num = parseFloat(String(e.target.value).replace(',', '.')) || 0; salvarAntecipacoes({...antecipacoes, cubagem: num}); }}
                                     className="mt-2 w-full px-2 py-1 rounded text-gray-800 text-sm font-bold focus:outline-none"
-                                    placeholder="Cubagem antecipada"
+                                    placeholder="0,00"
                                     autoFocus
                                 />
                             )}
@@ -5292,7 +5293,7 @@
                     ...formData,
                     nf: parseInt(formData.nf) || 0,
                     vol: parseInt(formData.vol) || 0,
-                    cubagem: parseFloat(formData.cubagem) || 0,
+                    cubagem: parseFloat(String(formData.cubagem).replace(',', '.')) || 0,
                     conferentes: formData.conferentes || '',
                     doca: formData.doca || '',
                     meta: meta,
@@ -5390,13 +5391,16 @@
                             <div>
                                 <label className="block text-sm font-bold mb-2">Cubagem (m³)</label>
                                 <input 
-                                    type="number" 
+                                    type="text" 
                                     name="cubagem"
-                                    step="0.01"
+                                    inputMode="decimal"
                                     value={formData.cubagem}
-                                    onChange={handleChange}
+                                    onChange={(e) => {
+                                        const val = e.target.value.replace(/[^0-9.,]/g, '');
+                                        setFormData(prev => ({ ...prev, cubagem: val }));
+                                    }}
                                     className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
-                                    placeholder="0.00"
+                                    placeholder="0,00"
                                 />
                             </div>
 
@@ -5684,7 +5688,7 @@
                                                                 </div>
                                                                 <div>
                                                                     <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Cubagem</label>
-                                                                    <input type="number" step="0.01" value={dadosEdicao.cubagem} onChange={(e) => handleChange('cubagem', parseFloat(e.target.value))} className="w-full p-2 border rounded input-edit" />
+                                                                    <input type="text" inputMode="decimal" value={dadosEdicao.cubagem} onChange={(e) => { const val = e.target.value.replace(/[^0-9.,]/g, ''); handleChange('cubagem', val); }} onBlur={(e) => { const num = parseFloat(String(e.target.value).replace(',', '.')) || 0; handleChange('cubagem', num); }} className="w-full p-2 border rounded input-edit" placeholder="0,00" />
                                                                 </div>
                                                                 <div>
                                                                     <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Início</label>
