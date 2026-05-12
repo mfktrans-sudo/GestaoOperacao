@@ -3021,35 +3021,70 @@
             const cubChartInstanceRef = useRef(null);
             
             // ✅ ESTADOS PARA ANTECIPAÇÕES
+            const defaultAnt = { nf: 0, vol: 0, cubagem: 0, nfReal: 0, volReal: 0, cubagemReal: 0, vmNF: 0, croosNF: 0, tzNF: 0, vmVol: 0, croosVol: 0, tzVol: 0, vmCub: 0, croosCub: 0, tzCub: 0 };
             const [mostrarAntecipacoes, setMostrarAntecipacoes] = useState(null);
             const [mostrarVmCroos, setMostrarVmCroos] = useState(null);
             const [antecipacoes, setAntecipacoes] = useState(() => {
                 try {
                     const saved = localStorage.getItem('antecipacoes_' + dataSelecionada);
-                    return saved ? JSON.parse(saved) : { nf: 0, vol: 0, cubagem: 0, nfReal: 0, volReal: 0, cubagemReal: 0, vmNF: 0, croosNF: 0, tzNF: 0, vmVol: 0, croosVol: 0, tzVol: 0, vmCub: 0, croosCub: 0, tzCub: 0 };
+                    return saved ? JSON.parse(saved) : { ...defaultAnt };
                 } catch(e) {
-                    return { nf: 0, vol: 0, cubagem: 0, nfReal: 0, volReal: 0, cubagemReal: 0, vmNF: 0, croosNF: 0, tzNF: 0, vmVol: 0, croosVol: 0, tzVol: 0, vmCub: 0, croosCub: 0, tzCub: 0 };
+                    return { ...defaultAnt };
                 }
             });
-            
-            // Recarregar antecipações quando mudar data
+            const [antSaveStatus, setAntSaveStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
+            const antSaveTimer = useRef(null);
+
+            // Listener Firestore em tempo real — sincroniza entre usuários
             useEffect(() => {
-                try {
-                    const saved = localStorage.getItem('antecipacoes_' + dataSelecionada);
-                    setAntecipacoes(saved ? JSON.parse(saved) : { nf: 0, vol: 0, cubagem: 0, nfReal: 0, volReal: 0, cubagemReal: 0, vmNF: 0, croosNF: 0, tzNF: 0, vmVol: 0, croosVol: 0, tzVol: 0, vmCub: 0, croosCub: 0, tzCub: 0 });
-                } catch(e) {
-                    setAntecipacoes({ nf: 0, vol: 0, cubagem: 0, nfReal: 0, volReal: 0, cubagemReal: 0, vmNF: 0, croosNF: 0, tzNF: 0, vmVol: 0, croosVol: 0, tzVol: 0, vmCub: 0, croosCub: 0, tzCub: 0 });
-                }
+                if (!window.__firebaseDb || !window.__firebaseFns) return;
+                const { doc, onSnapshot } = window.__firebaseFns;
+                const fsDb = window.__firebaseDb;
+                const docRef = doc(fsDb, 'antecipacoes', dataSelecionada);
+                const unsub = onSnapshot(docRef, (snap) => {
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        setAntecipacoes(data);
+                        try { localStorage.setItem('antecipacoes_' + dataSelecionada, JSON.stringify(data)); } catch(e) {}
+                    } else {
+                        // Documento não existe ainda — tenta localStorage como fallback
+                        try {
+                            const saved = localStorage.getItem('antecipacoes_' + dataSelecionada);
+                            setAntecipacoes(saved ? JSON.parse(saved) : { ...defaultAnt });
+                        } catch(e) { setAntecipacoes({ ...defaultAnt }); }
+                    }
+                }, (err) => {
+                    console.warn('Firestore antecipacoes error, using localStorage:', err);
+                    try {
+                        const saved = localStorage.getItem('antecipacoes_' + dataSelecionada);
+                        setAntecipacoes(saved ? JSON.parse(saved) : { ...defaultAnt });
+                    } catch(e) { setAntecipacoes({ ...defaultAnt }); }
+                });
+                return () => unsub();
             }, [dataSelecionada]);
-            
-            // Salvar antecipações
+
+            // Auto-save: salva no Firestore 600ms após última alteração
             const salvarAntecipacoes = (novasAntecipacoes) => {
                 setAntecipacoes(novasAntecipacoes);
-                try {
-                    localStorage.setItem('antecipacoes_' + dataSelecionada, JSON.stringify(novasAntecipacoes));
-                } catch(e) {
-                    console.error('Erro ao salvar antecipações:', e);
-                }
+                // Salva localStorage imediatamente (fallback offline)
+                try { localStorage.setItem('antecipacoes_' + dataSelecionada, JSON.stringify(novasAntecipacoes)); } catch(e) {}
+                // Debounce para Firestore
+                if (antSaveTimer.current) clearTimeout(antSaveTimer.current);
+                setAntSaveStatus('saving');
+                antSaveTimer.current = setTimeout(async () => {
+                    try {
+                        if (window.__firebaseDb && window.__firebaseFns) {
+                            const { doc, setDoc } = window.__firebaseFns;
+                            await setDoc(doc(window.__firebaseDb, 'antecipacoes', dataSelecionada), novasAntecipacoes, { merge: true });
+                            setAntSaveStatus('saved');
+                            setTimeout(() => setAntSaveStatus(null), 2000);
+                        }
+                    } catch(e) {
+                        console.error('Erro ao salvar antecipações no Firestore:', e);
+                        setAntSaveStatus('error');
+                        setTimeout(() => setAntSaveStatus(null), 3000);
+                    }
+                }, 600);
             };
             
             // Estados dos filtros
@@ -3747,7 +3782,16 @@
                             <div className="text-3xl font-bold">{indicadores.total}</div>
                             <div className="text-sm opacity-90">Total de Operações</div>
                         </div>
-                        <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white p-6 rounded-xl shadow-lg">
+                        <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white p-6 rounded-xl shadow-lg" style={{position:'relative'}}>
+                            {antSaveStatus && (
+                                <div style={{position:'absolute',top:'6px',right:'8px',fontSize:'10px',fontWeight:'700',padding:'2px 7px',borderRadius:'8px',
+                                    background: antSaveStatus==='saving' ? 'rgba(255,255,255,0.25)' : antSaveStatus==='saved' ? 'rgba(16,185,129,0.85)' : 'rgba(239,68,68,0.85)',
+                                    color:'#fff',display:'flex',alignItems:'center',gap:'4px'}}>
+                                    {antSaveStatus==='saving' && <><span style={{display:'inline-block',width:'8px',height:'8px',border:'2px solid rgba(255,255,255,0.4)',borderTop:'2px solid #fff',borderRadius:'50%',animation:'rotate 0.8s linear infinite'}}></span> Salvando...</>}
+                                    {antSaveStatus==='saved'  && <>✓ Salvo</>}
+                                    {antSaveStatus==='error'  && <>⚠ Erro ao salvar</>}
+                                </div>
+                            )}
                             <div className="text-3xl font-bold">{indicadores.nfTotal}</div>
                             <div className="text-sm opacity-90">Total NF</div>
                             <div className="mt-2 text-xs opacity-70 cursor-pointer hover:opacity-100 underline select-none" onClick={() => setMostrarAntecipacoes(prev => prev === 'nf' ? null : 'nf')}>Antecipação</div>
