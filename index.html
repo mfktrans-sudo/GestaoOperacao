@@ -831,7 +831,7 @@
         observer.observe(document.getElementById('root'), { childList: true, subtree: false });
     </script>
 
-    <script type="text/babel">
+    <script type="text/plain" id="appSource">
         const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
         // ========== BANCO DE DADOS - FIRESTORE ==========
@@ -9527,6 +9527,22 @@
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
+    </script>
+    <script>
+        (function() {
+            // Correção cirúrgica: força o Babel a usar o runtime "classic" do JSX
+            // (React.createElement) em vez do runtime "automatic" padrão desta
+            // versão do @babel/standalone, que injeta um "import ... from
+            // 'react/jsx-runtime'" no código gerado. Como o script final é
+            // inserido como <script> comum (não type="module"), esse import
+            // quebrava com: "Cannot use import statement outside a module",
+            // travando o React antes mesmo de montar a tela.
+            var code = document.getElementById('appSource').textContent;
+            var result = Babel.transform(code, { presets: [['react', { runtime: 'classic' }]] });
+            var s = document.createElement('script');
+            s.text = result.code;
+            document.body.appendChild(s);
+        })();
     </script>
 </body>
 </html>
