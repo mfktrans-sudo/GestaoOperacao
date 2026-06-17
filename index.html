@@ -871,6 +871,24 @@
                 await Promise.all(deletes);
             }
 
+            // ===== LINHA VERMELHA (ticagem de conferência antes da doca de expedição) =====
+            async addLinhaVermelha(registro) {
+                const { collection, addDoc } = this.fns;
+                const docRef = await addDoc(collection(this.db, 'linhaVermelha'), registro);
+                return { ...registro, id: docRef.id };
+            }
+
+            async deleteLinhaVermelha(id) {
+                const { doc, deleteDoc } = this.fns;
+                await deleteDoc(doc(this.db, 'linhaVermelha', String(id)));
+            }
+
+            async updateLinhaVermelha(registro) {
+                const { doc, updateDoc } = this.fns;
+                const { id, ...data } = registro;
+                await updateDoc(doc(this.db, 'linhaVermelha', String(id)), data);
+            }
+
             async getConfig(id) {
                 const { doc, getDoc } = this.fns;
                 const snap = await getDoc(doc(this.db, 'configuracoes', id));
@@ -903,6 +921,7 @@
             const [db, setDb] = useState(null);
             const dbRef = useRef(null);
             const [operacoes, setOperacoes] = useState([]);
+            const [linhaVermelha, setLinhaVermelha] = useState([]);
             const [abaSelecionada, setAbaSelecionada] = useState('torre');
             const [dataSelecionada, setDataSelecionada] = useState(() => {
                 const now = new Date();
@@ -991,6 +1010,7 @@
                 setDb(null);
                 dbRef.current = null;
                 setOperacoes([]);
+                setLinhaVermelha([]);
             };
 
             const trocarAba = (novaAba) => {
@@ -1018,6 +1038,27 @@
                 if (!currentDb) { alert('❌ Banco de dados não inicializado. Aguarde e tente novamente.'); return; }
                 await currentDb.addOperacao(operacao);
                 // onSnapshot atualiza automaticamente em todos os dispositivos
+            };
+
+            const handleNovaLinhaVermelha = async (registro) => {
+                const currentDb = dbRef.current || db;
+                if (!currentDb) { alert('❌ Banco de dados não inicializado. Aguarde e tente novamente.'); return; }
+                await currentDb.addLinhaVermelha(registro);
+                // onSnapshot atualiza automaticamente em todos os dispositivos
+            };
+
+            const handleDeletarLinhaVermelha = async (id) => {
+                const currentDb = dbRef.current || db;
+                if (!currentDb) return;
+                await currentDb.deleteLinhaVermelha(id);
+                // onSnapshot atualiza automaticamente
+            };
+
+            const handleAtualizarLinhaVermelha = async (registro) => {
+                const currentDb = dbRef.current || db;
+                if (!currentDb) return;
+                await currentDb.updateLinhaVermelha(registro);
+                // onSnapshot atualiza automaticamente
             };
 
             const handleEditarOperacao = async (operacao) => {
@@ -1053,6 +1094,22 @@
                         setOperacoes(ops);
                     },
                     (err) => { console.error('Erro no listener em tempo real:', err); }
+                );
+                return () => unsubscribe();
+            }, [user]);
+
+            // ========== REAL-TIME LISTENER PARA LINHA VERMELHA ==========
+            useEffect(() => {
+                if (!user) return;
+                const { collection, onSnapshot } = window.__firebaseFns;
+                const db = window.__firebaseDb;
+                const unsubscribe = onSnapshot(
+                    collection(db, 'linhaVermelha'),
+                    (snapshot) => {
+                        const regs = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+                        setLinhaVermelha(regs);
+                    },
+                    (err) => { console.error('Erro no listener em tempo real (linha vermelha):', err); }
                 );
                 return () => unsubscribe();
             }, [user]);
@@ -1202,7 +1259,7 @@
                         </header>
 
                         <nav className="flex gap-2 mb-6 flex-wrap">
-                            {['torre', 'dashboard', 'performance', 'graficos', 'capacidade', 'cadastrar', 'editar', 'gerenciar', 'relatorios', 'upload', 'configuracoes'].map(aba => (
+                            {['torre', 'dashboard', 'performance', 'graficos', 'capacidade', 'cadastrar', 'linhavermelha', 'editar', 'gerenciar', 'relatorios', 'upload', 'configuracoes'].map(aba => (
                                 <button
                                     key={aba}
                                     onClick={() => trocarAba(aba)}
@@ -1217,6 +1274,7 @@
                                     {aba === 'graficos' && <><span className="icon-pulse inline-block">📈</span> Gráficos</>}
                                     {aba === 'capacidade' && <><span className="icon-bounce inline-block">👥</span> Capacidade</>}
                                     {aba === 'cadastrar' && <><span className="icon-bounce inline-block">➕</span> Cadastrar</>}
+                                    {aba === 'linhavermelha' && <><span className="icon-pulse inline-block">🚦</span> Linha Vermelha</>}
                                     {aba === 'editar' && <><span className="icon-swing inline-block">✏️</span> Editar</>}
                                     {aba === 'gerenciar' && <><span className="icon-rotate inline-block">🔧</span> Gerenciar Operações</>}
                                     {aba === 'relatorios' && <><span className="icon-pulse inline-block">📋</span> Relatórios</>}
@@ -1251,6 +1309,15 @@
                                 <Cadastrar 
                                     onSalvar={handleNovaOperacao}
                                     listaOperacoes={listaOperacoes}
+                                />
+                            )}
+                            {abaSelecionada === 'linhavermelha' && (
+                                <LinhaVermelha 
+                                    listaOperacoes={listaOperacoes}
+                                    registros={linhaVermelha}
+                                    onSalvar={handleNovaLinhaVermelha}
+                                    onAtualizar={handleAtualizarLinhaVermelha}
+                                    onDeletar={handleDeletarLinhaVermelha}
                                 />
                             )}
                             {abaSelecionada === 'editar' && (
@@ -9524,6 +9591,571 @@
                 </div>
             );
         }
+
+        // ========== LINHA VERMELHA ==========
+        // Dados das lojas cadastradas no dia para identificacao do caveirao.
+        // Historico = registros das lojas (nao impressoes).
+        // "Qtd Volumes" = quantidade livre de volumes da carga, sempre comecando em 0.
+        // "Qtd Caveirao" = identificacao manual no formato N/Total (ex: 1/101), referente
+        // a quantidade de caveirao que esta sendo enviado. Impressao gera folha A4 fiel ao modelo.
+        function LinhaVermelha({ listaOperacoes, registros, onSalvar, onAtualizar, onDeletar }) {
+            const _nowLV = new Date();
+            const _brtLV = new Date(_nowLV.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+            const _hojeLV = `${_brtLV.getFullYear()}-${String(_brtLV.getMonth()+1).padStart(2,'0')}-${String(_brtLV.getDate()).padStart(2,'0')}`;
+
+            const KEY_LOJAS = 'historicoLojasLV';
+            const KEY_MESAS = 'historicoMesasLV';
+            const KEY_COLAB = 'historicoColaboradoresLV';
+            const KEY_HIST_LOJAS = 'historicoRegistrosLV';
+
+            const [dataFiltro, setDataFiltro] = useState(_hojeLV);
+            const [adicionando, setAdicionando] = useState(false);
+            const [mostrarHistorico, setMostrarHistorico] = useState(false);
+            const [editandoHist, setEditandoHist] = useState(null);
+
+            const [historicoLojas, setHistoricoLojas] = useState(() => {
+                try { return JSON.parse(localStorage.getItem(KEY_LOJAS) || '[]'); } catch { return []; }
+            });
+            const [historicoMesas, setHistoricoMesas] = useState(() => {
+                try { return JSON.parse(localStorage.getItem(KEY_MESAS) || '[]'); } catch { return []; }
+            });
+            const [historicoColaboradores, setHistoricoColaboradores] = useState(() => {
+                try { return JSON.parse(localStorage.getItem(KEY_COLAB) || '[]'); } catch { return []; }
+            });
+            // Historico de registros de lojas cadastradas (salvo localmente)
+            const [historicoRegistros, setHistoricoRegistros] = useState(() => {
+                try { return JSON.parse(localStorage.getItem(KEY_HIST_LOJAS) || '[]'); } catch { return []; }
+            });
+
+            const [edicoesLocais, setEdicoesLocais] = useState({});
+            const [sugestaoAtiva, setSugestaoAtiva] = useState(null);
+
+            const registrosDoDia = useMemo(() => {
+                return (registros || []).filter(r => r.data === dataFiltro);
+            }, [registros, dataFiltro]);
+
+            // Conta registros de hoje para o indicador
+            const registrosHoje = useMemo(() => {
+                return historicoRegistros.filter(r => r.data === dataFiltro);
+            }, [historicoRegistros, dataFiltro]);
+
+            const salvarHistoricoLista = (setHist, key, valor, multiplos) => {
+                if (!valor || !String(valor).trim()) return;
+                const itens = multiplos
+                    ? String(valor).split(/[,;]/).map(s => s.trim()).filter(Boolean)
+                    : [String(valor).trim()];
+                setHist(prev => {
+                    const novos = [...new Set([...prev, ...itens])].slice(0, 30);
+                    try { localStorage.setItem(key, JSON.stringify(novos)); } catch (e) {}
+                    return novos;
+                });
+            };
+
+            const valorCampo = (reg, campo) => {
+                const override = edicoesLocais[reg.id];
+                if (override && override[campo] !== undefined) return override[campo];
+                return reg[campo] || '';
+            };
+
+            const handleInputChange = (id, campo, valor) => {
+                setEdicoesLocais(prev => ({ ...prev, [id]: { ...(prev[id] || {}), [campo]: valor } }));
+            };
+
+            const handleSalvarCampo = async (reg, campo, multiplos) => {
+                const valor = valorCampo(reg, campo);
+                const atualizado = { ...reg, ...(edicoesLocais[reg.id] || {}), id: reg.id };
+                try { await onAtualizar(atualizado); } catch (e) { console.error('Autosave LV:', e); }
+                if (campo === 'loja') salvarHistoricoLista(setHistoricoLojas, KEY_LOJAS, valor, false);
+                if (campo === 'mesa') salvarHistoricoLista(setHistoricoMesas, KEY_MESAS, valor, false);
+                if (campo === 'colaborador') salvarHistoricoLista(setHistoricoColaboradores, KEY_COLAB, valor, true);
+            };
+
+            const handleAdicionarCarga = async () => {
+                setAdicionando(true);
+                try {
+                    await onSalvar({
+                        data: dataFiltro,
+                        loja: '',
+                        mesa: '',
+                        colaborador: '',
+                        horarioFinalizacao: '',
+                        obs: '',
+                        preremanejo: '',
+                        lacre: '',
+                        volumes: '0',
+                        qtdCaveirao: ''
+                    });
+                } finally { setAdicionando(false); }
+            };
+
+            const handleExcluir = async (id) => {
+                if (!window.confirm('Excluir esta carga da Linha Vermelha?')) return;
+                await onDeletar(id);
+                setEdicoesLocais(prev => { const cp = { ...prev }; delete cp[id]; return cp; });
+            };
+
+            const renderSugestoes = (reg, campo, lista) => {
+                if (!(sugestaoAtiva && sugestaoAtiva.id === reg.id && sugestaoAtiva.campo === campo)) return null;
+                const valorAtual = valorCampo(reg, campo);
+                const filtradas = lista.filter(v => !valorAtual || v.toLowerCase().includes(String(valorAtual).toLowerCase()));
+                if (filtradas.length === 0) return null;
+                return (
+                    <div style={{position:'absolute',top:'100%',left:0,right:0,background:'white',border:'2px solid #667eea',borderRadius:'8px',boxShadow:'0 4px 12px rgba(0,0,0,0.15)',zIndex:999,maxHeight:'160px',overflowY:'auto'}}>
+                        {filtradas.map((v, i) => (
+                            <div key={i}
+                                onMouseDown={() => { handleInputChange(reg.id, campo, v); setSugestaoAtiva(null); }}
+                                style={{padding:'7px 10px',cursor:'pointer',fontSize:'13px',color:'#374151',borderBottom:'1px solid #f9fafb'}}
+                                onMouseEnter={e => e.currentTarget.style.background='#f5f3ff'}
+                                onMouseLeave={e => e.currentTarget.style.background='white'}
+                            >{v}</div>
+                        ))}
+                    </div>
+                );
+            };
+
+            // Salva o registro da loja no historico local ao imprimir
+            const salvarRegistroHistorico = (dados) => {
+                const registro = {
+                    id: Date.now() + '_' + Math.random().toString(36).slice(2,7),
+                    data: dados.data || dataFiltro,
+                    loja: dados.loja || '',
+                    lacre: dados.lacre || '',
+                    volumes: dados.volumes || '',
+                    qtdCaveirao: dados.qtdCaveirao || '',
+                    mesa: dados.mesa || '',
+                    colaborador: dados.colaborador || '',
+                    horaSalvo: new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+                };
+                setHistoricoRegistros(prev => {
+                    const novo = [...prev, registro];
+                    try { localStorage.setItem(KEY_HIST_LOJAS, JSON.stringify(novo)); } catch(e) {}
+                    return novo;
+                });
+            };
+
+            const handleExcluirHistorico = (id) => {
+                if (!window.confirm('Excluir este registro do historico?')) return;
+                setHistoricoRegistros(prev => {
+                    const novo = prev.filter(r => r.id !== id);
+                    try { localStorage.setItem(KEY_HIST_LOJAS, JSON.stringify(novo)); } catch(e) {}
+                    return novo;
+                });
+            };
+
+            const handleSalvarEditHistorico = () => {
+                if (!editandoHist) return;
+                setHistoricoRegistros(prev => {
+                    const novo = prev.map(r => r.id === editandoHist.id ? { ...editandoHist } : r);
+                    try { localStorage.setItem(KEY_HIST_LOJAS, JSON.stringify(novo)); } catch(e) {}
+                    return novo;
+                });
+                setEditandoHist(null);
+            };
+
+            // Gera folha A4 identica ao modelo PPTX
+            const gerarFolhaA4 = (reg) => {
+                const dados = { ...reg, ...(edicoesLocais[reg.id] || {}) };
+                const [ano, mes, dia] = (dados.data || dataFiltro).split('-');
+                const dataFmt = `${dia}/${mes}/${(ano||'').slice(2)}`;
+                const loja = dados.loja || '';
+                const lacre = dados.lacre || '';
+                const preremanejo = dados.preremanejo || '';
+                const volumes = dados.volumes || '0';
+                const qtdCaveirao = dados.qtdCaveirao || '';
+
+                const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Identificacao - ${loja}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:white; font-family:Arial,sans-serif; }
+  .no-print { background:#f3f4f6; padding:12px; text-align:center; border-bottom:2px solid #ddd; }
+  .btn-print { padding:12px 36px; background:#dc2626; color:white; border:none; border-radius:8px; font-size:16px; font-weight:700; cursor:pointer; }
+  @media print { .no-print { display:none !important; } body { margin:0; } }
+  @page { size:A4 landscape; margin:0; }
+
+  .folha {
+    width:297mm; height:210mm;
+    padding:4mm 10mm 5mm 10mm;
+    display:flex; flex-direction:column;
+    background:white;
+    box-sizing:border-box;
+    overflow:hidden;
+  }
+
+  /* TOPO — logo e data grudados ao topo, sem linha */
+  .topo {
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    margin-bottom:0;
+    flex-shrink:0;
+  }
+  .logo-wrap {
+    display:flex;
+    align-items:flex-start;
+  }
+  .logo-wrap img {
+    width:105mm;
+    height:auto;
+    object-fit:contain;
+    display:block;
+    margin-top:-3mm;
+    margin-left:-4mm;
+  }
+  .topo-dir {
+    text-align:right;
+    padding-top:1mm;
+  }
+  .data-txt {
+    font-family:'Arial Black',Arial,sans-serif;
+    font-size:22pt; font-weight:900; color:#FF0000;
+    text-decoration:underline; line-height:1.15;
+  }
+  .lv-txt {
+    font-family:'Arial Black',Arial,sans-serif;
+    font-size:22pt; font-weight:900; color:#FF0000;
+    text-decoration:underline; line-height:1.15;
+  }
+
+  /* CORPO — TS, LOJA, PRÉ, LACRE todos juntos, sem espaço vago */
+  .corpo {
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-start;
+    min-height:0;
+    margin-top:-2mm;
+  }
+  .ts-txt {
+    font-family:'Arial Black',Arial,sans-serif;
+    font-size:58pt; font-weight:900; color:#FF0000;
+    text-decoration:underline; line-height:1.0;
+    margin-bottom:0;
+  }
+  .loja-txt {
+    font-family:'Arial Black',Arial,sans-serif;
+    font-size:58pt; font-weight:900; color:#FF0000;
+    text-decoration:underline; line-height:1.0;
+    margin-bottom:1mm;
+  }
+  .pre-txt {
+    font-family:'Arial Black',Arial,sans-serif;
+    font-size:18pt; font-weight:900; color:#000;
+    line-height:1.2;
+    letter-spacing:0.5px;
+  }
+  .lacre-txt {
+    font-family:'Arial Black',Arial,sans-serif;
+    font-size:22pt; font-weight:900; color:#FF0000;
+    text-decoration:underline; line-height:1.1;
+  }
+
+  /* RODAPE — QTD grande e 1/1 mesmo tamanho */
+  .rodape {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    flex-shrink:0;
+    margin-top:auto;
+    padding-top:2mm;
+    border-top:2.5px solid #000;
+  }
+  .rodape-esq {
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-end;
+    gap:0;
+  }
+  .qtd-txt {
+    font-family:'Arial Black',Arial,sans-serif;
+    font-size:68pt; font-weight:900; color:#FF0000;
+    text-decoration:underline; line-height:1;
+  }
+  .img-caveirao {
+    font-size:80pt; line-height:1;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .num-vol {
+    font-family:'Arial Black',Arial,sans-serif;
+    font-size:68pt; font-weight:900; color:#FF0000;
+    text-decoration:underline; text-align:right;
+    line-height:1;
+  }
+</style></head><body>
+
+<div class="no-print">
+  <button class="btn-print" onclick="window.print()">🖨️ Imprimir Folha A4</button>
+</div>
+<div class="folha">
+  <div class="topo">
+    <div class="logo-wrap">
+      <img src="data:image/jpeg;base64,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ddSwuBIcSHcDqCLXZLU1XSZVYdgrMTjFD/Emvju3JuYaqJxLonEOJdruFgJJ1JGpUSw7MU1JS1mGLbmniOiwFWzmafD7IWlxBIJYJy7UNOg4bnHr1OpU/wBlttDZrPR2i2U7KahooGU9PCzojjY0Na0fIAEEb7WV+kw7s9Ytr4JHxzyUraSNzHbrgZpGREg+oPJ+ZV+q8WXzEEOSmVs2GcWYdmhuVHJV1VyjMIuDIWN5VzPO1c07zide0Kzed2XVPmhg6PDFZdZrdSitiqpnRRB5lDNfYyCRoCSDr6l+MRZa0l7zcwtmBPc5mHDlNNDTUDYhyb3SNc0vLtdRoHDhp7kIO8Ves8fHcf7QeFcoDeLjQYdFrlu96joJjE+pGrmxxucOO7q0cP39ekNIsKomzWybnxXjmix3hfGtywdiWnpPEpKumgbOyaDUndcwlvHUnjrp0cOAKDidmSgdhzPXNHBdjuNwmwpZ/ExT01XUum5GZ7SXbpd0cRID27rdddFY9cNk7lpactrPW09JXVt1udzqTV3S6Vrt6ermPW7sA1Og9Z4kkldygpdnddqO+7UuIaC82bMC9WWy2mmpRTYVD3PbO4NlD37rgA3SSRvaSB2KXdj2yYxtGGsQzYhjv1FZay5mTD9uvcxfV0tLx9vrxbqC3zeHFrjpx1Pc5eZcU2Ecb4yxYLpNX1mKauOeVskQYKdrN/cjboeIAfpqewLu0BERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREBERAREQEREH//2Q==" alt="Fast Shop" />
+    </div>
+    <div class="topo-dir">
+      <div class="data-txt">DATA: ${dataFmt}</div>
+      <div class="lv-txt">LINHA VERMELHA</div>
+    </div>
+  </div>
+  <div class="corpo">
+    <div class="ts-txt">TS: S&#xC3;O PAULO</div>
+    <div class="loja-txt">LOJA: ${loja}</div>
+    <div class="pre-txt">PRÉ: ${preremanejo}</div>
+    <div class="lacre-txt">LACRE ${lacre}</div>
+  </div>
+  <div class="rodape">
+    <div class="rodape-esq">
+      <div class="qtd-txt">QTD: ${volumes} VOL</div>
+    </div>
+    <div class="img-caveirao">&#x1F4E6;</div>
+    <div class="num-vol">${qtdCaveirao}</div>
+  </div>
+</div>
+</body></html>`;
+
+                // Salva no historico antes de abrir
+                salvarRegistroHistorico({ ...dados });
+
+                const blob = new Blob([html], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                const win = window.open(url, '_blank');
+                if (win) win.onload = () => setTimeout(() => URL.revokeObjectURL(url), 5000);
+            };
+
+            return (
+                <div className="animate-slide-in">
+                    {/* CABECALHO */}
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'24px',flexWrap:'wrap',gap:'12px'}}>
+                        <h2 className="text-3xl font-bold text-gray-800">
+                            <span className="icon-pulse inline-block">🚦</span> Linha Vermelha
+                        </h2>
+                        <div style={{display:'flex',gap:'10px',alignItems:'center',flexWrap:'wrap'}}>
+                            {registrosHoje.length > 0 && (
+                                <button
+                                    onClick={() => setMostrarHistorico(v => !v)}
+                                    style={{background:'linear-gradient(135deg,#10b981,#059669)',color:'white',borderRadius:'12px',padding:'8px 18px',fontWeight:'700',fontSize:'14px',cursor:'pointer',border:'none',boxShadow:'0 2px 8px rgba(16,185,129,0.35)'}}
+                                >
+                                    📋 {registrosHoje.length} registro{registrosHoje.length > 1 ? 's' : ''} hoje
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* PAINEL HISTORICO */}
+                    {mostrarHistorico && (
+                        <div style={{background:'#f0fdf4',border:'2px solid #10b981',borderRadius:'14px',padding:'18px',marginBottom:'24px'}}>
+                            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}}>
+                                <span style={{fontWeight:'700',fontSize:'15px',color:'#065f46'}}>📋 Historico de Lojas Cadastradas</span>
+                                <button onClick={() => setMostrarHistorico(false)} style={{background:'none',border:'none',fontSize:'20px',cursor:'pointer',color:'#6b7280'}}>&#x2715;</button>
+                            </div>
+
+                            {/* MODAL EDICAO HISTORICO */}
+                            {editandoHist && (
+                                <div style={{background:'white',border:'2px solid #667eea',borderRadius:'12px',padding:'16px',marginBottom:'14px'}}>
+                                    <div style={{fontWeight:'700',marginBottom:'10px',color:'#374151'}}>✏️ Editar Registro</div>
+                                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'10px',marginBottom:'12px'}}>
+                                        {[['loja','Loja'],['lacre','Lacre'],['volumes','Qtd Volumes'],['qtdCaveirao','Qtd Caveirão'],['mesa','Mesa'],['colaborador','Colaborador']].map(([campo,label]) => (
+                                            <div key={campo}>
+                                                <label style={{fontSize:'12px',fontWeight:'600',color:'#6b7280',display:'block',marginBottom:'3px'}}>{label}</label>
+                                                <input
+                                                    type="text"
+                                                    value={editandoHist[campo] || ''}
+                                                    onChange={e => setEditandoHist(prev => ({...prev,[campo]:e.target.value}))}
+                                                    style={{width:'100%',padding:'6px 8px',border:'2px solid #667eea',borderRadius:'6px',fontSize:'13px'}}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div style={{display:'flex',gap:'8px'}}>
+                                        <button onClick={handleSalvarEditHistorico} style={{background:'linear-gradient(135deg,#10b981,#059669)',color:'white',border:'none',borderRadius:'7px',padding:'7px 18px',fontWeight:'700',cursor:'pointer',fontSize:'13px'}}>✅ Salvar</button>
+                                        <button onClick={() => setEditandoHist(null)} style={{background:'#e5e7eb',color:'#374151',border:'none',borderRadius:'7px',padding:'7px 14px',fontWeight:'600',cursor:'pointer',fontSize:'13px'}}>Cancelar</button>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div style={{overflowX:'auto'}}>
+                                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'13px'}}>
+                                    <thead>
+                                        <tr style={{background:'#d1fae5'}}>
+                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Data</th>
+                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Loja</th>
+                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Lacre</th>
+                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Qtd Vol</th>
+                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Qtd Caveirão</th>
+                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Mesa</th>
+                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Colaborador</th>
+                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Hora</th>
+                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {[...historicoRegistros].reverse().slice(0,60).map((r,i) => (
+                                            <tr key={r.id || i} style={{borderBottom:'1px solid #a7f3d0',background: editandoHist && editandoHist.id===r.id ? '#ecfdf5' : 'transparent'}}>
+                                                <td style={{padding:'5px 10px'}}>{r.data ? r.data.split('-').reverse().join('/') : '—'}</td>
+                                                <td style={{padding:'5px 10px',fontWeight:'700',color:'#dc2626'}}>{r.loja||'—'}</td>
+                                                <td style={{padding:'5px 10px'}}>{r.lacre||'—'}</td>
+                                                <td style={{padding:'5px 10px',fontWeight:'600'}}>{r.volumes||'—'}</td>
+                                                <td style={{padding:'5px 10px',fontWeight:'600',color:'#dc2626'}}>{r.qtdCaveirao||'—'}</td>
+                                                <td style={{padding:'5px 10px'}}>{r.mesa||'—'}</td>
+                                                <td style={{padding:'5px 10px'}}>{r.colaborador||'—'}</td>
+                                                <td style={{padding:'5px 10px',color:'#6b7280',fontSize:'12px'}}>{r.horaSalvo||'—'}</td>
+                                                <td style={{padding:'5px 10px'}}>
+                                                    <div style={{display:'flex',gap:'5px'}}>
+                                                        <button onClick={() => setEditandoHist({...r})} style={{background:'linear-gradient(135deg,#3b82f6,#1d4ed8)',color:'white',border:'none',borderRadius:'6px',padding:'4px 10px',fontWeight:'700',cursor:'pointer',fontSize:'12px'}}>✏️</button>
+                                                        <button onClick={() => handleExcluirHistorico(r.id)} style={{background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'white',border:'none',borderRadius:'6px',padding:'4px 10px',fontWeight:'700',cursor:'pointer',fontSize:'12px'}}>🗑</button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {historicoRegistros.length === 0 && (
+                                            <tr><td colSpan="9" style={{textAlign:'center',padding:'16px',color:'#9ca3af'}}>Nenhum registro no historico ainda.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* FILTRO + ADICIONAR */}
+                    <div className="bg-gray-50 rounded-xl p-4 mb-6 flex flex-wrap items-end gap-4">
+                        <div>
+                            <label className="block text-sm font-bold mb-2">Data</label>
+                            <input
+                                type="date"
+                                value={dataFiltro}
+                                onChange={(e) => setDataFiltro(e.target.value)}
+                                className="p-3 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
+                            />
+                        </div>
+                        <button
+                            onClick={handleAdicionarCarga}
+                            disabled={adicionando}
+                            className="px-5 py-3 rounded-lg font-bold text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 transition-all btn-animated"
+                        >
+                            ➕ Adicionar Carga do Dia
+                        </button>
+                        <span className="text-xs text-gray-500 pb-3">💾 Autosave ao sair de cada campo</span>
+                    </div>
+
+                    {/* TABELA */}
+                    <div className="overflow-x-auto">
+                        <table className="w-full" style={{minWidth:'960px'}}>
+                            <thead className="bg-gray-100 sticky top-0">
+                                <tr>
+                                    <th className="px-3 py-2 text-left text-sm font-bold">🏬 Loja</th>
+                                    <th className="px-3 py-2 text-left text-sm font-bold">📋 Pré</th>
+                                    <th className="px-3 py-2 text-left text-sm font-bold">🔒 Lacre</th>
+                                    <th className="px-3 py-2 text-left text-sm font-bold">📦 Qtd Volumes</th>
+                                    <th className="px-3 py-2 text-left text-sm font-bold">🏷️ Qtd Caveirão</th>
+                                    <th className="px-3 py-2 text-left text-sm font-bold">🪑 Mesa</th>
+                                    <th className="px-3 py-2 text-left text-sm font-bold">👤 Colaborador</th>
+                                    <th className="px-3 py-2 text-left text-sm font-bold">⏰ Finalização</th>
+                                    <th className="px-3 py-2 text-left text-sm font-bold">Obs</th>
+                                    <th className="px-3 py-2 text-left text-sm font-bold">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {registrosDoDia.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="10" className="text-center py-8 text-gray-500">
+                                            Nenhuma carga cadastrada para esta data. Clique em "➕ Adicionar Carga do Dia" para começar.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    registrosDoDia.map((reg) => (
+                                        <tr key={reg.id} className="border-b hover:bg-gray-50">
+                                            {/* LOJA */}
+                                            <td className="px-2 py-2" style={{position:'relative',minWidth:'150px'}}>
+                                                <input type="text" value={valorCampo(reg,'loja')}
+                                                    onChange={(e) => { handleInputChange(reg.id,'loja',e.target.value); setSugestaoAtiva({id:reg.id,campo:'loja'}); }}
+                                                    onFocus={() => setSugestaoAtiva({id:reg.id,campo:'loja'})}
+                                                    onBlur={() => setTimeout(() => { setSugestaoAtiva(null); handleSalvarCampo(reg,'loja'); }, 200)}
+                                                    className="w-full p-2 border rounded input-edit" placeholder="Nome da loja..." autoComplete="off" />
+                                                {renderSugestoes(reg,'loja',historicoLojas)}
+                                            </td>
+                                            {/* PRÉ-ROMANEIO */}
+                                            <td className="px-2 py-2" style={{minWidth:'130px'}}>
+                                                <input type="text" value={valorCampo(reg,'preremanejo')}
+                                                    onChange={(e) => handleInputChange(reg.id,'preremanejo',e.target.value)}
+                                                    onBlur={() => handleSalvarCampo(reg,'preremanejo')}
+                                                    className="w-full p-2 border rounded input-edit" placeholder="Ex: 917495" style={{fontWeight:'600'}} />
+                                            </td>
+                                            {/* LACRE */}
+                                            <td className="px-2 py-2" style={{minWidth:'110px'}}>
+                                                <input type="text" value={valorCampo(reg,'lacre')}
+                                                    onChange={(e) => handleInputChange(reg.id,'lacre',e.target.value)}
+                                                    onBlur={() => handleSalvarCampo(reg,'lacre')}
+                                                    className="w-full p-2 border rounded input-edit" placeholder="Ex: 20866" />
+                                            </td>
+                                            {/* QTD VOLUMES */}
+                                            <td className="px-2 py-2" style={{minWidth:'110px'}}>
+                                                <input type="number" min="0" value={valorCampo(reg,'volumes')}
+                                                    onChange={(e) => handleInputChange(reg.id,'volumes',e.target.value)}
+                                                    onBlur={() => handleSalvarCampo(reg,'volumes')}
+                                                    className="w-full p-2 border rounded input-edit" placeholder="Ex: 101" style={{fontWeight:'700'}} />
+                                            </td>
+                                            {/* QTD CAVEIRÃO */}
+                                            <td className="px-2 py-2" style={{minWidth:'110px'}}>
+                                                <input type="text" value={valorCampo(reg,'qtdCaveirao')}
+                                                    onChange={(e) => handleInputChange(reg.id,'qtdCaveirao',e.target.value)}
+                                                    onBlur={() => handleSalvarCampo(reg,'qtdCaveirao')}
+                                                    className="w-full p-2 border rounded input-edit" placeholder="Ex: 1/101" style={{fontWeight:'700',textAlign:'center'}} />
+                                            </td>
+                                            {/* MESA */}
+                                            <td className="px-2 py-2" style={{position:'relative',minWidth:'90px'}}>
+                                                <input type="text" value={valorCampo(reg,'mesa')}
+                                                    onChange={(e) => { handleInputChange(reg.id,'mesa',e.target.value); setSugestaoAtiva({id:reg.id,campo:'mesa'}); }}
+                                                    onFocus={() => setSugestaoAtiva({id:reg.id,campo:'mesa'})}
+                                                    onBlur={() => setTimeout(() => { setSugestaoAtiva(null); handleSalvarCampo(reg,'mesa'); }, 200)}
+                                                    className="w-full p-2 border rounded input-edit" placeholder="Ex: 05" autoComplete="off" />
+                                                {renderSugestoes(reg,'mesa',historicoMesas)}
+                                            </td>
+                                            {/* COLABORADOR */}
+                                            <td className="px-2 py-2" style={{position:'relative',minWidth:'150px'}}>
+                                                <input type="text" value={valorCampo(reg,'colaborador')}
+                                                    onChange={(e) => { handleInputChange(reg.id,'colaborador',e.target.value); setSugestaoAtiva({id:reg.id,campo:'colaborador'}); }}
+                                                    onFocus={() => setSugestaoAtiva({id:reg.id,campo:'colaborador'})}
+                                                    onBlur={() => setTimeout(() => { setSugestaoAtiva(null); handleSalvarCampo(reg,'colaborador',true); }, 200)}
+                                                    className="w-full p-2 border rounded input-edit" placeholder="Nome..." autoComplete="off" />
+                                                {renderSugestoes(reg,'colaborador',historicoColaboradores)}
+                                            </td>
+                                            {/* HORARIO */}
+                                            <td className="px-2 py-2" style={{minWidth:'100px'}}>
+                                                <input type="time" value={valorCampo(reg,'horarioFinalizacao')}
+                                                    onChange={(e) => handleInputChange(reg.id,'horarioFinalizacao',e.target.value)}
+                                                    onBlur={() => handleSalvarCampo(reg,'horarioFinalizacao')}
+                                                    className="w-full p-2 border rounded input-edit" />
+                                            </td>
+                                            {/* OBS */}
+                                            <td className="px-2 py-2" style={{minWidth:'130px'}}>
+                                                <input type="text" value={valorCampo(reg,'obs')}
+                                                    onChange={(e) => handleInputChange(reg.id,'obs',e.target.value)}
+                                                    onBlur={() => handleSalvarCampo(reg,'obs')}
+                                                    className="w-full p-2 border rounded input-edit" placeholder="Obs..." />
+                                            </td>
+                                            {/* ACOES */}
+                                            <td className="px-2 py-2" style={{minWidth:'90px'}}>
+                                                <div style={{display:'flex',flexDirection:'column',gap:'5px'}}>
+                                                    <button onClick={() => gerarFolhaA4(reg)}
+                                                        title="Gerar folha A4 para impressao"
+                                                        style={{background:'linear-gradient(135deg,#dc2626,#991b1b)',color:'white',border:'none',borderRadius:'7px',padding:'6px 8px',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>
+                                                        🖨️ Imprimir
+                                                    </button>
+                                                    <button onClick={() => handleExcluir(reg.id)}
+                                                        style={{background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'white',border:'none',borderRadius:'7px',padding:'5px 8px',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>
+                                                        🗑 Excluir
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        }
+
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
