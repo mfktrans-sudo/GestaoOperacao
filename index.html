@@ -4623,63 +4623,36 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {(() => {
-                                        // ── Ordenação exclusiva da tabela "Dados Detalhados" ──
-                                        // Ordem por horário de meta (mais cedo → mais tarde),
-                                        // e "TS SÃO PAULO" sempre por último, independente da meta.
-                                        const normalizarTxt = (s) => (s || '').toString().toUpperCase()
-                                            .normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-                                        const metaParaMinutos = (meta) => {
-                                            if (!meta) return Infinity;
-                                            const [hStr, mStr] = meta.toString().split(':');
-                                            const h = parseInt(hStr, 10);
-                                            const m = parseInt(mStr, 10) || 0;
-                                            return Number.isNaN(h) ? Infinity : (h * 60 + m);
-                                        };
-                                        const ehTsSaoPaulo = (nome) => {
-                                            const n = normalizarTxt(nome);
-                                            return n.includes('TS') && n.includes('SAO PAULO');
-                                        };
-                                        const dadosOrdenados = [...operacoesFiltradas].sort((a, b) => {
-                                            const aTs = ehTsSaoPaulo(a.operacao);
-                                            const bTs = ehTsSaoPaulo(b.operacao);
-                                            if (aTs && !bTs) return 1;
-                                            if (!aTs && bTs) return -1;
-                                            if (aTs && bTs) return 0;
-                                            return metaParaMinutos(a.meta) - metaParaMinutos(b.meta);
-                                        });
-
-                                        return dadosOrdenados.length === 0 ? (
-                                            <tr>
-                                                <td colSpan="11" className="text-center py-8 text-gray-500">
-                                                    Nenhum dado encontrado com os filtros selecionados
+                                    {operacoesFiltradas.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="11" className="text-center py-8 text-gray-500">
+                                                Nenhum dado encontrado com os filtros selecionados
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        operacoesFiltradas.map((op, idx) => (
+                                            <tr key={idx} className="border-b hover:bg-gray-50">
+                                                <td className="px-4 py-2 text-sm">{formatarData(op.data)}</td>
+                                                <td className="px-4 py-2 text-sm font-medium">{op.operacao}</td>
+                                                <td className="px-4 py-2 text-sm">{op.nf}</td>
+                                                <td className="px-4 py-2 text-sm">{op.vol}</td>
+                                                <td className="px-4 py-2 text-sm">{op.cubagem}</td>
+                                                <td className="px-4 py-2 text-sm">{op.inicio}</td>
+                                                <td className="px-4 py-2 text-sm">{op.termino}</td>
+                                                <td className="px-4 py-2 text-sm">{op.meta}</td>
+                                                <td className="px-4 py-2 text-sm">{op.conferentes || <span style={{color:'#94a3b8'}}>—</span>}</td>
+                                                <td className="px-4 py-2 text-sm">{op.doca || <span style={{color:'#94a3b8'}}>—</span>}</td>
+                                                <td className="px-4 py-2">
+                                                    <span className={`px-2 py-1 rounded-full text-xs font-bold text-white ${
+                                                        op.status === 'verde' ? 'bg-green-500' :
+                                                        op.status === 'vermelho' ? 'bg-red-500' : 'bg-yellow-500'
+                                                    }`}>
+                                                        {op.status === 'verde' ? '✓' : op.status === 'vermelho' ? '✗' : '⏳'}
+                                                    </span>
                                                 </td>
                                             </tr>
-                                        ) : (
-                                            dadosOrdenados.map((op, idx) => (
-                                                <tr key={idx} className="border-b hover:bg-gray-50">
-                                                    <td className="px-4 py-2 text-sm">{formatarData(op.data)}</td>
-                                                    <td className="px-4 py-2 text-sm font-medium">{op.operacao}</td>
-                                                    <td className="px-4 py-2 text-sm">{op.nf}</td>
-                                                    <td className="px-4 py-2 text-sm">{op.vol}</td>
-                                                    <td className="px-4 py-2 text-sm">{op.cubagem}</td>
-                                                    <td className="px-4 py-2 text-sm">{op.inicio}</td>
-                                                    <td className="px-4 py-2 text-sm">{op.termino}</td>
-                                                    <td className="px-4 py-2 text-sm">{op.meta}</td>
-                                                    <td className="px-4 py-2 text-sm">{op.conferentes || <span style={{color:'#94a3b8'}}>—</span>}</td>
-                                                    <td className="px-4 py-2 text-sm">{op.doca || <span style={{color:'#94a3b8'}}>—</span>}</td>
-                                                    <td className="px-4 py-2">
-                                                        <span className={`px-2 py-1 rounded-full text-xs font-bold text-white ${
-                                                            op.status === 'verde' ? 'bg-green-500' :
-                                                            op.status === 'vermelho' ? 'bg-red-500' : 'bg-yellow-500'
-                                                        }`}>
-                                                            {op.status === 'verde' ? '✓' : op.status === 'vermelho' ? '✗' : '⏳'}
-                                                        </span>
-                                                    </td>
-                                                </tr>
-                                            ))
-                                        );
-                                    })()}
+                                        ))
+                                    )}
                                 </tbody>
                             </table>
                         </div>
@@ -9656,10 +9629,77 @@
 
             const [edicoesLocais, setEdicoesLocais] = useState({});
             const [sugestaoAtiva, setSugestaoAtiva] = useState(null);
+            const [selHistorico, setSelHistorico] = useState({});
 
-            const registrosDoDia = useMemo(() => {
-                return (registros || []).filter(r => r.data === dataFiltro);
-            }, [registros, dataFiltro]);
+            // ── FILTROS AVANÇADOS ──
+            const [filtroDataInicio, setFiltroDataInicio] = useState('');
+            const [filtroDataFim, setFiltroDataFim] = useState('');
+            const [filtroLoja, setFiltroLoja] = useState('');
+            const [modoFiltroAvancado, setModoFiltroAvancado] = useState(false);
+
+            // Registros filtrados pelo painel avançado (usa todos os registros do Firebase)
+            const registrosFiltrados = useMemo(() => {
+                if (!modoFiltroAvancado) return (registros || []).filter(r => r.data === dataFiltro);
+                return (registros || []).filter(r => {
+                    const dentroInicio = !filtroDataInicio || r.data >= filtroDataInicio;
+                    const dentroFim    = !filtroDataFim    || r.data <= filtroDataFim;
+                    const lojaOk       = !filtroLoja       || (r.loja || '').toLowerCase().includes(filtroLoja.toLowerCase());
+                    return dentroInicio && dentroFim && lojaOk;
+                });
+            }, [registros, dataFiltro, modoFiltroAvancado, filtroDataInicio, filtroDataFim, filtroLoja]);
+
+            const registrosDoDia = registrosFiltrados;
+
+            // Lojas únicas nos registros filtrados (para sugestão no filtro)
+            const lojasUnicas = useMemo(() => {
+                const set = new Set((registros || []).map(r => r.loja).filter(Boolean));
+                return [...set].sort();
+            }, [registros]);
+
+            // Volumetria: quantidade de lojas por dia (todos os registros, sem filtro de loja)
+            const volumetriaPorDia = useMemo(() => {
+                const base = modoFiltroAvancado
+                    ? (registros || []).filter(r => {
+                        const d = !filtroDataInicio || r.data >= filtroDataInicio;
+                        const e = !filtroDataFim    || r.data <= filtroDataFim;
+                        return d && e;
+                      })
+                    : (registros || []).filter(r => r.data === dataFiltro);
+                const map = {};
+                base.forEach(r => {
+                    const d = r.data || 'sem data';
+                    if (!map[d]) map[d] = { lojas: new Set(), volumes: 0 };
+                    if (r.loja) map[d].lojas.add(r.loja);
+                    map[d].volumes += Number(r.volumes) || 0;
+                });
+                return Object.entries(map)
+                    .sort(([a],[b]) => a.localeCompare(b))
+                    .map(([data, v]) => ({ data, qtdLojas: v.lojas.size, volumes: v.volumes }));
+            }, [registros, dataFiltro, modoFiltroAvancado, filtroDataInicio, filtroDataFim]);
+
+            // ── EXPORT EXCEL ──
+            const exportarExcel = () => {
+                if (!window.XLSX) { alert('Biblioteca XLSX não carregada.'); return; }
+                const linhas = registrosDoDia.map(r => ({
+                    'Data':            r.data ? r.data.split('-').reverse().join('/') : '',
+                    'Loja':            r.loja || '',
+                    'Pré-Romaneio':    r.preremanejo || '',
+                    'Lacre':           r.lacre || '',
+                    'Qtd Volumes':     r.volumes || '',
+                    'Qtd Caveirão':    r.qtdCaveirao || '',
+                    'Mesa':            r.mesa || '',
+                    'Colaborador':     r.colaborador || '',
+                    'Finalização':     r.horarioFinalizacao || '',
+                    'Obs':             r.obs || '',
+                }));
+                const wb = window.XLSX.utils.book_new();
+                const ws = window.XLSX.utils.json_to_sheet(linhas);
+                window.XLSX.utils.book_append_sheet(wb, ws, 'Linha Vermelha');
+                const periodo = modoFiltroAvancado
+                    ? `${filtroDataInicio||'inicio'}_${filtroDataFim||'fim'}`
+                    : dataFiltro;
+                window.XLSX.writeFile(wb, `LinhaVermelha_${periodo}.xlsx`);
+            };
 
             // Conta registros de hoje para o indicador
             const registrosHoje = useMemo(() => {
@@ -9967,102 +10007,6 @@
                         </div>
                     </div>
 
-                    {/* PAINEL HISTORICO */}
-                    {mostrarHistorico && (
-                        <div style={{background:'#f0fdf4',border:'2px solid #10b981',borderRadius:'14px',padding:'18px',marginBottom:'24px'}}>
-                            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}}>
-                                <span style={{fontWeight:'700',fontSize:'15px',color:'#065f46'}}>📋 Historico de Lojas Cadastradas</span>
-                                <button onClick={() => setMostrarHistorico(false)} style={{background:'none',border:'none',fontSize:'20px',cursor:'pointer',color:'#6b7280'}}>&#x2715;</button>
-                            </div>
-
-                            {/* MODAL EDICAO HISTORICO */}
-                            {editandoHist && (
-                                <div style={{background:'white',border:'2px solid #667eea',borderRadius:'12px',padding:'16px',marginBottom:'14px'}}>
-                                    <div style={{fontWeight:'700',marginBottom:'10px',color:'#374151'}}>✏️ Editar Registro</div>
-                                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'10px',marginBottom:'12px'}}>
-                                        {[['loja','Loja'],['lacre','Lacre'],['volumes','Qtd Volumes'],['qtdCaveirao','Qtd Caveirão'],['mesa','Mesa'],['colaborador','Colaborador']].map(([campo,label]) => (
-                                            <div key={campo}>
-                                                <label style={{fontSize:'12px',fontWeight:'600',color:'#6b7280',display:'block',marginBottom:'3px'}}>{label}</label>
-                                                <input
-                                                    type="text"
-                                                    value={editandoHist[campo] || ''}
-                                                    onChange={e => setEditandoHist(prev => ({...prev,[campo]:e.target.value}))}
-                                                    style={{width:'100%',padding:'6px 8px',border:'2px solid #667eea',borderRadius:'6px',fontSize:'13px'}}
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div style={{display:'flex',gap:'8px'}}>
-                                        <button onClick={handleSalvarEditHistorico} style={{background:'linear-gradient(135deg,#10b981,#059669)',color:'white',border:'none',borderRadius:'7px',padding:'7px 18px',fontWeight:'700',cursor:'pointer',fontSize:'13px'}}>✅ Salvar</button>
-                                        <button onClick={() => setEditandoHist(null)} style={{background:'#e5e7eb',color:'#374151',border:'none',borderRadius:'7px',padding:'7px 14px',fontWeight:'600',cursor:'pointer',fontSize:'13px'}}>Cancelar</button>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div style={{overflowX:'auto'}}>
-                                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'13px'}}>
-                                    <thead>
-                                        <tr style={{background:'#d1fae5'}}>
-                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Data</th>
-                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Loja</th>
-                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Lacre</th>
-                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Qtd Vol</th>
-                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Qtd Caveirão</th>
-                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Mesa</th>
-                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Colaborador</th>
-                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Hora</th>
-                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Ações</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {[...historicoRegistros].reverse().slice(0,60).map((r,i) => (
-                                            <tr key={r.id || i} style={{borderBottom:'1px solid #a7f3d0',background: editandoHist && editandoHist.id===r.id ? '#ecfdf5' : 'transparent'}}>
-                                                <td style={{padding:'5px 10px'}}>{r.data ? r.data.split('-').reverse().join('/') : '—'}</td>
-                                                <td style={{padding:'5px 10px',fontWeight:'700',color:'#dc2626'}}>{r.loja||'—'}</td>
-                                                <td style={{padding:'5px 10px'}}>{r.lacre||'—'}</td>
-                                                <td style={{padding:'5px 10px',fontWeight:'600'}}>{r.volumes||'—'}</td>
-                                                <td style={{padding:'5px 10px',fontWeight:'600',color:'#dc2626'}}>{r.qtdCaveirao||'—'}</td>
-                                                <td style={{padding:'5px 10px'}}>{r.mesa||'—'}</td>
-                                                <td style={{padding:'5px 10px'}}>{r.colaborador||'—'}</td>
-                                                <td style={{padding:'5px 10px',color:'#6b7280',fontSize:'12px'}}>{r.horaSalvo||'—'}</td>
-                                                <td style={{padding:'5px 10px'}}>
-                                                    <div style={{display:'flex',gap:'5px'}}>
-                                                        <button onClick={() => setEditandoHist({...r})} style={{background:'linear-gradient(135deg,#3b82f6,#1d4ed8)',color:'white',border:'none',borderRadius:'6px',padding:'4px 10px',fontWeight:'700',cursor:'pointer',fontSize:'12px'}}>✏️</button>
-                                                        <button onClick={() => handleExcluirHistorico(r.id)} style={{background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'white',border:'none',borderRadius:'6px',padding:'4px 10px',fontWeight:'700',cursor:'pointer',fontSize:'12px'}}>🗑</button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        {historicoRegistros.length === 0 && (
-                                            <tr><td colSpan="9" style={{textAlign:'center',padding:'16px',color:'#9ca3af'}}>Nenhum registro no historico ainda.</td></tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* FILTRO + ADICIONAR */}
-                    <div className="bg-gray-50 rounded-xl p-4 mb-6 flex flex-wrap items-end gap-4">
-                        <div>
-                            <label className="block text-sm font-bold mb-2">Data</label>
-                            <input
-                                type="date"
-                                value={dataFiltro}
-                                onChange={(e) => setDataFiltro(e.target.value)}
-                                className="p-3 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
-                            />
-                        </div>
-                        <button
-                            onClick={handleAdicionarCarga}
-                            disabled={adicionando}
-                            className="px-5 py-3 rounded-lg font-bold text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 transition-all btn-animated"
-                        >
-                            ➕ Adicionar Carga do Dia
-                        </button>
-                        <span className="text-xs text-gray-500 pb-3">💾 Autosave ao sair de cada campo</span>
-                    </div>
-
                     {/* TABELA */}
                     <div className="overflow-x-auto">
                         <table className="w-full" style={{minWidth:'960px'}}>
@@ -10160,18 +10104,11 @@
                                                     className="w-full p-2 border rounded input-edit" placeholder="Obs..." />
                                             </td>
                                             {/* ACOES */}
-                                            <td className="px-2 py-2" style={{minWidth:'90px'}}>
-                                                <div style={{display:'flex',flexDirection:'column',gap:'5px'}}>
-                                                    <button onClick={() => gerarFolhaA4(reg)}
-                                                        title="Gerar folha A4 para impressao"
-                                                        style={{background:'linear-gradient(135deg,#dc2626,#991b1b)',color:'white',border:'none',borderRadius:'7px',padding:'6px 8px',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>
-                                                        🖨️ Imprimir
-                                                    </button>
-                                                    <button onClick={() => handleExcluir(reg.id)}
-                                                        style={{background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'white',border:'none',borderRadius:'7px',padding:'5px 8px',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>
-                                                        🗑 Excluir
-                                                    </button>
-                                                </div>
+                                            <td className="px-2 py-2" style={{minWidth:'70px'}}>
+                                                <button onClick={() => handleExcluir(reg.id)}
+                                                    style={{background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'white',border:'none',borderRadius:'7px',padding:'6px 10px',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>
+                                                    🗑 Excluir
+                                                </button>
                                             </td>
                                         </tr>
                                     ))
@@ -10179,6 +10116,278 @@
                             </tbody>
                         </table>
                     </div>
+
+                    {/* FILTRO + ADICIONAR */}
+                    <div style={{background:'#fafafa',border:'1.5px solid #e5e7eb',borderRadius:'14px',padding:'16px',marginBottom:'20px'}}>
+                        {/* Linha 1: modo simples (data única) e botões de ação */}
+                        <div style={{display:'flex',flexWrap:'wrap',alignItems:'flex-end',gap:'12px',marginBottom: modoFiltroAvancado ? '14px' : '0'}}>
+                            {!modoFiltroAvancado && (
+                                <div>
+                                    <label style={{display:'block',fontSize:'12px',fontWeight:'700',color:'#374151',marginBottom:'4px'}}>📅 Data</label>
+                                    <input
+                                        type="date"
+                                        value={dataFiltro}
+                                        onChange={(e) => setDataFiltro(e.target.value)}
+                                        style={{padding:'9px 12px',border:'2px solid #d1d5db',borderRadius:'8px',fontSize:'14px',outline:'none',color:'#1f2937'}}
+                                    />
+                                </div>
+                            )}
+                            <button
+                                onClick={() => { setModoFiltroAvancado(v => !v); }}
+                                style={{padding:'9px 16px',borderRadius:'8px',border:'1.5px solid #dc2626',background: modoFiltroAvancado ? '#dc2626' : 'white',color: modoFiltroAvancado ? 'white' : '#dc2626',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}
+                            >
+                                {modoFiltroAvancado ? '✖ Fechar Filtros Avançados' : '🔍 Filtros Avançados'}
+                            </button>
+                            <button
+                                onClick={exportarExcel}
+                                style={{padding:'9px 16px',borderRadius:'8px',border:'none',background:'linear-gradient(135deg,#10b981,#059669)',color:'white',fontWeight:'700',fontSize:'13px',cursor:'pointer',boxShadow:'0 2px 6px rgba(16,185,129,0.35)'}}
+                            >
+                                📥 Baixar Excel
+                            </button>
+                            <button
+                                onClick={handleAdicionarCarga}
+                                disabled={adicionando}
+                                style={{padding:'9px 18px',borderRadius:'8px',border:'none',background:'linear-gradient(135deg,#7c3aed,#2563eb)',color:'white',fontWeight:'700',fontSize:'13px',cursor:'pointer',boxShadow:'0 2px 6px rgba(124,58,237,0.3)'}}
+                            >
+                                ➕ Adicionar Carga do Dia
+                            </button>
+                            <span style={{fontSize:'11px',color:'#9ca3af',alignSelf:'flex-end',paddingBottom:'2px'}}>💾 Autosave ao sair de cada campo</span>
+                        </div>
+
+                        {/* Linha 2: painel avançado (por período e loja) */}
+                        {modoFiltroAvancado && (
+                            <div style={{background:'#fff1f2',border:'1.5px solid #fca5a5',borderRadius:'10px',padding:'14px',display:'flex',flexWrap:'wrap',gap:'14px',alignItems:'flex-end',position:'relative'}}>
+                                <div>
+                                    <label style={{display:'block',fontSize:'12px',fontWeight:'700',color:'#374151',marginBottom:'4px'}}>📅 Data Início</label>
+                                    <input type="date" value={filtroDataInicio} onChange={e => setFiltroDataInicio(e.target.value)}
+                                        style={{padding:'8px 10px',border:'2px solid #fca5a5',borderRadius:'7px',fontSize:'13px',outline:'none',color:'#1f2937'}} />
+                                </div>
+                                <div>
+                                    <label style={{display:'block',fontSize:'12px',fontWeight:'700',color:'#374151',marginBottom:'4px'}}>📅 Data Fim</label>
+                                    <input type="date" value={filtroDataFim} onChange={e => setFiltroDataFim(e.target.value)}
+                                        style={{padding:'8px 10px',border:'2px solid #fca5a5',borderRadius:'7px',fontSize:'13px',outline:'none',color:'#1f2937'}} />
+                                </div>
+                                <div style={{minWidth:'200px',position:'relative'}}>
+                                    <label style={{display:'block',fontSize:'12px',fontWeight:'700',color:'#374151',marginBottom:'4px'}}>🏬 Filtrar por Loja</label>
+                                    <input type="text" value={filtroLoja} onChange={e => setFiltroLoja(e.target.value)}
+                                        placeholder="Digite o nome da loja..."
+                                        style={{padding:'8px 10px',border:'2px solid #fca5a5',borderRadius:'7px',fontSize:'13px',outline:'none',color:'#1f2937',width:'100%'}} />
+                                    {filtroLoja && lojasUnicas.filter(l => l.toLowerCase().includes(filtroLoja.toLowerCase())).length > 0 && (
+                                        <div style={{position:'absolute',zIndex:50,background:'white',border:'1.5px solid #fca5a5',borderRadius:'8px',marginTop:'2px',maxHeight:'160px',overflowY:'auto',boxShadow:'0 4px 12px rgba(0,0,0,0.12)',minWidth:'200px'}}>
+                                            {lojasUnicas.filter(l => l.toLowerCase().includes(filtroLoja.toLowerCase())).map(l => (
+                                                <div key={l} onClick={() => setFiltroLoja(l)}
+                                                    style={{padding:'7px 12px',cursor:'pointer',fontSize:'13px',fontWeight:'600',color:'#374151',userSelect:'none'}}>
+                                                    🏬 {l}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <button onClick={() => { setFiltroDataInicio(''); setFiltroDataFim(''); setFiltroLoja(''); }}
+                                    style={{padding:'8px 14px',borderRadius:'7px',border:'1.5px solid #d1d5db',background:'white',color:'#6b7280',fontWeight:'600',fontSize:'12px',cursor:'pointer'}}>
+                                    🔄 Limpar
+                                </button>
+                                <div style={{fontSize:'12px',color:'#dc2626',fontWeight:'700',alignSelf:'flex-end',paddingBottom:'2px'}}>
+                                    {registrosDoDia.length} registro{registrosDoDia.length !== 1 ? 's' : ''} encontrado{registrosDoDia.length !== 1 ? 's' : ''}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* PAINEL HISTORICO */}
+                    {mostrarHistorico && (
+                        <div style={{background:'#f0fdf4',border:'2px solid #10b981',borderRadius:'14px',padding:'18px',marginBottom:'24px'}}>
+                            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}}>
+                                <span style={{fontWeight:'700',fontSize:'15px',color:'#065f46'}}>📋 Historico de Lojas Cadastradas</span>
+                                <button onClick={() => setMostrarHistorico(false)} style={{background:'none',border:'none',fontSize:'20px',cursor:'pointer',color:'#6b7280'}}>&#x2715;</button>
+                            </div>
+
+                            {/* MODAL EDICAO HISTORICO */}
+                            {editandoHist && (
+                                <div style={{background:'white',border:'2px solid #667eea',borderRadius:'12px',padding:'16px',marginBottom:'14px'}}>
+                                    <div style={{fontWeight:'700',marginBottom:'10px',color:'#374151'}}>✏️ Editar Registro</div>
+                                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'10px',marginBottom:'12px'}}>
+                                        {[['loja','Loja'],['lacre','Lacre'],['volumes','Qtd Volumes'],['qtdCaveirao','Qtd Caveirão'],['mesa','Mesa'],['colaborador','Colaborador']].map(([campo,label]) => (
+                                            <div key={campo}>
+                                                <label style={{fontSize:'12px',fontWeight:'600',color:'#6b7280',display:'block',marginBottom:'3px'}}>{label}</label>
+                                                <input
+                                                    type="text"
+                                                    value={editandoHist[campo] || ''}
+                                                    onChange={e => setEditandoHist(prev => ({...prev,[campo]:e.target.value}))}
+                                                    style={{width:'100%',padding:'6px 8px',border:'2px solid #667eea',borderRadius:'6px',fontSize:'13px'}}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div style={{display:'flex',gap:'8px'}}>
+                                        <button onClick={handleSalvarEditHistorico} style={{background:'linear-gradient(135deg,#10b981,#059669)',color:'white',border:'none',borderRadius:'7px',padding:'7px 18px',fontWeight:'700',cursor:'pointer',fontSize:'13px'}}>✅ Salvar</button>
+                                        <button onClick={() => setEditandoHist(null)} style={{background:'#e5e7eb',color:'#374151',border:'none',borderRadius:'7px',padding:'7px 14px',fontWeight:'600',cursor:'pointer',fontSize:'13px'}}>Cancelar</button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {(() => {
+                                const listaHist = [...historicoRegistros].reverse().slice(0,60);
+                                const todosSelecionados = listaHist.length > 0 && listaHist.every(r => (selHistorico[r.id||r.horaSalvo]));
+                                return (
+                                <>
+                                {/* BARRA DE AÇÕES EM LOTE */}
+                                {listaHist.length > 0 && (
+                                    <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'10px',flexWrap:'wrap'}}>
+                                        <label style={{display:'flex',alignItems:'center',gap:'6px',fontSize:'13px',fontWeight:'700',color:'#065f46',cursor:'pointer',userSelect:'none'}}>
+                                            <input type="checkbox"
+                                                checked={todosSelecionados}
+                                                onChange={e => {
+                                                    const novo = {};
+                                                    if (e.target.checked) listaHist.forEach(r => { novo[r.id||r.horaSalvo] = true; });
+                                                    setSelHistorico(novo);
+                                                }}
+                                                style={{width:'16px',height:'16px',cursor:'pointer'}} />
+                                            Selecionar todos
+                                        </label>
+                                        {Object.values(selHistorico).some(Boolean) && (
+                                            <>
+                                            <span style={{fontSize:'12px',color:'#6b7280',fontWeight:'600'}}>
+                                                {Object.values(selHistorico).filter(Boolean).length} selecionado(s)
+                                            </span>
+                                            <button
+                                                onClick={() => {
+                                                    const sels = listaHist.filter(r => selHistorico[r.id||r.horaSalvo]);
+                                                    sels.forEach((r, idx) => {
+                                                        setTimeout(() => gerarFolhaA4(r), idx * 300);
+                                                    });
+                                                }}
+                                                style={{background:'linear-gradient(135deg,#dc2626,#991b1b)',color:'white',border:'none',borderRadius:'7px',padding:'6px 14px',fontWeight:'700',fontSize:'12px',cursor:'pointer',boxShadow:'0 2px 6px rgba(220,38,38,0.3)'}}>
+                                                🖨️ Imprimir Selecionados
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    const sels = listaHist.filter(r => selHistorico[r.id||r.horaSalvo]);
+                                                    if (!window.confirm(`Excluir ${sels.length} registro(s) do histórico?`)) return;
+                                                    sels.forEach(r => handleExcluirHistorico(r.id));
+                                                    setSelHistorico({});
+                                                }}
+                                                style={{background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'white',border:'none',borderRadius:'7px',padding:'6px 14px',fontWeight:'700',fontSize:'12px',cursor:'pointer',boxShadow:'0 2px 6px rgba(239,68,68,0.3)'}}>
+                                                🗑 Excluir Selecionados
+                                            </button>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+                                <div style={{overflowX:'auto'}}>
+                                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'13px'}}>
+                                    <thead>
+                                        <tr style={{background:'#d1fae5'}}>
+                                            <th style={{padding:'7px 8px',textAlign:'center',width:'36px'}}></th>
+                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Data</th>
+                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Loja</th>
+                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Lacre</th>
+                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Qtd Vol</th>
+                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Qtd Caveirão</th>
+                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Mesa</th>
+                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Colaborador</th>
+                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Hora</th>
+                                            <th style={{padding:'7px 10px',textAlign:'left'}}>Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {listaHist.map((r,i) => {
+                                            const chave = r.id||r.horaSalvo;
+                                            const marcado = !!selHistorico[chave];
+                                            return (
+                                            <tr key={chave || i} style={{borderBottom:'1px solid #a7f3d0',background: marcado ? '#dcfce7' : (editandoHist && editandoHist.id===r.id ? '#ecfdf5' : 'transparent')}}>
+                                                <td style={{padding:'5px 8px',textAlign:'center'}}>
+                                                    <input type="checkbox" checked={marcado}
+                                                        onChange={e => setSelHistorico(prev => ({...prev,[chave]:e.target.checked}))}
+                                                        style={{width:'15px',height:'15px',cursor:'pointer'}} />
+                                                </td>
+                                                <td style={{padding:'5px 10px'}}>{r.data ? r.data.split('-').reverse().join('/') : '—'}</td>
+                                                <td style={{padding:'5px 10px',fontWeight:'700',color:'#dc2626'}}>{r.loja||'—'}</td>
+                                                <td style={{padding:'5px 10px'}}>{r.lacre||'—'}</td>
+                                                <td style={{padding:'5px 10px',fontWeight:'600'}}>{r.volumes||'—'}</td>
+                                                <td style={{padding:'5px 10px',fontWeight:'600',color:'#dc2626'}}>{r.qtdCaveirao||'—'}</td>
+                                                <td style={{padding:'5px 10px'}}>{r.mesa||'—'}</td>
+                                                <td style={{padding:'5px 10px'}}>{r.colaborador||'—'}</td>
+                                                <td style={{padding:'5px 10px',color:'#6b7280',fontSize:'12px'}}>{r.horaSalvo||'—'}</td>
+                                                <td style={{padding:'5px 10px'}}>
+                                                    <div style={{display:'flex',gap:'5px'}}>
+                                                        <button onClick={() => setEditandoHist({...r})} style={{background:'linear-gradient(135deg,#3b82f6,#1d4ed8)',color:'white',border:'none',borderRadius:'6px',padding:'4px 10px',fontWeight:'700',cursor:'pointer',fontSize:'12px'}}>✏️</button>
+                                                        <button onClick={() => gerarFolhaA4(r)} title="Gerar folha A4" style={{background:'linear-gradient(135deg,#dc2626,#991b1b)',color:'white',border:'none',borderRadius:'6px',padding:'4px 10px',fontWeight:'700',cursor:'pointer',fontSize:'12px'}}>🖨️</button>
+                                                        <button onClick={() => handleExcluirHistorico(r.id)} style={{background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'white',border:'none',borderRadius:'6px',padding:'4px 10px',fontWeight:'700',cursor:'pointer',fontSize:'12px'}}>🗑</button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            );
+                                        })}
+                                        {historicoRegistros.length === 0 && (
+                                            <tr><td colSpan="10" style={{textAlign:'center',padding:'16px',color:'#9ca3af'}}>Nenhum registro no historico ainda.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                                </div>
+                                </>
+                                );
+                            })()}
+                        </div>
+                    )}
+
+                    {/* ── INDICADOR DE VOLUMETRIA ── */}
+                    {volumetriaPorDia.length > 0 && (
+                        <div style={{marginTop:'28px',background:'linear-gradient(135deg,#1a0a3e 0%,#2d1b69 100%)',borderRadius:'14px',padding:'18px 22px',boxShadow:'0 4px 16px rgba(109,40,217,0.25)'}}>
+                            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'14px',flexWrap:'wrap',gap:'8px'}}>
+                                <span style={{fontWeight:'800',fontSize:'15px',color:'#fff',letterSpacing:'-0.2px'}}>
+                                    📊 Volumetria — Lojas por Dia
+                                </span>
+                                <div style={{display:'flex',gap:'18px'}}>
+                                    <span style={{fontSize:'12px',color:'rgba(200,180,255,0.8)',fontWeight:'600'}}>
+                                        Total de lojas: <strong style={{color:'#fff'}}>{new Set(registrosDoDia.map(r=>r.loja).filter(Boolean)).size}</strong>
+                                    </span>
+                                    <span style={{fontSize:'12px',color:'rgba(200,180,255,0.8)',fontWeight:'600'}}>
+                                        Total de volumes: <strong style={{color:'#f87171'}}>{registrosDoDia.reduce((a,r)=>a+(Number(r.volumes)||0),0)}</strong>
+                                    </span>
+                                </div>
+                            </div>
+                            <div style={{overflowX:'auto'}}>
+                                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'13px',minWidth:'500px'}}>
+                                    <thead>
+                                        <tr style={{background:'rgba(255,255,255,0.08)'}}>
+                                            <th style={{padding:'8px 14px',textAlign:'left',color:'rgba(200,180,255,0.9)',fontWeight:'700',fontSize:'11px',textTransform:'uppercase',letterSpacing:'0.07em',borderRadius:'8px 0 0 8px'}}>📅 Data</th>
+                                            <th style={{padding:'8px 14px',textAlign:'center',color:'rgba(200,180,255,0.9)',fontWeight:'700',fontSize:'11px',textTransform:'uppercase',letterSpacing:'0.07em'}}>🏬 Qtd Lojas</th>
+                                            <th style={{padding:'8px 14px',textAlign:'center',color:'rgba(200,180,255,0.9)',fontWeight:'700',fontSize:'11px',textTransform:'uppercase',letterSpacing:'0.07em'}}>📦 Total Volumes</th>
+                                            <th style={{padding:'8px 14px',textAlign:'left',color:'rgba(200,180,255,0.9)',fontWeight:'700',fontSize:'11px',textTransform:'uppercase',letterSpacing:'0.07em',borderRadius:'0 8px 8px 0'}}>Distribuição</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {volumetriaPorDia.map((item, i) => {
+                                            const maxLojas = Math.max(...volumetriaPorDia.map(x=>x.qtdLojas),1);
+                                            const pct = Math.round((item.qtdLojas / maxLojas) * 100);
+                                            return (
+                                                <tr key={item.data} style={{borderBottom:'1px solid rgba(255,255,255,0.07)'}}>
+                                                    <td style={{padding:'9px 14px',color:'#e0d5ff',fontWeight:'600',fontSize:'13px'}}>
+                                                        {item.data.split('-').reverse().join('/')}
+                                                    </td>
+                                                    <td style={{padding:'9px 14px',textAlign:'center'}}>
+                                                        <span style={{background:'rgba(124,58,237,0.4)',color:'#c4b5fd',fontWeight:'800',fontSize:'16px',padding:'2px 12px',borderRadius:'8px'}}>
+                                                            {item.qtdLojas}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{padding:'9px 14px',textAlign:'center',color:'#f87171',fontWeight:'700',fontSize:'14px'}}>
+                                                        {item.volumes.toLocaleString('pt-BR')}
+                                                    </td>
+                                                    <td style={{padding:'9px 14px',minWidth:'140px'}}>
+                                                        <div style={{height:'8px',background:'rgba(255,255,255,0.1)',borderRadius:'4px',overflow:'hidden'}}>
+                                                            <div style={{height:'100%',width:`${pct}%`,background:'linear-gradient(90deg,#7c3aed,#f87171)',borderRadius:'4px',transition:'width 0.5s ease'}} />
+                                                        </div>
+                                                        <span style={{fontSize:'10px',color:'rgba(200,180,255,0.6)',marginTop:'2px',display:'block'}}>{pct}% do pico</span>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }
