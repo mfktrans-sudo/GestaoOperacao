@@ -9612,6 +9612,9 @@
             const [adicionando, setAdicionando] = useState(false);
             const [mostrarHistorico, setMostrarHistorico] = useState(false);
             const [editandoHist, setEditandoHist] = useState(null);
+            const [salvandoLinha, setSalvandoLinha] = useState(null);
+            const [lvMsg, setLvMsg] = useState({ t: '', k: 'ok' });
+            const lvFlash = (t, k = 'ok') => { setLvMsg({ t, k }); setTimeout(() => setLvMsg(prev => (prev.t === t ? { t: '', k: 'ok' } : prev)), 3000); };
 
             const [historicoLojas, setHistoricoLojas] = useState(() => {
                 try { return JSON.parse(localStorage.getItem(KEY_LOJAS) || '[]'); } catch { return []; }
@@ -9731,10 +9734,37 @@
             const handleSalvarCampo = async (reg, campo, multiplos) => {
                 const valor = valorCampo(reg, campo);
                 const atualizado = { ...reg, ...(edicoesLocais[reg.id] || {}), id: reg.id };
-                try { await onAtualizar(atualizado); } catch (e) { console.error('Autosave LV:', e); }
+                try {
+                    await onAtualizar(atualizado);
+                } catch (e) {
+                    console.error('Autosave LV:', e);
+                    lvFlash('❌ Erro ao salvar "' + campo + '": ' + (e?.message || e), 'err');
+                    return;
+                }
                 if (campo === 'loja') salvarHistoricoLista(setHistoricoLojas, KEY_LOJAS, valor, false);
                 if (campo === 'mesa') salvarHistoricoLista(setHistoricoMesas, KEY_MESAS, valor, false);
                 if (campo === 'colaborador') salvarHistoricoLista(setHistoricoColaboradores, KEY_COLAB, valor, true);
+            };
+
+            const handleSalvarLinha = async (reg) => {
+                setSalvandoLinha(reg.id);
+                const atualizado = { ...reg, ...(edicoesLocais[reg.id] || {}), id: reg.id };
+                try {
+                    await onAtualizar(atualizado);
+                    const valorLoja = valorCampo(reg, 'loja');
+                    const valorMesa = valorCampo(reg, 'mesa');
+                    const valorColab = valorCampo(reg, 'colaborador');
+                    salvarHistoricoLista(setHistoricoLojas, KEY_LOJAS, valorLoja, false);
+                    salvarHistoricoLista(setHistoricoMesas, KEY_MESAS, valorMesa, false);
+                    salvarHistoricoLista(setHistoricoColaboradores, KEY_COLAB, valorColab, true);
+                    salvarRegistroHistorico(atualizado);
+                    lvFlash('✅ Carga da loja "' + (valorLoja || '(sem nome)') + '" salva!');
+                } catch (e) {
+                    console.error('Salvar linha LV:', e);
+                    lvFlash('❌ Erro ao salvar: ' + (e?.message || e), 'err');
+                } finally {
+                    setSalvandoLinha(null);
+                }
             };
 
             const handleAdicionarCarga = async () => {
@@ -9752,7 +9782,13 @@
                         volumes: '0',
                         qtdCaveirao: ''
                     });
-                } finally { setAdicionando(false); }
+                    lvFlash('✅ Carga adicionada! Preencha a loja e os dados na linha nova.');
+                } catch (e) {
+                    console.error('Adicionar carga LV:', e);
+                    lvFlash('❌ Não foi possível adicionar a carga: ' + (e?.message || e), 'err');
+                } finally {
+                    setAdicionando(false);
+                }
             };
 
             const handleExcluir = async (id) => {
@@ -9979,9 +10015,6 @@
 </div>
 </body></html>`;
 
-                // Salva no historico antes de abrir
-                salvarRegistroHistorico({ ...dados });
-
                 const blob = new Blob([html], { type: 'text/html' });
                 const url = URL.createObjectURL(blob);
                 const win = window.open(url, '_blank');
@@ -9990,6 +10023,18 @@
 
             return (
                 <div className="animate-slide-in">
+                    {/* TOAST DE FEEDBACK (salvar/erro) */}
+                    {lvMsg.t && (
+                        <div style={{
+                            position:'fixed', top:'16px', right:'16px', zIndex:9999,
+                            background: lvMsg.k === 'err' ? 'linear-gradient(135deg,#ef4444,#dc2626)' : 'linear-gradient(135deg,#10b981,#059669)',
+                            color:'white', padding:'12px 20px', borderRadius:'10px',
+                            fontWeight:'700', fontSize:'13px', boxShadow:'0 6px 20px rgba(0,0,0,0.25)',
+                            maxWidth:'360px'
+                        }}>
+                            {lvMsg.t}
+                        </div>
+                    )}
                     {/* CABECALHO */}
                     <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'24px',flexWrap:'wrap',gap:'12px'}}>
                         <h2 className="text-3xl font-bold text-gray-800">
@@ -10032,7 +10077,8 @@
                                         </td>
                                     </tr>
                                 ) : (
-                                    registrosDoDia.map((reg) => (
+                                    registrosDoDia.map((reg) => {
+                                        return (
                                         <tr key={reg.id} className="border-b hover:bg-gray-50">
                                             {/* LOJA */}
                                             <td className="px-2 py-2" style={{position:'relative',minWidth:'150px'}}>
@@ -10104,14 +10150,21 @@
                                                     className="w-full p-2 border rounded input-edit" placeholder="Obs..." />
                                             </td>
                                             {/* ACOES */}
-                                            <td className="px-2 py-2" style={{minWidth:'70px'}}>
-                                                <button onClick={() => handleExcluir(reg.id)}
-                                                    style={{background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'white',border:'none',borderRadius:'7px',padding:'6px 10px',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>
-                                                    🗑 Excluir
-                                                </button>
+                                            <td className="px-2 py-2" style={{minWidth:'140px'}}>
+                                                <div style={{display:'flex',gap:'6px'}}>
+                                                    <button onClick={() => handleSalvarLinha(reg)}
+                                                        disabled={salvandoLinha === reg.id}
+                                                        style={{background: salvandoLinha === reg.id ? '#9ca3af' : 'linear-gradient(135deg,#10b981,#059669)',color:'white',border:'none',borderRadius:'7px',padding:'6px 10px',fontWeight:'700',fontSize:'12px',cursor: salvandoLinha === reg.id ? 'default' : 'pointer'}}>
+                                                        {salvandoLinha === reg.id ? '⏳ Salvando...' : '💾 Salvar'}
+                                                    </button>
+                                                    <button onClick={() => handleExcluir(reg.id)}
+                                                        style={{background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'white',border:'none',borderRadius:'7px',padding:'6px 10px',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>
+                                                        🗑 Excluir
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
-                                    ))
+                                    );})
                                 )}
                             </tbody>
                         </table>
@@ -10217,7 +10270,7 @@
                                                     style={{width:'100%',padding:'6px 8px',border:'2px solid #667eea',borderRadius:'6px',fontSize:'13px'}}
                                                 />
                                             </div>
-                                        ))}
+                                            ))}
                                     </div>
                                     <div style={{display:'flex',gap:'8px'}}>
                                         <button onClick={handleSalvarEditHistorico} style={{background:'linear-gradient(135deg,#10b981,#059669)',color:'white',border:'none',borderRadius:'7px',padding:'7px 18px',fontWeight:'700',cursor:'pointer',fontSize:'13px'}}>✅ Salvar</button>
