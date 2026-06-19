@@ -3217,6 +3217,36 @@
                 });
             }, [operacoes, tipoFiltroData, dataSelecionada, dataInicio, dataFim, operacoesSelecionadas, statusSelecionados, calcMediaIntervalo]);
 
+            // ── Ordenação por meta de finalização (usada apenas na tabela "Dados Detalhados") ──
+            // Ordem fixa, sempre de cima para baixo:
+            // 1) CONTAGEM (20h) → 2) PINHAIS (21h) → 3) PAVUNA → 4) PAVUNA 2 (se houver)
+            // → 5) UBERLÂNDIA (sozinha ou com TAGUATINGA) → 6) RIBEIRÃO PRETO
+            // → 7) demais operações (ordem original) → 8) TS SÃO PAULO (sempre por último)
+            const operacoesFiltradasOrdenadas = useMemo(() => {
+                const normPrio = (s) => (s || '')
+                    .toString()
+                    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                    .toUpperCase()
+                    .trim();
+
+                const rankPrioridadeOperacao = (nomeOp) => {
+                    const n = normPrio(nomeOp);
+                    if (n.includes('TS SAO PAULO') || n.includes('TS SP')) return 999; // sempre por último
+                    if (n.includes('CONTAGEM')) return 1;          // 20h
+                    if (n.includes('PINHAIS')) return 2;           // 21h
+                    if (n.includes('PAVUNA 2') || n.includes('PAVUNA2')) return 4;
+                    if (n.includes('PAVUNA')) return 3;
+                    if (n.includes('UBERLANDIA')) return 5;        // sozinha ou com Taguatinga
+                    if (n.includes('RIBEIRAO PRETO') || n.includes('RIBEIRAO')) return 6;
+                    return 500; // demais operações, antes de TS São Paulo
+                };
+
+                return [...operacoesFiltradas]
+                    .map((op, idx) => ({ op, idx, r: rankPrioridadeOperacao(op.operacao) }))
+                    .sort((a, b) => a.r - b.r || a.idx - b.idx) // estável: mantém ordem original dentro do mesmo rank
+                    .map(x => x.op);
+            }, [operacoesFiltradas]);
+
             // Calcular médias por operação para os modos de média
             const mediasPeriodo = useMemo(() => {
                 const { inicio, fim, labelPeriodo } = calcMediaIntervalo;
@@ -4630,7 +4660,7 @@
                                             </td>
                                         </tr>
                                     ) : (
-                                        operacoesFiltradas.map((op, idx) => (
+                                        operacoesFiltradasOrdenadas.map((op, idx) => (
                                             <tr key={idx} className="border-b hover:bg-gray-50">
                                                 <td className="px-4 py-2 text-sm">{formatarData(op.data)}</td>
                                                 <td className="px-4 py-2 text-sm font-medium">{op.operacao}</td>
