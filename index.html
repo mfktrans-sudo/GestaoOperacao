@@ -3200,8 +3200,31 @@
             }, [tipoFiltroData, dataSelecionada]);
 
             // Aplicar filtros (sem dependência circular)
+            // ── Sequência de exibição por meta de horário ──────────────────────────
+            // Contagem (até 20h) → Pinhais (21h) → Pavuna → Pavuna 2 →
+            // Uberlândia → Ribeirão Preto → demais → TS São Paulo (sempre por último)
+            const getOrdemMeta = (nomeOp) => {
+                const n = (nomeOp || '').toUpperCase().trim();
+                // TS São Paulo sempre por último
+                if (/TS\s*(S[AÃ]O\s*PAULO|SP)\b/i.test(n) || (/\bTS\b/.test(n) && /S[AÃ]O\s*PAULO/.test(n))) return 99;
+                // Contagem (meta até 20h)
+                if (n.includes('CONTAGEM')) return 1;
+                // Pinhais (meta 21h) — sempre antes de Pavuna
+                if (n.includes('PINHAIS')) return 2;
+                // Pavuna 2 — vem depois de Pavuna 1/simples
+                if (/PAVUNA.*2/.test(n)) return 4;
+                // Pavuna 1 / Pavuna (qualquer variante sem "2") — sempre após Pinhais
+                if (n.includes('PAVUNA')) return 3;
+                // Uberlândia
+                if (n.includes('UBERLANDIA') || n.includes('UBERLÂNDIA')) return 5;
+                // Ribeirão Preto
+                if (n.includes('RIBEIRAO') || n.includes('RIBEIRÃO')) return 6;
+                // Demais cargas
+                return 50;
+            };
+
             const operacoesFiltradas = useMemo(() => {
-                return operacoes.filter(op => {
+                const filtradas = operacoes.filter(op => {
                     let dataOk = false;
                     if (tipoFiltroData === 'dia') {
                         dataOk = op.data === dataSelecionada;
@@ -3214,6 +3237,14 @@
                     const operacaoOk = operacoesSelecionadas.includes('TODAS') || operacoesSelecionadas.includes(op.operacao);
                     const statusOk = statusSelecionados.includes(op.status);
                     return dataOk && operacaoOk && statusOk;
+                });
+                // Ordenar conforme sequência de meta definida
+                return filtradas.sort((a, b) => {
+                    const ordemA = getOrdemMeta(a.operacao);
+                    const ordemB = getOrdemMeta(b.operacao);
+                    if (ordemA !== ordemB) return ordemA - ordemB;
+                    // Dentro do mesmo grupo, mantém ordem original (por data/início)
+                    return 0;
                 });
             }, [operacoes, tipoFiltroData, dataSelecionada, dataInicio, dataFim, operacoesSelecionadas, statusSelecionados, calcMediaIntervalo]);
 
