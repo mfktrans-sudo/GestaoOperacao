@@ -3200,31 +3200,8 @@
             }, [tipoFiltroData, dataSelecionada]);
 
             // Aplicar filtros (sem dependência circular)
-            // ── Sequência de exibição por meta de horário ──────────────────────────
-            // Contagem (até 20h) → Pinhais (21h) → Pavuna → Pavuna 2 →
-            // Uberlândia → Ribeirão Preto → demais → TS São Paulo (sempre por último)
-            const getOrdemMeta = (nomeOp) => {
-                const n = (nomeOp || '').toUpperCase().trim();
-                // TS São Paulo sempre por último
-                if (/TS\s*(S[AÃ]O\s*PAULO|SP)\b/i.test(n) || (/\bTS\b/.test(n) && /S[AÃ]O\s*PAULO/.test(n))) return 99;
-                // Contagem (meta até 20h)
-                if (n.includes('CONTAGEM')) return 1;
-                // Pinhais (meta 21h) — sempre antes de Pavuna
-                if (n.includes('PINHAIS')) return 2;
-                // Pavuna 2 — vem depois de Pavuna 1/simples
-                if (/PAVUNA.*2/.test(n)) return 4;
-                // Pavuna 1 / Pavuna (qualquer variante sem "2") — sempre após Pinhais
-                if (n.includes('PAVUNA')) return 3;
-                // Uberlândia
-                if (n.includes('UBERLANDIA') || n.includes('UBERLÂNDIA')) return 5;
-                // Ribeirão Preto
-                if (n.includes('RIBEIRAO') || n.includes('RIBEIRÃO')) return 6;
-                // Demais cargas
-                return 50;
-            };
-
             const operacoesFiltradas = useMemo(() => {
-                const filtradas = operacoes.filter(op => {
+                return operacoes.filter(op => {
                     let dataOk = false;
                     if (tipoFiltroData === 'dia') {
                         dataOk = op.data === dataSelecionada;
@@ -3237,14 +3214,6 @@
                     const operacaoOk = operacoesSelecionadas.includes('TODAS') || operacoesSelecionadas.includes(op.operacao);
                     const statusOk = statusSelecionados.includes(op.status);
                     return dataOk && operacaoOk && statusOk;
-                });
-                // Ordenar conforme sequência de meta definida
-                return filtradas.sort((a, b) => {
-                    const ordemA = getOrdemMeta(a.operacao);
-                    const ordemB = getOrdemMeta(b.operacao);
-                    if (ordemA !== ordemB) return ordemA - ordemB;
-                    // Dentro do mesmo grupo, mantém ordem original (por data/início)
-                    return 0;
                 });
             }, [operacoes, tipoFiltroData, dataSelecionada, dataInicio, dataFim, operacoesSelecionadas, statusSelecionados, calcMediaIntervalo]);
 
@@ -10077,6 +10046,90 @@
                 if (win) win.onload = () => setTimeout(() => URL.revokeObjectURL(url), 5000);
             };
 
+            const gerarFolhaA4Multipla = (registros) => {
+                // Reutiliza o src do logo já carregado no DOM (evita duplicar o base64)
+                const logoSrc = (() => {
+                    const imgs = document.querySelectorAll('img[alt="Fast Shop"]');
+                    return imgs.length > 0 ? imgs[0].src : '';
+                })();
+
+                const folhas = registros.map(reg => {
+                    const dados = { ...reg, ...(edicoesLocais[reg.id] || {}) };
+                    const [ano, mes, dia] = (dados.data || dataFiltro).split('-');
+                    const dataFmt = `${dia}/${mes}/${(ano||'').slice(2)}`;
+                    const loja = dados.loja || '';
+                    const lacre = dados.lacre || '';
+                    const preremanejo = dados.preremanejo || '';
+                    const volumes = dados.volumes || '0';
+                    const qtdCaveirao = dados.qtdCaveirao || '';
+                    return `
+<div class="folha">
+  <div class="topo">
+    <div class="logo-wrap">
+      <img src="${logoSrc}" alt="Fast Shop" />
+    </div>
+    <div class="topo-dir">
+      <div class="data-txt">DATA: ${dataFmt}</div>
+      <div class="lv-txt">LINHA VERMELHA</div>
+    </div>
+  </div>
+  <div class="corpo">
+    <div class="ts-txt">TS: S&#xC3;O PAULO</div>
+    <div class="loja-txt">LOJA: ${loja}</div>
+    <div class="pre-txt">PR&#xC9;: ${preremanejo}</div>
+    <div class="lacre-txt">LACRE ${lacre}</div>
+  </div>
+  <div class="rodape">
+    <div class="rodape-esq">
+      <div class="qtd-txt">QTD: ${volumes} VOL</div>
+    </div>
+    <div class="img-caveirao">&#x1F4E6;</div>
+    <div class="num-vol">${qtdCaveirao}</div>
+  </div>
+</div>`;
+                });
+
+                const htmlMultiplo = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Impressao - ${registros.length} Lojas</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:white; font-family:Arial,sans-serif; }
+  .no-print { background:#f3f4f6; padding:12px; text-align:center; border-bottom:2px solid #ddd; }
+  .btn-print { padding:12px 36px; background:#dc2626; color:white; border:none; border-radius:8px; font-size:16px; font-weight:700; cursor:pointer; }
+  @media print { .no-print { display:none !important; } body { margin:0; } }
+  @page { size:A4 landscape; margin:0; }
+  .folha { width:297mm; height:210mm; padding:4mm 10mm 5mm 10mm; display:flex; flex-direction:column; background:white; box-sizing:border-box; overflow:hidden; page-break-after:always; }
+  .folha:last-child { page-break-after:avoid; }
+  .topo { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0; flex-shrink:0; }
+  .logo-wrap { display:flex; align-items:flex-start; }
+  .logo-wrap img { width:105mm; height:auto; object-fit:contain; display:block; margin-top:-3mm; margin-left:-4mm; }
+  .topo-dir { text-align:right; padding-top:1mm; }
+  .data-txt { font-family:'Arial Black',Arial,sans-serif; font-size:22pt; font-weight:900; color:#FF0000; text-decoration:underline; line-height:1.15; }
+  .lv-txt { font-family:'Arial Black',Arial,sans-serif; font-size:22pt; font-weight:900; color:#FF0000; text-decoration:underline; line-height:1.15; }
+  .corpo { flex:1; display:flex; flex-direction:column; justify-content:flex-start; min-height:0; margin-top:-2mm; }
+  .ts-txt { font-family:'Arial Black',Arial,sans-serif; font-size:58pt; font-weight:900; color:#FF0000; text-decoration:underline; line-height:1.0; margin-bottom:0; }
+  .loja-txt { font-family:'Arial Black',Arial,sans-serif; font-size:58pt; font-weight:900; color:#FF0000; text-decoration:underline; line-height:1.0; margin-bottom:1mm; }
+  .pre-txt { font-family:'Arial Black',Arial,sans-serif; font-size:18pt; font-weight:900; color:#000; line-height:1.2; letter-spacing:0.5px; }
+  .lacre-txt { font-family:'Arial Black',Arial,sans-serif; font-size:22pt; font-weight:900; color:#FF0000; text-decoration:underline; line-height:1.1; }
+  .rodape { display:flex; justify-content:space-between; align-items:center; flex-shrink:0; margin-top:auto; padding-top:2mm; border-top:2.5px solid #000; }
+  .rodape-esq { display:flex; flex-direction:column; justify-content:flex-end; gap:0; }
+  .qtd-txt { font-family:'Arial Black',Arial,sans-serif; font-size:68pt; font-weight:900; color:#FF0000; text-decoration:underline; line-height:1; }
+  .img-caveirao { font-size:80pt; line-height:1; display:flex; align-items:center; justify-content:center; }
+  .num-vol { font-family:'Arial Black',Arial,sans-serif; font-size:68pt; font-weight:900; color:#FF0000; text-decoration:underline; text-align:right; line-height:1; }
+</style></head><body>
+<div class="no-print">
+  <button class="btn-print" onclick="window.print()">&#x1F5A8;&#xFE0F; Imprimir ${registros.length} Folha(s) A4</button>
+</div>
+${folhas.join('\n')}
+</body></html>`;
+
+                const blob = new Blob([htmlMultiplo], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                const win = window.open(url, '_blank');
+                if (win) win.onload = () => setTimeout(() => URL.revokeObjectURL(url), 5000);
+            
+            };
+
             return (
                 <div className="animate-slide-in">
                     {/* TOAST DE FEEDBACK (salvar/erro) */}
@@ -10376,9 +10429,7 @@
                                             <button
                                                 onClick={() => {
                                                     const sels = listaHist.filter(r => selHistorico[r.id||r.horaSalvo]);
-                                                    sels.forEach((r, idx) => {
-                                                        setTimeout(() => gerarFolhaA4(r), idx * 300);
-                                                    });
+                                                    gerarFolhaA4Multipla(sels);
                                                 }}
                                                 style={{background:'linear-gradient(135deg,#dc2626,#991b1b)',color:'white',border:'none',borderRadius:'7px',padding:'6px 14px',fontWeight:'700',fontSize:'12px',cursor:'pointer',boxShadow:'0 2px 6px rgba(220,38,38,0.3)'}}>
                                                 🖨️ Imprimir Selecionados
