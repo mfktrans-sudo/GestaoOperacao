@@ -9737,11 +9737,7 @@
                 });
             }, [registros, dataFiltro, modoFiltroAvancado, filtroDataInicio, filtroDataFim, filtroLoja]);
 
-            const registrosDoDia = [...registrosFiltrados].sort((a, b) => {
-                const mA = parseInt(a.mesa) || 0;
-                const mB = parseInt(b.mesa) || 0;
-                return mA - mB;
-            });
+            const registrosDoDia = registrosFiltrados;
 
             // Lojas únicas nos registros filtrados (para sugestão no filtro)
             const lojasUnicas = useMemo(() => {
@@ -10034,70 +10030,6 @@ ${todasFolhas.join('\n')}
                 if (!window.confirm('Excluir esta carga da Linha Vermelha?')) return;
                 await onDeletar(id);
                 setEdicoesLocais(prev => { const cp = { ...prev }; delete cp[id]; return cp; });
-            };
-
-            // ── SELEÇÃO MÚLTIPLA ──
-            const [selecionados, setSelecionados] = useState(new Set());
-            const [excluindoLote, setExcluindoLote] = useState(false);
-
-            const toggleSelecionado = (id) => {
-                setSelecionados(prev => {
-                    const novo = new Set(prev);
-                    if (novo.has(id)) novo.delete(id);
-                    else novo.add(id);
-                    return novo;
-                });
-            };
-
-            const toggleSelecionarTodos = () => {
-                if (selecionados.size === registrosDoDia.length && registrosDoDia.length > 0) {
-                    setSelecionados(new Set());
-                } else {
-                    setSelecionados(new Set(registrosDoDia.map(r => r.id)));
-                }
-            };
-
-            const handleExcluirSelecionados = async () => {
-                if (selecionados.size === 0) return;
-                if (!window.confirm(`Excluir ${selecionados.size} carga(s) selecionada(s)? Esta ação não pode ser desfeita.`)) return;
-                setExcluindoLote(true);
-                try {
-                    for (const id of selecionados) {
-                        await onDeletar(id);
-                        setEdicoesLocais(prev => { const cp = { ...prev }; delete cp[id]; return cp; });
-                    }
-                    setSelecionados(new Set());
-                    lvFlash(`✅ ${selecionados.size} carga(s) excluída(s).`, 'ok');
-                } catch(e) {
-                    lvFlash('❌ Erro ao excluir. Tente novamente.', 'err');
-                } finally {
-                    setExcluindoLote(false);
-                }
-            };
-
-            // Limpar seleção ao mudar o filtro de data
-            React.useEffect(() => { setSelecionados(new Set()); }, [dataFiltro, modoFiltroAvancado, filtroDataInicio, filtroDataFim]);
-
-            // ── MODO EDIÇÃO POR LINHA ──
-            const [editandoLinha, setEditandoLinha] = useState(null); // id da linha em edição
-
-            const handleAbrirEdicao = (reg) => {
-                setEditandoLinha(reg.id);
-            };
-
-            const handleCancelarEdicao = (reg) => {
-                // Descarta edições locais não salvas desta linha
-                setEdicoesLocais(prev => {
-                    const cp = { ...prev };
-                    delete cp[reg.id];
-                    return cp;
-                });
-                setEditandoLinha(null);
-            };
-
-            const handleSalvarEdicaoLinha = async (reg) => {
-                await handleSalvarLinha(reg);
-                setEditandoLinha(null);
             };
 
             const renderSugestoes = (reg, campo, lista) => {
@@ -10562,26 +10494,6 @@ ${folhas.join('\n')}
                     </div>
                     {/* ══ FIM UPLOAD ══ */}
 
-                    {/* BARRA DE SELEÇÃO EM LOTE */}
-                    {selecionados.size > 0 && (
-                        <div style={{display:'flex',alignItems:'center',gap:'14px',background:'#fef2f2',border:'2px solid #dc2626',borderRadius:'10px',padding:'10px 16px',marginBottom:'10px',flexWrap:'wrap'}}>
-                            <span style={{fontWeight:'800',fontSize:'14px',color:'#dc2626'}}>
-                                ☑️ {selecionados.size} carga{selecionados.size !== 1 ? 's' : ''} selecionada{selecionados.size !== 1 ? 's' : ''}
-                            </span>
-                            <button
-                                onClick={handleExcluirSelecionados}
-                                disabled={excluindoLote}
-                                style={{background: excluindoLote ? '#9ca3af' : 'linear-gradient(135deg,#ef4444,#dc2626)',color:'white',border:'none',borderRadius:'7px',padding:'7px 18px',fontWeight:'800',fontSize:'13px',cursor: excluindoLote ? 'default' : 'pointer',boxShadow:'0 2px 6px rgba(220,38,38,0.3)'}}>
-                                {excluindoLote ? '⏳ Excluindo...' : `🗑 Excluir ${selecionados.size} selecionada${selecionados.size !== 1 ? 's' : ''}`}
-                            </button>
-                            <button
-                                onClick={() => setSelecionados(new Set())}
-                                style={{background:'#e5e7eb',color:'#374151',border:'none',borderRadius:'7px',padding:'7px 14px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>
-                                ✖ Limpar seleção
-                            </button>
-                        </div>
-                    )}
-
                     {/* TABELA */}
                     <div className="overflow-x-auto">
                         {/* CAMPO ÚNICO DE HORÁRIO DE FINALIZAÇÃO */}
@@ -10602,13 +10514,6 @@ ${folhas.join('\n')}
                         <table className="w-full" style={{minWidth:'960px'}}>
                             <thead className="bg-gray-100 sticky top-0">
                                 <tr>
-                                    <th className="px-2 py-2 text-center" style={{width:'36px'}}>
-                                        <input type="checkbox"
-                                            checked={registrosDoDia.length > 0 && selecionados.size === registrosDoDia.length}
-                                            onChange={toggleSelecionarTodos}
-                                            title="Selecionar / Desmarcar todos"
-                                            style={{width:'16px',height:'16px',cursor:'pointer',accentColor:'#dc2626'}} />
-                                    </th>
                                     <th className="px-3 py-2 text-left text-sm font-bold">🏬 Loja</th>
                                     <th className="px-3 py-2 text-left text-sm font-bold">📋 Pré-Romaneio</th>
                                     <th className="px-3 py-2 text-left text-sm font-bold">🔒 Lacre</th>
@@ -10624,145 +10529,97 @@ ${folhas.join('\n')}
                             <tbody>
                                 {registrosDoDia.length === 0 ? (
                                     <tr>
-                                        <td colSpan="11" className="text-center py-8 text-gray-500">
+                                        <td colSpan="10" className="text-center py-8 text-gray-500">
                                             Nenhuma carga cadastrada para esta data. Clique em "➕ Adicionar Carga do Dia" para começar.
                                         </td>
                                     </tr>
                                 ) : (
                                     registrosDoDia.map((reg) => {
-                                        const emEdicao = editandoLinha === reg.id;
-                                        const tdView = {padding:'8px 10px',fontSize:'13px',color:'#1f2937',whiteSpace:'nowrap',maxWidth:'180px',overflow:'hidden',textOverflow:'ellipsis'};
-                                        const tdNum  = {...tdView, fontWeight:'700', textAlign:'center', color:'#1e3a8a'};
                                         return (
-                                        <React.Fragment key={reg.id}>
-                                        <tr className="border-b" style={{background: selecionados.has(reg.id) ? '#fef2f2' : emEdicao ? '#fffbeb' : undefined, transition:'background 0.2s'}}>
-                                            {/* CHECKBOX */}
-                                            <td className="px-2 py-2" style={{textAlign:'center',width:'36px'}}>
-                                                <input type="checkbox"
-                                                    checked={selecionados.has(reg.id)}
-                                                    onChange={() => toggleSelecionado(reg.id)}
-                                                    style={{width:'16px',height:'16px',cursor:'pointer',accentColor:'#dc2626'}} />
+                                        <tr key={reg.id} className="border-b hover:bg-gray-50">
+                                            {/* LOJA */}
+                                            <td className="px-2 py-2" style={{position:'relative',minWidth:'150px'}}>
+                                                <input type="text" value={valorCampo(reg,'loja')}
+                                                    onChange={(e) => { handleInputChange(reg.id,'loja',e.target.value); setSugestaoAtiva({id:reg.id,campo:'loja'}); }}
+                                                    onFocus={() => setSugestaoAtiva({id:reg.id,campo:'loja'})}
+                                                    onBlur={() => setTimeout(() => { setSugestaoAtiva(null); handleSalvarCampo(reg,'loja'); }, 200)}
+                                                    className="w-full p-2 border rounded input-edit" placeholder="Nome da loja..." autoComplete="off" />
+                                                {renderSugestoes(reg,'loja',historicoLojas)}
                                             </td>
-
-                                            {emEdicao ? (
-                                                <>
-                                                {/* LOJA – edit */}
-                                                <td className="px-2 py-1" style={{position:'relative',minWidth:'150px'}}>
-                                                    <input type="text" value={valorCampo(reg,'loja')}
-                                                        onChange={(e) => { handleInputChange(reg.id,'loja',e.target.value); setSugestaoAtiva({id:reg.id,campo:'loja'}); }}
-                                                        onFocus={() => setSugestaoAtiva({id:reg.id,campo:'loja'})}
-                                                        onBlur={() => setTimeout(() => setSugestaoAtiva(null), 200)}
-                                                        className="w-full p-2 border-2 border-yellow-400 rounded input-edit" placeholder="Nome da loja..." autoComplete="off" style={{fontWeight:'600'}} />
-                                                    {renderSugestoes(reg,'loja',historicoLojas)}
-                                                </td>
-                                                {/* PRÉ-ROMANEIO – edit */}
-                                                <td className="px-2 py-1" style={{minWidth:'130px'}}>
-                                                    <input type="text" value={valorCampo(reg,'preremanejo')}
-                                                        onChange={(e) => handleInputChange(reg.id,'preremanejo',e.target.value)}
-                                                        className="w-full p-2 border-2 border-yellow-400 rounded input-edit" placeholder="Ex: 917495" style={{fontWeight:'600'}} />
-                                                </td>
-                                                {/* LACRE – edit */}
-                                                <td className="px-2 py-1" style={{minWidth:'110px'}}>
-                                                    <input type="text" value={valorCampo(reg,'lacre')}
-                                                        onChange={(e) => handleInputChange(reg.id,'lacre',e.target.value)}
-                                                        className="w-full p-2 border-2 border-yellow-400 rounded input-edit" placeholder="Ex: 20866" />
-                                                </td>
-                                                {/* QTD VOLUMES – edit */}
-                                                <td className="px-2 py-1" style={{minWidth:'90px'}}>
-                                                    <input type="number" min="0" value={valorCampo(reg,'volumes')}
-                                                        onChange={(e) => handleInputChange(reg.id,'volumes',e.target.value)}
-                                                        className="w-full p-2 border-2 border-yellow-400 rounded input-edit" placeholder="0" style={{fontWeight:'700',textAlign:'center'}} />
-                                                </td>
-                                                {/* QTD CAVEIRÃO – edit */}
-                                                <td className="px-2 py-1" style={{minWidth:'90px'}}>
-                                                    <input type="text" value={valorCampo(reg,'qtdCaveirao')}
-                                                        onChange={(e) => handleInputChange(reg.id,'qtdCaveirao',e.target.value)}
-                                                        className="w-full p-2 border-2 border-yellow-400 rounded input-edit" placeholder="1/101" style={{fontWeight:'700',textAlign:'center'}} />
-                                                </td>
-                                                {/* MESA – edit */}
-                                                <td className="px-2 py-1" style={{position:'relative',minWidth:'80px'}}>
-                                                    <input type="text" value={valorCampo(reg,'mesa')}
-                                                        onChange={(e) => { handleInputChange(reg.id,'mesa',e.target.value); setSugestaoAtiva({id:reg.id,campo:'mesa'}); }}
-                                                        onFocus={() => setSugestaoAtiva({id:reg.id,campo:'mesa'})}
-                                                        onBlur={() => setTimeout(() => setSugestaoAtiva(null), 200)}
-                                                        className="w-full p-2 border-2 border-yellow-400 rounded input-edit" placeholder="05" autoComplete="off" style={{textAlign:'center'}} />
-                                                    {renderSugestoes(reg,'mesa',historicoMesas)}
-                                                </td>
-                                                {/* COLABORADOR – edit */}
-                                                <td className="px-2 py-1" style={{position:'relative',minWidth:'150px'}}>
-                                                    <input type="text" value={valorCampo(reg,'colaborador')}
-                                                        onChange={(e) => { handleInputChange(reg.id,'colaborador',e.target.value); setSugestaoAtiva({id:reg.id,campo:'colaborador'}); }}
-                                                        onFocus={() => setSugestaoAtiva({id:reg.id,campo:'colaborador'})}
-                                                        onBlur={() => setTimeout(() => setSugestaoAtiva(null), 200)}
-                                                        className="w-full p-2 border-2 border-yellow-400 rounded input-edit" placeholder="Nome..." autoComplete="off" />
-                                                    {renderSugestoes(reg,'colaborador',historicoColaboradores)}
-                                                </td>
-                                                {/* HORÁRIO – view mesmo em edição */}
-                                                <td className="px-2 py-1" style={{textAlign:'center',minWidth:'90px'}}>
-                                                    <span style={{fontSize:'14px',fontWeight:'700',color:'#374151'}}>{horarioFinalizacaoGlobal || valorCampo(reg,'horarioFinalizacao') || '—'}</span>
-                                                </td>
-                                                {/* OBS – edit */}
-                                                <td className="px-2 py-1" style={{minWidth:'130px'}}>
-                                                    <input type="text" value={valorCampo(reg,'obs')}
-                                                        onChange={(e) => handleInputChange(reg.id,'obs',e.target.value)}
-                                                        className="w-full p-2 border-2 border-yellow-400 rounded input-edit" placeholder="Obs..." />
-                                                </td>
-                                                {/* AÇÕES – em edição */}
-                                                <td className="px-2 py-1" style={{minWidth:'160px',whiteSpace:'nowrap'}}>
-                                                    <div style={{display:'flex',gap:'5px',flexWrap:'wrap'}}>
-                                                        <button onClick={() => handleSalvarEdicaoLinha(reg)}
-                                                            disabled={salvandoLinha === reg.id}
-                                                            style={{background: salvandoLinha === reg.id ? '#9ca3af' : 'linear-gradient(135deg,#10b981,#059669)',color:'white',border:'none',borderRadius:'7px',padding:'6px 10px',fontWeight:'700',fontSize:'12px',cursor: salvandoLinha === reg.id ? 'default' : 'pointer',whiteSpace:'nowrap'}}>
-                                                            {salvandoLinha === reg.id ? '⏳...' : '💾 Salvar'}
-                                                        </button>
-                                                        <button onClick={() => handleCancelarEdicao(reg)}
-                                                            style={{background:'#e5e7eb',color:'#374151',border:'none',borderRadius:'7px',padding:'6px 10px',fontWeight:'700',fontSize:'12px',cursor:'pointer',whiteSpace:'nowrap'}}>
-                                                            ✖ Cancelar
-                                                        </button>
-                                                        <button onClick={() => handleExcluir(reg.id)}
-                                                            style={{background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'white',border:'none',borderRadius:'7px',padding:'6px 8px',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>
-                                                            🗑
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                                </>
-                                            ) : (
-                                                <>
-                                                {/* LOJA – view */}
-                                                <td style={tdView} title={valorCampo(reg,'loja')||'—'}>{valorCampo(reg,'loja')||<span style={{color:'#9ca3af',fontStyle:'italic'}}>—</span>}</td>
-                                                {/* PRÉ-ROMANEIO – view */}
-                                                <td style={{...tdView,fontFamily:'monospace',fontWeight:'600',color:'#1e3a8a'}} title={valorCampo(reg,'preremanejo')||'—'}>{valorCampo(reg,'preremanejo')||'—'}</td>
-                                                {/* LACRE – view */}
-                                                <td style={tdView} title={valorCampo(reg,'lacre')||'—'}>{valorCampo(reg,'lacre')||'—'}</td>
-                                                {/* QTD VOLUMES – view */}
-                                                <td style={tdNum}>{valorCampo(reg,'volumes')||'0'}</td>
-                                                {/* QTD CAVEIRÃO – view */}
-                                                <td style={tdNum}>{valorCampo(reg,'qtdCaveirao')||'—'}</td>
-                                                {/* MESA – view */}
-                                                <td style={tdNum}>{valorCampo(reg,'mesa')||'—'}</td>
-                                                {/* COLABORADOR – view */}
-                                                <td style={tdView} title={valorCampo(reg,'colaborador')||'—'}>{valorCampo(reg,'colaborador')||<span style={{color:'#9ca3af',fontStyle:'italic'}}>—</span>}</td>
-                                                {/* HORÁRIO – view */}
-                                                <td style={{...tdView,textAlign:'center',fontWeight:'700'}}>{horarioFinalizacaoGlobal || valorCampo(reg,'horarioFinalizacao') || '—'}</td>
-                                                {/* OBS – view */}
-                                                <td style={{...tdView,color:'#6b7280',fontStyle: valorCampo(reg,'obs') ? 'normal' : 'italic'}} title={valorCampo(reg,'obs')||''}>{valorCampo(reg,'obs')||'—'}</td>
-                                                {/* AÇÕES – view */}
-                                                <td className="px-2 py-2" style={{whiteSpace:'nowrap'}}>
-                                                    <div style={{display:'flex',gap:'5px'}}>
-                                                        <button onClick={() => handleAbrirEdicao(reg)}
-                                                            style={{background:'linear-gradient(135deg,#f59e0b,#d97706)',color:'white',border:'none',borderRadius:'7px',padding:'6px 10px',fontWeight:'700',fontSize:'12px',cursor:'pointer',whiteSpace:'nowrap'}}>
-                                                            ✏️ Editar
-                                                        </button>
-                                                        <button onClick={() => handleExcluir(reg.id)}
-                                                            style={{background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'white',border:'none',borderRadius:'7px',padding:'6px 8px',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>
-                                                            🗑
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                                </>
-                                            )}
+                                            {/* PRÉ-ROMANEIO */}
+                                            <td className="px-2 py-2" style={{minWidth:'130px'}}>
+                                                <input type="text" value={valorCampo(reg,'preremanejo')}
+                                                    onChange={(e) => handleInputChange(reg.id,'preremanejo',e.target.value)}
+                                                    onBlur={() => handleSalvarCampo(reg,'preremanejo')}
+                                                    className="w-full p-2 border rounded input-edit" placeholder="Ex: 917495" style={{fontWeight:'600'}} />
+                                            </td>
+                                            {/* LACRE */}
+                                            <td className="px-2 py-2" style={{minWidth:'110px'}}>
+                                                <input type="text" value={valorCampo(reg,'lacre')}
+                                                    onChange={(e) => handleInputChange(reg.id,'lacre',e.target.value)}
+                                                    onBlur={() => handleSalvarCampo(reg,'lacre')}
+                                                    className="w-full p-2 border rounded input-edit" placeholder="Ex: 20866" />
+                                            </td>
+                                            {/* QTD VOLUMES */}
+                                            <td className="px-2 py-2" style={{minWidth:'110px'}}>
+                                                <input type="number" min="0" value={valorCampo(reg,'volumes')}
+                                                    onChange={(e) => handleInputChange(reg.id,'volumes',e.target.value)}
+                                                    onBlur={() => handleSalvarCampo(reg,'volumes')}
+                                                    className="w-full p-2 border rounded input-edit" placeholder="Ex: 101" style={{fontWeight:'700'}} />
+                                            </td>
+                                            {/* QTD CAVEIRÃO */}
+                                            <td className="px-2 py-2" style={{minWidth:'110px'}}>
+                                                <input type="text" value={valorCampo(reg,'qtdCaveirao')}
+                                                    onChange={(e) => handleInputChange(reg.id,'qtdCaveirao',e.target.value)}
+                                                    onBlur={() => handleSalvarCampo(reg,'qtdCaveirao')}
+                                                    className="w-full p-2 border rounded input-edit" placeholder="Ex: 1/101" style={{fontWeight:'700',textAlign:'center'}} />
+                                            </td>
+                                            {/* MESA */}
+                                            <td className="px-2 py-2" style={{position:'relative',minWidth:'90px'}}>
+                                                <input type="text" value={valorCampo(reg,'mesa')}
+                                                    onChange={(e) => { handleInputChange(reg.id,'mesa',e.target.value); setSugestaoAtiva({id:reg.id,campo:'mesa'}); }}
+                                                    onFocus={() => setSugestaoAtiva({id:reg.id,campo:'mesa'})}
+                                                    onBlur={() => setTimeout(() => { setSugestaoAtiva(null); handleSalvarCampo(reg,'mesa'); }, 200)}
+                                                    className="w-full p-2 border rounded input-edit" placeholder="Ex: 05" autoComplete="off" />
+                                                {renderSugestoes(reg,'mesa',historicoMesas)}
+                                            </td>
+                                            {/* COLABORADOR */}
+                                            <td className="px-2 py-2" style={{position:'relative',minWidth:'150px'}}>
+                                                <input type="text" value={valorCampo(reg,'colaborador')}
+                                                    onChange={(e) => { handleInputChange(reg.id,'colaborador',e.target.value); setSugestaoAtiva({id:reg.id,campo:'colaborador'}); }}
+                                                    onFocus={() => setSugestaoAtiva({id:reg.id,campo:'colaborador'})}
+                                                    onBlur={() => setTimeout(() => { setSugestaoAtiva(null); handleSalvarCampo(reg,'colaborador',true); }, 200)}
+                                                    className="w-full p-2 border rounded input-edit" placeholder="Nome..." autoComplete="off" />
+                                                {renderSugestoes(reg,'colaborador',historicoColaboradores)}
+                                            </td>
+                                            {/* HORARIO */}
+                                            <td className="px-2 py-2" style={{minWidth:'100px',textAlign:'center'}}>
+                                                <span style={{fontSize:'14px',fontWeight:'700',color:'#374151'}}>
+                                                    {horarioFinalizacaoGlobal || valorCampo(reg,'horarioFinalizacao') || '—'}
+                                                </span>
+                                            </td>
+                                            {/* OBS */}
+                                            <td className="px-2 py-2" style={{minWidth:'130px'}}>
+                                                <input type="text" value={valorCampo(reg,'obs')}
+                                                    onChange={(e) => handleInputChange(reg.id,'obs',e.target.value)}
+                                                    onBlur={() => handleSalvarCampo(reg,'obs')}
+                                                    className="w-full p-2 border rounded input-edit" placeholder="Obs..." />
+                                            </td>
+                                            {/* ACOES */}
+                                            <td className="px-2 py-2" style={{minWidth:'140px'}}>
+                                                <div style={{display:'flex',gap:'6px'}}>
+                                                    <button onClick={() => handleSalvarLinha(reg)}
+                                                        disabled={salvandoLinha === reg.id}
+                                                        style={{background: salvandoLinha === reg.id ? '#9ca3af' : 'linear-gradient(135deg,#10b981,#059669)',color:'white',border:'none',borderRadius:'7px',padding:'6px 10px',fontWeight:'700',fontSize:'12px',cursor: salvandoLinha === reg.id ? 'default' : 'pointer'}}>
+                                                        {salvandoLinha === reg.id ? '⏳ Salvando...' : '💾 Salvar'}
+                                                    </button>
+                                                    <button onClick={() => handleExcluir(reg.id)}
+                                                        style={{background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'white',border:'none',borderRadius:'7px',padding:'6px 10px',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>
+                                                        🗑 Excluir
+                                                    </button>
+                                                </div>
+                                            </td>
                                         </tr>
-                                        </React.Fragment>
                                     );})
                                 )}
                             </tbody>
@@ -11072,115 +10929,6 @@ ${folhas.join('\n')}
                                     </tbody>
                                 </table>
                             </div>
-
-                            {/* ── GRÁFICO: CARGAS POR DIA E LOJA ── */}
-                            {volumetriaPorDia.length > 0 && (() => {
-                                // Dados para gráfico por loja (usa registrosDoDia)
-                                const porLoja = {};
-                                registrosDoDia.forEach(r => {
-                                    const loja = (r.loja || 'Sem loja').toUpperCase();
-                                    if (!porLoja[loja]) porLoja[loja] = { cargas: 0, volumes: 0 };
-                                    porLoja[loja].cargas += 1;
-                                    porLoja[loja].volumes += Number(r.volumes) || 0;
-                                });
-                                const lojas = Object.entries(porLoja).sort((a, b) => b[1].cargas - a[1].cargas);
-                                const maxCargas = Math.max(...lojas.map(([,v]) => v.cargas), 1);
-                                const maxVolumes = Math.max(...lojas.map(([,v]) => v.volumes), 1);
-                                const barColors = ['#7c3aed','#2563eb','#0891b2','#059669','#d97706','#dc2626','#9333ea','#0284c7','#16a34a','#ca8a04'];
-
-                                // Dados para gráfico por dia
-                                const maxDiaLojas = Math.max(...volumetriaPorDia.map(x=>x.qtdLojas), 1);
-                                const maxDiaVols = Math.max(...volumetriaPorDia.map(x=>x.volumes), 1);
-
-                                return (
-                                    <div style={{marginTop:'24px',display:'flex',flexDirection:'column',gap:'20px'}}>
-
-                                        {/* Gráfico por loja */}
-                                        <div style={{background:'rgba(255,255,255,0.06)',borderRadius:'14px',padding:'20px 22px',border:'1px solid rgba(255,255,255,0.1)'}}>
-                                            <div style={{fontWeight:'800',fontSize:'14px',color:'#fff',marginBottom:'16px',letterSpacing:'-0.2px'}}>
-                                                📊 Cargas por Loja — período filtrado
-                                                <span style={{fontWeight:'600',fontSize:'11px',color:'rgba(200,180,255,0.7)',marginLeft:'10px'}}>{lojas.length} loja{lojas.length !== 1 ? 's' : ''} · {registrosDoDia.length} carga{registrosDoDia.length !== 1 ? 's' : ''}</span>
-                                            </div>
-                                            {lojas.length === 0 ? (
-                                                <div style={{color:'rgba(200,180,255,0.6)',fontSize:'13px',textAlign:'center',padding:'20px'}}>Nenhum dado disponível</div>
-                                            ) : (
-                                                <div style={{display:'flex',flexDirection:'column',gap:'10px'}}>
-                                                    {lojas.map(([loja, vals], idx) => {
-                                                        const pctC = Math.round((vals.cargas / maxCargas) * 100);
-                                                        const pctV = Math.round((vals.volumes / maxVolumes) * 100);
-                                                        const cor = barColors[idx % barColors.length];
-                                                        return (
-                                                            <div key={loja}>
-                                                                <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'3px'}}>
-                                                                    <span style={{width:'130px',fontSize:'11px',fontWeight:'700',color:'#e0d5ff',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',flexShrink:0}}>{loja}</span>
-                                                                    <div style={{flex:1,display:'flex',flexDirection:'column',gap:'3px'}}>
-                                                                        {/* Barra cargas */}
-                                                                        <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
-                                                                            <div style={{flex:1,height:'12px',background:'rgba(255,255,255,0.08)',borderRadius:'6px',overflow:'hidden'}}>
-                                                                                <div style={{height:'100%',width:`${pctC}%`,background:cor,borderRadius:'6px',transition:'width 0.6s ease'}} />
-                                                                            </div>
-                                                                            <span style={{fontSize:'11px',fontWeight:'800',color:'#fff',minWidth:'22px',textAlign:'right'}}>{vals.cargas}</span>
-                                                                            <span style={{fontSize:'10px',color:'rgba(200,180,255,0.6)',minWidth:'50px'}}>carga{vals.cargas !== 1 ? 's' : ''}</span>
-                                                                        </div>
-                                                                        {/* Barra volumes */}
-                                                                        <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
-                                                                            <div style={{flex:1,height:'8px',background:'rgba(255,255,255,0.05)',borderRadius:'4px',overflow:'hidden'}}>
-                                                                                <div style={{height:'100%',width:`${pctV}%`,background:`${cor}80`,borderRadius:'4px',transition:'width 0.6s ease'}} />
-                                                                            </div>
-                                                                            <span style={{fontSize:'10px',fontWeight:'700',color:'#f87171',minWidth:'22px',textAlign:'right'}}>{vals.volumes.toLocaleString('pt-BR')}</span>
-                                                                            <span style={{fontSize:'10px',color:'rgba(200,180,255,0.6)',minWidth:'50px'}}>vol.</span>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Gráfico por dia */}
-                                        {volumetriaPorDia.length > 1 && (
-                                            <div style={{background:'rgba(255,255,255,0.06)',borderRadius:'14px',padding:'20px 22px',border:'1px solid rgba(255,255,255,0.1)'}}>
-                                                <div style={{fontWeight:'800',fontSize:'14px',color:'#fff',marginBottom:'16px',letterSpacing:'-0.2px'}}>
-                                                    📅 Cargas por Dia
-                                                    <span style={{fontWeight:'600',fontSize:'11px',color:'rgba(200,180,255,0.7)',marginLeft:'10px'}}>{volumetriaPorDia.length} dia{volumetriaPorDia.length !== 1 ? 's' : ''}</span>
-                                                </div>
-                                                <div style={{display:'flex',flexDirection:'column',gap:'10px'}}>
-                                                    {volumetriaPorDia.map((item, idx) => {
-                                                        const pctL = Math.round((item.qtdLojas / maxDiaLojas) * 100);
-                                                        const pctV = Math.round((item.volumes / maxDiaVols) * 100);
-                                                        const cor = barColors[idx % barColors.length];
-                                                        return (
-                                                            <div key={item.data}>
-                                                                <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
-                                                                    <span style={{width:'80px',fontSize:'11px',fontWeight:'700',color:'#e0d5ff',flexShrink:0}}>{item.data.split('-').reverse().join('/')}</span>
-                                                                    <div style={{flex:1,display:'flex',flexDirection:'column',gap:'3px'}}>
-                                                                        <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
-                                                                            <div style={{flex:1,height:'12px',background:'rgba(255,255,255,0.08)',borderRadius:'6px',overflow:'hidden'}}>
-                                                                                <div style={{height:'100%',width:`${pctL}%`,background:cor,borderRadius:'6px',transition:'width 0.6s ease'}} />
-                                                                            </div>
-                                                                            <span style={{fontSize:'11px',fontWeight:'800',color:'#fff',minWidth:'22px',textAlign:'right'}}>{item.qtdLojas}</span>
-                                                                            <span style={{fontSize:'10px',color:'rgba(200,180,255,0.6)',minWidth:'50px'}}>loja{item.qtdLojas !== 1 ? 's' : ''}</span>
-                                                                        </div>
-                                                                        <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
-                                                                            <div style={{flex:1,height:'8px',background:'rgba(255,255,255,0.05)',borderRadius:'4px',overflow:'hidden'}}>
-                                                                                <div style={{height:'100%',width:`${pctV}%`,background:`${cor}80`,borderRadius:'4px',transition:'width 0.6s ease'}} />
-                                                                            </div>
-                                                                            <span style={{fontSize:'10px',fontWeight:'700',color:'#f87171',minWidth:'22px',textAlign:'right'}}>{item.volumes.toLocaleString('pt-BR')}</span>
-                                                                            <span style={{fontSize:'10px',color:'rgba(200,180,255,0.6)',minWidth:'50px'}}>vol.</span>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })()}
                         </div>
                     )}
                 </div>
