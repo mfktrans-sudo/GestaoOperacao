@@ -9632,8 +9632,13 @@
             });
 
             const [edicoesLocais, setEdicoesLocais] = useState({});
+            const edicoesLocaisRef = React.useRef({});
+            React.useEffect(() => { edicoesLocaisRef.current = edicoesLocais; }, [edicoesLocais]);
             const [sugestaoAtiva, setSugestaoAtiva] = useState(null);
             const [selHistorico, setSelHistorico] = useState({});
+
+            const [selRegistros, setSelRegistros] = useState({});
+            const [regEditando, setRegEditando] = useState(null);
 
             // Horário de finalização único — replicado para todas as linhas do dia
             const [horarioFinalizacaoGlobal, setHorarioFinalizacaoGlobal] = useState('');
@@ -9647,8 +9652,7 @@
             const lvFlashUp = (msg, tipo='ok') => { setLvUpStatus(tipo+'|'+msg); };
 
             // Mapeamento de colunas do arquivo → campos internos
-            // SEQ → mesa | LOJA → loja | PRÉ → preremanejo | voumes/volumes → volumes
-            // LACRE e QTD_CAVEIRAO: NÃO importar (manual)
+            // SEQ → mesa | LOJA → loja | PRÉ → preremanejo | volumes → volumes | LACRE → lacre
             const lvMapColunas = (headers) => {
                 const norm = h => String(h||'').toLowerCase().trim().replace(/[\s_\-\.]+/g,'');
                 const find = (aliases) => headers.findIndex(h => aliases.some(a => norm(h) === a || norm(h).includes(a)));
@@ -9657,6 +9661,7 @@
                     loja:        find(['loja','store','filial']),
                     preremanejo: find(['pre','pre-romaneio','preremanejo','pre_romaneio','romaneio','preremanejo','pré','pré-romaneio','preromanejo']),
                     volumes:     find(['voumes','volumes','volume','vol','qtd','quantidade']),
+                    lacre:       find(['lacre','lacrebau','lacre-bau','lacrebau']),
                 };
             };
 
@@ -9684,8 +9689,8 @@
                             mesa:        mapa.seq >= 0         ? String(row[mapa.seq]||'').trim()         : '',
                             preremanejo: mapa.preremanejo >= 0 ? String(row[mapa.preremanejo]||'').trim() : '',
                             volumes:     mapa.volumes >= 0     ? String(row[mapa.volumes]||'').trim()     : '',
-                            lacre:       '',   // sempre vazio – preenchimento manual
-                            qtdCaveirao: '',   // sempre vazio – preenchimento manual
+                            lacre:       mapa.lacre >= 0       ? String(row[mapa.lacre]||'').trim()       : '',
+                            qtdCaveirao: '',   // preenchimento manual
                         })).filter(r => r.loja || r.mesa);
                         if (importados.length === 0) { lvFlashUp('⚠️ Nenhum registro válido encontrado.','err'); return; }
                         setLvUpPreview(importados.slice(0,5));
@@ -9708,7 +9713,7 @@
                     const chave = (item.loja||'').toLowerCase()+'|'+(item.mesa||'')+'|'+dataFiltro;
                     if (existentes.has(chave)) { dup++; continue; }
                     try {
-                        await onSalvar({ data: dataFiltro, loja: item.loja, mesa: item.mesa, preremanejo: item.preremanejo, volumes: item.volumes, lacre: '', qtdCaveirao: '', colaborador: '', horarioFinalizacao: '', obs: '' });
+                        await onSalvar({ data: dataFiltro, loja: item.loja, mesa: item.mesa, preremanejo: item.preremanejo, volumes: item.volumes, lacre: item.lacre || '', qtdCaveirao: '', colaborador: '', horarioFinalizacao: '', obs: '' });
                         existentes.add(chave);
                         ok++;
                     } catch(e) { console.error('Importação LV:', e); }
@@ -9737,7 +9742,16 @@
                 });
             }, [registros, dataFiltro, modoFiltroAvancado, filtroDataInicio, filtroDataFim, filtroLoja]);
 
-            const registrosDoDia = registrosFiltrados;
+            const registrosDoDia = useMemo(() =>
+                [...registrosFiltrados].sort((a, b) => {
+                    const ma = parseInt((edicoesLocais[a.id]?.mesa ?? a.mesa) || 0);
+                    const mb = parseInt((edicoesLocais[b.id]?.mesa ?? b.mesa) || 0);
+                    if (ma === 0 && mb === 0) return 0;
+                    if (ma === 0) return 1;
+                    if (mb === 0) return -1;
+                    return ma - mb;
+                })
+            , [registrosFiltrados, edicoesLocais]);
 
             // Lojas únicas nos registros filtrados (para sugestão no filtro)
             const lojasUnicas = useMemo(() => {
@@ -9945,8 +9959,9 @@ ${todasFolhas.join('\n')}
             };
 
             const handleSalvarCampo = async (reg, campo, multiplos) => {
-                const valor = valorCampo(reg, campo);
-                const atualizado = { ...reg, ...(edicoesLocais[reg.id] || {}), id: reg.id };
+                const edicoes = edicoesLocaisRef.current;
+                const atualizado = { ...reg, ...(edicoes[reg.id] || {}), id: reg.id };
+                const valor = atualizado[campo] || '';
                 try {
                     await onAtualizar(atualizado);
                 } catch (e) {
@@ -9961,7 +9976,8 @@ ${todasFolhas.join('\n')}
 
             const handleSalvarLinha = async (reg) => {
                 setSalvandoLinha(reg.id);
-                const atualizado = { ...reg, ...(edicoesLocais[reg.id] || {}), id: reg.id };
+                const edicoes = edicoesLocaisRef.current;
+                const atualizado = { ...reg, ...(edicoes[reg.id] || {}), id: reg.id };
                 try {
                     await onAtualizar(atualizado);
                     const valorLoja = valorCampo(reg, 'loja');
@@ -10412,7 +10428,7 @@ ${folhas.join('\n')}
                         <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'14px'}}>
                             <span style={{fontSize:'20px'}}>📤</span>
                             <span style={{fontWeight:'800',fontSize:'15px',color:'#991b1b'}}>Importar Planilha</span>
-                            <span style={{fontSize:'12px',color:'#6b7280',fontWeight:'600'}}>— Seq→Mesa · Loja→Loja · Pré→Pré-Romaneio · Volumes→Volumes · Lacre e Caveirão: preenchimento manual</span>
+                            <span style={{fontSize:'12px',color:'#6b7280',fontWeight:'600'}}>— Seq→Mesa · Loja→Loja · Pré→Pré-Romaneio · Volumes→Volumes · Lacre→Lacre · Caveirão: preenchimento manual</span>
                         </div>
 
                         {/* Drag & Drop + botão */}
@@ -10468,7 +10484,7 @@ ${folhas.join('\n')}
                                                     <td style={{padding:'5px 10px',color:'#374151',fontWeight:'600'}}>{r.loja||'—'}</td>
                                                     <td style={{padding:'5px 10px',color:'#374151',fontFamily:'monospace'}}>{r.preremanejo||'—'}</td>
                                                     <td style={{padding:'5px 10px',color:'#374151',fontWeight:'700',textAlign:'center'}}>{r.volumes||'0'}</td>
-                                                    <td style={{padding:'5px 10px',color:'#9ca3af',fontSize:'11px',fontStyle:'italic'}}>manual</td>
+                                                    <td style={{padding:'5px 10px',color:'#374151',fontWeight:'600'}}>{r.lacre||'—'}</td>
                                                     <td style={{padding:'5px 10px',color:'#9ca3af',fontSize:'11px',fontStyle:'italic'}}>manual</td>
                                                 </tr>
                                             ))}
@@ -10495,7 +10511,7 @@ ${folhas.join('\n')}
                     {/* ══ FIM UPLOAD ══ */}
 
                     {/* TABELA */}
-                    <div className="overflow-x-auto">
+                    <div>
                         {/* CAMPO ÚNICO DE HORÁRIO DE FINALIZAÇÃO */}
                         <div style={{display:'flex',alignItems:'center',gap:'12px',marginBottom:'12px',background:'#fff7ed',border:'2px solid #fb923c',borderRadius:'10px',padding:'10px 16px',flexWrap:'wrap'}}>
                             <span style={{fontSize:'14px',fontWeight:'700',color:'#9a3412'}}>⏰ Horário de Finalização (aplicado a todas as linhas):</span>
@@ -10511,119 +10527,200 @@ ${folhas.join('\n')}
                                 </span>
                             )}
                         </div>
-                        <table className="w-full" style={{minWidth:'960px'}}>
-                            <thead className="bg-gray-100 sticky top-0">
-                                <tr>
-                                    <th className="px-3 py-2 text-left text-sm font-bold">🏬 Loja</th>
-                                    <th className="px-3 py-2 text-left text-sm font-bold">📋 Pré-Romaneio</th>
-                                    <th className="px-3 py-2 text-left text-sm font-bold">🔒 Lacre</th>
-                                    <th className="px-3 py-2 text-left text-sm font-bold">📦 Qtd Volumes</th>
-                                    <th className="px-3 py-2 text-left text-sm font-bold">🏷️ Qtd Caveirão</th>
-                                    <th className="px-3 py-2 text-left text-sm font-bold">🪑 Mesa</th>
-                                    <th className="px-3 py-2 text-left text-sm font-bold">👤 Colaborador</th>
-                                    <th className="px-3 py-2 text-left text-sm font-bold">⏰ Finalização</th>
-                                    <th className="px-3 py-2 text-left text-sm font-bold">Obs</th>
-                                    <th className="px-3 py-2 text-left text-sm font-bold">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {registrosDoDia.length === 0 ? (
-                                    <tr>
-                                        <td colSpan="10" className="text-center py-8 text-gray-500">
-                                            Nenhuma carga cadastrada para esta data. Clique em "➕ Adicionar Carga do Dia" para começar.
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    registrosDoDia.map((reg) => {
-                                        return (
-                                        <tr key={reg.id} className="border-b hover:bg-gray-50">
-                                            {/* LOJA */}
-                                            <td className="px-2 py-2" style={{position:'relative',minWidth:'150px'}}>
-                                                <input type="text" value={valorCampo(reg,'loja')}
-                                                    onChange={(e) => { handleInputChange(reg.id,'loja',e.target.value); setSugestaoAtiva({id:reg.id,campo:'loja'}); }}
-                                                    onFocus={() => setSugestaoAtiva({id:reg.id,campo:'loja'})}
-                                                    onBlur={() => setTimeout(() => { setSugestaoAtiva(null); handleSalvarCampo(reg,'loja'); }, 200)}
-                                                    className="w-full p-2 border rounded input-edit" placeholder="Nome da loja..." autoComplete="off" />
-                                                {renderSugestoes(reg,'loja',historicoLojas)}
-                                            </td>
-                                            {/* PRÉ-ROMANEIO */}
-                                            <td className="px-2 py-2" style={{minWidth:'130px'}}>
-                                                <input type="text" value={valorCampo(reg,'preremanejo')}
-                                                    onChange={(e) => handleInputChange(reg.id,'preremanejo',e.target.value)}
-                                                    onBlur={() => handleSalvarCampo(reg,'preremanejo')}
-                                                    className="w-full p-2 border rounded input-edit" placeholder="Ex: 917495" style={{fontWeight:'600'}} />
-                                            </td>
-                                            {/* LACRE */}
-                                            <td className="px-2 py-2" style={{minWidth:'110px'}}>
-                                                <input type="text" value={valorCampo(reg,'lacre')}
-                                                    onChange={(e) => handleInputChange(reg.id,'lacre',e.target.value)}
-                                                    onBlur={() => handleSalvarCampo(reg,'lacre')}
-                                                    className="w-full p-2 border rounded input-edit" placeholder="Ex: 20866" />
-                                            </td>
-                                            {/* QTD VOLUMES */}
-                                            <td className="px-2 py-2" style={{minWidth:'110px'}}>
-                                                <input type="number" min="0" value={valorCampo(reg,'volumes')}
-                                                    onChange={(e) => handleInputChange(reg.id,'volumes',e.target.value)}
-                                                    onBlur={() => handleSalvarCampo(reg,'volumes')}
-                                                    className="w-full p-2 border rounded input-edit" placeholder="Ex: 101" style={{fontWeight:'700'}} />
-                                            </td>
-                                            {/* QTD CAVEIRÃO */}
-                                            <td className="px-2 py-2" style={{minWidth:'110px'}}>
-                                                <input type="text" value={valorCampo(reg,'qtdCaveirao')}
-                                                    onChange={(e) => handleInputChange(reg.id,'qtdCaveirao',e.target.value)}
-                                                    onBlur={() => handleSalvarCampo(reg,'qtdCaveirao')}
-                                                    className="w-full p-2 border rounded input-edit" placeholder="Ex: 1/101" style={{fontWeight:'700',textAlign:'center'}} />
-                                            </td>
-                                            {/* MESA */}
-                                            <td className="px-2 py-2" style={{position:'relative',minWidth:'90px'}}>
-                                                <input type="text" value={valorCampo(reg,'mesa')}
-                                                    onChange={(e) => { handleInputChange(reg.id,'mesa',e.target.value); setSugestaoAtiva({id:reg.id,campo:'mesa'}); }}
-                                                    onFocus={() => setSugestaoAtiva({id:reg.id,campo:'mesa'})}
-                                                    onBlur={() => setTimeout(() => { setSugestaoAtiva(null); handleSalvarCampo(reg,'mesa'); }, 200)}
-                                                    className="w-full p-2 border rounded input-edit" placeholder="Ex: 05" autoComplete="off" />
-                                                {renderSugestoes(reg,'mesa',historicoMesas)}
-                                            </td>
-                                            {/* COLABORADOR */}
-                                            <td className="px-2 py-2" style={{position:'relative',minWidth:'150px'}}>
-                                                <input type="text" value={valorCampo(reg,'colaborador')}
-                                                    onChange={(e) => { handleInputChange(reg.id,'colaborador',e.target.value); setSugestaoAtiva({id:reg.id,campo:'colaborador'}); }}
-                                                    onFocus={() => setSugestaoAtiva({id:reg.id,campo:'colaborador'})}
-                                                    onBlur={() => setTimeout(() => { setSugestaoAtiva(null); handleSalvarCampo(reg,'colaborador',true); }, 200)}
-                                                    className="w-full p-2 border rounded input-edit" placeholder="Nome..." autoComplete="off" />
-                                                {renderSugestoes(reg,'colaborador',historicoColaboradores)}
-                                            </td>
-                                            {/* HORARIO */}
-                                            <td className="px-2 py-2" style={{minWidth:'100px',textAlign:'center'}}>
-                                                <span style={{fontSize:'14px',fontWeight:'700',color:'#374151'}}>
-                                                    {horarioFinalizacaoGlobal || valorCampo(reg,'horarioFinalizacao') || '—'}
-                                                </span>
-                                            </td>
-                                            {/* OBS */}
-                                            <td className="px-2 py-2" style={{minWidth:'130px'}}>
-                                                <input type="text" value={valorCampo(reg,'obs')}
-                                                    onChange={(e) => handleInputChange(reg.id,'obs',e.target.value)}
-                                                    onBlur={() => handleSalvarCampo(reg,'obs')}
-                                                    className="w-full p-2 border rounded input-edit" placeholder="Obs..." />
-                                            </td>
-                                            {/* ACOES */}
-                                            <td className="px-2 py-2" style={{minWidth:'140px'}}>
-                                                <div style={{display:'flex',gap:'6px'}}>
-                                                    <button onClick={() => handleSalvarLinha(reg)}
-                                                        disabled={salvandoLinha === reg.id}
-                                                        style={{background: salvandoLinha === reg.id ? '#9ca3af' : 'linear-gradient(135deg,#10b981,#059669)',color:'white',border:'none',borderRadius:'7px',padding:'6px 10px',fontWeight:'700',fontSize:'12px',cursor: salvandoLinha === reg.id ? 'default' : 'pointer'}}>
-                                                        {salvandoLinha === reg.id ? '⏳ Salvando...' : '💾 Salvar'}
-                                                    </button>
-                                                    <button onClick={() => handleExcluir(reg.id)}
-                                                        style={{background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'white',border:'none',borderRadius:'7px',padding:'6px 10px',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>
-                                                        🗑 Excluir
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );})
-                                )}
-                            </tbody>
-                        </table>
+                        {/* BARRA DE SELEÇÃO EM LOTE */}
+                        {Object.values(selRegistros).some(Boolean) && (() => {
+                            const qtdSel = Object.values(selRegistros).filter(Boolean).length;
+                            return (
+                                <div style={{display:'flex',alignItems:'center',gap:'12px',marginBottom:'8px',background:'#fef2f2',border:'2px solid #dc2626',borderRadius:'10px',padding:'8px 14px',flexWrap:'wrap'}}>
+                                    <span style={{fontSize:'13px',fontWeight:'700',color:'#991b1b'}}>{qtdSel} registro{qtdSel !== 1 ? 's' : ''} selecionado{qtdSel !== 1 ? 's' : ''}</span>
+                                    <button
+                                        onClick={async () => {
+                                            if (!window.confirm(`Excluir ${qtdSel} registro(s) selecionado(s)?`)) return;
+                                            const ids = Object.entries(selRegistros).filter(([,v])=>v).map(([id])=>id);
+                                            for (const id of ids) { try { await onDeletar(id); } catch(e) { console.error(e); } }
+                                            setSelRegistros({});
+                                            setEdicoesLocais(prev => { const cp = {...prev}; ids.forEach(id => delete cp[id]); return cp; });
+                                        }}
+                                        style={{background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'white',border:'none',borderRadius:'7px',padding:'6px 16px',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>
+                                        🗑 Excluir Selecionados
+                                    </button>
+                                    <button
+                                        onClick={() => setSelRegistros({})}
+                                        style={{background:'white',color:'#6b7280',border:'1.5px solid #d1d5db',borderRadius:'7px',padding:'6px 12px',fontWeight:'600',fontSize:'12px',cursor:'pointer'}}>
+                                        ✖ Desmarcar
+                                    </button>
+                                </div>
+                            );
+                        })()}
+
+                        {/* MODAL DE EDIÇÃO */}
+                        {regEditando && (
+                            <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.6)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px'}}>
+                                <div style={{background:'white',borderRadius:'16px',padding:'24px',width:'100%',maxWidth:'560px',maxHeight:'90vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
+                                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'20px'}}>
+                                        <span style={{fontWeight:'800',fontSize:'17px',color:'#1f2937'}}>✏️ Editar Carga — {valorCampo(regEditando,'loja')||'(sem loja)'}</span>
+                                        <button onClick={()=>setRegEditando(null)} style={{background:'#f3f4f6',border:'none',borderRadius:'8px',padding:'6px 12px',fontWeight:'700',fontSize:'14px',cursor:'pointer',color:'#6b7280'}}>✕</button>
+                                    </div>
+                                    {[
+                                        ['loja','🏬 Loja','text','Nome da loja...'],
+                                        ['preremanejo','📋 Pré-Romaneio','text','Ex: 917495'],
+                                        ['lacre','🔒 Lacre','text','Ex: 20866'],
+                                        ['volumes','📦 Qtd Volumes','number','Ex: 101'],
+                                        ['qtdCaveirao','🏷️ Qtd Caveirão','text','Ex: 1/101'],
+                                        ['mesa','🪑 Mesa','text','Ex: 05'],
+                                        ['colaborador','👤 Colaborador','text','Nome...'],
+                                        ['obs','📝 Obs','text','Observação...'],
+                                    ].map(([campo,label,tipo,placeholder]) => (
+                                        <div key={campo} style={{marginBottom:'14px'}}>
+                                            <label style={{display:'block',fontSize:'12px',fontWeight:'700',color:'#6b7280',marginBottom:'5px'}}>{label}</label>
+                                            <input
+                                                type={tipo}
+                                                value={valorCampo(regEditando,campo)}
+                                                onChange={e => { handleInputChange(regEditando.id,campo,e.target.value); setRegEditando(r=>({...r,[campo]:e.target.value})); }}
+                                                placeholder={placeholder}
+                                                style={{width:'100%',padding:'9px 12px',border:'2px solid #667eea',borderRadius:'8px',fontSize:'14px',outline:'none',color:'#1f2937',boxSizing:'border-box'}}
+                                            />
+                                        </div>
+                                    ))}
+                                    <div style={{display:'flex',gap:'10px',marginTop:'20px'}}>
+                                        <button
+                                            onClick={async ()=>{ await handleSalvarLinha(regEditando); setRegEditando(null); }}
+                                            disabled={salvandoLinha === regEditando.id}
+                                            style={{flex:1,background:'linear-gradient(135deg,#10b981,#059669)',color:'white',border:'none',borderRadius:'9px',padding:'11px',fontWeight:'800',fontSize:'14px',cursor:'pointer'}}>
+                                            {salvandoLinha === regEditando.id ? '⏳ Salvando...' : '💾 Salvar'}
+                                        </button>
+                                        <button
+                                            onClick={()=>setRegEditando(null)}
+                                            style={{background:'#f3f4f6',color:'#374151',border:'none',borderRadius:'9px',padding:'11px 20px',fontWeight:'700',fontSize:'14px',cursor:'pointer'}}>
+                                            Cancelar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* GRID DE CARDS */}
+                        {registrosDoDia.length === 0 ? (
+                            <div style={{textAlign:'center',padding:'40px 20px',color:'#9ca3af',fontSize:'14px'}}>
+                                Nenhuma carga cadastrada para esta data. Clique em "➕ Adicionar Carga do Dia" para começar.
+                            </div>
+                        ) : (
+                            <div>
+                                {/* HEADER DO GRID */}
+                                <div style={{display:'grid',gridTemplateColumns:'32px 1fr 1fr 90px 90px 80px 120px 80px 90px 160px',gap:'6px',padding:'7px 10px',background:'#f3f4f6',borderRadius:'10px 10px 0 0',marginBottom:'2px',alignItems:'center'}}>
+                                    <div style={{textAlign:'center'}}>
+                                        <input type="checkbox"
+                                            style={{width:'14px',height:'14px',cursor:'pointer'}}
+                                            onChange={e => {
+                                                const novo = {};
+                                                if (e.target.checked) registrosDoDia.forEach(r => { novo[r.id] = true; });
+                                                setSelRegistros(novo);
+                                            }}
+                                            checked={registrosDoDia.length > 0 && registrosDoDia.every(r => selRegistros[r.id])}
+                                        />
+                                    </div>
+                                    {['🏬 Loja','📋 Pré-Romaneio','🔒 Lacre','📦 Vol','🪑 Mesa','👤 Colaborador','⏰ Fin.','📝 Obs','Ações'].map(h=>(
+                                        <div key={h} style={{fontSize:'11px',fontWeight:'700',color:'#374151',textTransform:'uppercase',letterSpacing:'0.04em',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{h}</div>
+                                    ))}
+                                </div>
+                                {registrosDoDia.map((reg) => (
+                                    <div key={reg.id} style={{display:'grid',gridTemplateColumns:'32px 1fr 1fr 90px 90px 80px 120px 80px 90px 160px',gap:'6px',padding:'6px 10px',background: selRegistros[reg.id] ? '#fef2f2' : 'white',borderBottom:'1px solid #f3f4f6',alignItems:'center',transition:'background 0.15s'}}>
+                                        {/* CHECKBOX */}
+                                        <div style={{textAlign:'center'}}>
+                                            <input type="checkbox"
+                                                checked={!!selRegistros[reg.id]}
+                                                onChange={e => setSelRegistros(prev => ({...prev,[reg.id]:e.target.checked}))}
+                                                style={{width:'14px',height:'14px',cursor:'pointer'}} />
+                                        </div>
+                                        {/* LOJA */}
+                                        <div style={{position:'relative'}}>
+                                            <input type="text" value={valorCampo(reg,'loja')}
+                                                onChange={e => { handleInputChange(reg.id,'loja',e.target.value); setSugestaoAtiva({id:reg.id,campo:'loja'}); }}
+                                                onFocus={() => setSugestaoAtiva({id:reg.id,campo:'loja'})}
+                                                onBlur={() => setTimeout(()=>{ setSugestaoAtiva(null); handleSalvarCampo(reg,'loja'); },200)}
+                                                placeholder="Loja..." autoComplete="off"
+                                                style={{width:'100%',padding:'5px 7px',border:'1.5px solid #d1d5db',borderRadius:'6px',fontSize:'13px',fontWeight:'600',outline:'none',boxSizing:'border-box'}} />
+                                            {renderSugestoes(reg,'loja',historicoLojas)}
+                                        </div>
+                                        {/* PRÉ-ROMANEIO */}
+                                        <div>
+                                            <input type="text" value={valorCampo(reg,'preremanejo')}
+                                                onChange={e => handleInputChange(reg.id,'preremanejo',e.target.value)}
+                                                onBlur={() => handleSalvarCampo(reg,'preremanejo')}
+                                                placeholder="Pré..." 
+                                                style={{width:'100%',padding:'5px 7px',border:'1.5px solid #d1d5db',borderRadius:'6px',fontSize:'12px',outline:'none',boxSizing:'border-box'}} />
+                                        </div>
+                                        {/* LACRE */}
+                                        <div>
+                                            <input type="text" value={valorCampo(reg,'lacre')}
+                                                onChange={e => handleInputChange(reg.id,'lacre',e.target.value)}
+                                                onBlur={() => handleSalvarCampo(reg,'lacre')}
+                                                placeholder="Lacre..."
+                                                style={{width:'100%',padding:'5px 7px',border:'1.5px solid #d1d5db',borderRadius:'6px',fontSize:'12px',outline:'none',boxSizing:'border-box'}} />
+                                        </div>
+                                        {/* VOLUMES */}
+                                        <div>
+                                            <input type="number" min="0" value={valorCampo(reg,'volumes')}
+                                                onChange={e => handleInputChange(reg.id,'volumes',e.target.value)}
+                                                onBlur={() => handleSalvarCampo(reg,'volumes')}
+                                                placeholder="0"
+                                                style={{width:'100%',padding:'5px 7px',border:'1.5px solid #d1d5db',borderRadius:'6px',fontSize:'13px',fontWeight:'700',outline:'none',boxSizing:'border-box'}} />
+                                        </div>
+                                        {/* MESA */}
+                                        <div style={{position:'relative'}}>
+                                            <input type="text" value={valorCampo(reg,'mesa')}
+                                                onChange={e => { handleInputChange(reg.id,'mesa',e.target.value); setSugestaoAtiva({id:reg.id,campo:'mesa'}); }}
+                                                onFocus={() => setSugestaoAtiva({id:reg.id,campo:'mesa'})}
+                                                onBlur={() => setTimeout(()=>{ setSugestaoAtiva(null); handleSalvarCampo(reg,'mesa'); },200)}
+                                                placeholder="Mesa..." autoComplete="off"
+                                                style={{width:'100%',padding:'5px 7px',border:'1.5px solid #d1d5db',borderRadius:'6px',fontSize:'12px',outline:'none',boxSizing:'border-box'}} />
+                                            {renderSugestoes(reg,'mesa',historicoMesas)}
+                                        </div>
+                                        {/* COLABORADOR */}
+                                        <div style={{position:'relative'}}>
+                                            <input type="text" value={valorCampo(reg,'colaborador')}
+                                                onChange={e => { handleInputChange(reg.id,'colaborador',e.target.value); setSugestaoAtiva({id:reg.id,campo:'colaborador'}); }}
+                                                onFocus={() => setSugestaoAtiva({id:reg.id,campo:'colaborador'})}
+                                                onBlur={() => setTimeout(()=>{ setSugestaoAtiva(null); handleSalvarCampo(reg,'colaborador',true); },200)}
+                                                placeholder="Nome..." autoComplete="off"
+                                                style={{width:'100%',padding:'5px 7px',border:'1.5px solid #d1d5db',borderRadius:'6px',fontSize:'12px',outline:'none',boxSizing:'border-box'}} />
+                                            {renderSugestoes(reg,'colaborador',historicoColaboradores)}
+                                        </div>
+                                        {/* FINALIZAÇÃO */}
+                                        <div style={{textAlign:'center',fontSize:'13px',fontWeight:'700',color:'#374151'}}>
+                                            {horarioFinalizacaoGlobal || valorCampo(reg,'horarioFinalizacao') || '—'}
+                                        </div>
+                                        {/* OBS */}
+                                        <div>
+                                            <input type="text" value={valorCampo(reg,'obs')}
+                                                onChange={e => handleInputChange(reg.id,'obs',e.target.value)}
+                                                onBlur={() => handleSalvarCampo(reg,'obs')}
+                                                placeholder="Obs..."
+                                                style={{width:'100%',padding:'5px 7px',border:'1.5px solid #d1d5db',borderRadius:'6px',fontSize:'12px',outline:'none',boxSizing:'border-box'}} />
+                                        </div>
+                                        {/* AÇÕES */}
+                                        <div style={{display:'flex',gap:'4px',flexWrap:'nowrap'}}>
+                                            <button onClick={() => handleSalvarLinha(reg)}
+                                                disabled={salvandoLinha === reg.id}
+                                                title="Salvar"
+                                                style={{background: salvandoLinha===reg.id ? '#9ca3af' : 'linear-gradient(135deg,#10b981,#059669)',color:'white',border:'none',borderRadius:'6px',padding:'5px 9px',fontWeight:'700',fontSize:'11px',cursor: salvandoLinha===reg.id?'default':'pointer',whiteSpace:'nowrap'}}>
+                                                {salvandoLinha===reg.id ? '⏳' : '💾 Salvar'}
+                                            </button>
+                                            <button onClick={() => setRegEditando({...reg,...(edicoesLocais[reg.id]||{})})}
+                                                title="Editar todos os campos"
+                                                style={{background:'linear-gradient(135deg,#3b82f6,#1d4ed8)',color:'white',border:'none',borderRadius:'6px',padding:'5px 9px',fontWeight:'700',fontSize:'11px',cursor:'pointer',whiteSpace:'nowrap'}}>
+                                                ✏️
+                                            </button>
+                                            <button onClick={() => handleExcluir(reg.id)}
+                                                title="Excluir"
+                                                style={{background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'white',border:'none',borderRadius:'6px',padding:'5px 9px',fontWeight:'700',fontSize:'11px',cursor:'pointer',whiteSpace:'nowrap'}}>
+                                                🗑
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     {/* FILTRO + ADICIONAR */}
