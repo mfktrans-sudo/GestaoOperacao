@@ -9690,7 +9690,7 @@
                             preremanejo: mapa.preremanejo >= 0 ? String(row[mapa.preremanejo]||'').trim() : '',
                             volumes:     mapa.volumes >= 0     ? String(row[mapa.volumes]||'').trim()     : '',
                             lacre:       mapa.lacre >= 0       ? String(row[mapa.lacre]||'').trim()       : '',
-                            qtdCaveirao: '',   // preenchimento manual
+                            qtdCaveirao: '1/1',   // preenchimento manual (default 1/1)
                         })).filter(r => r.loja || r.mesa);
                         if (importados.length === 0) { lvFlashUp('⚠️ Nenhum registro válido encontrado.','err'); return; }
                         setLvUpPreview(importados.slice(0,5));
@@ -9713,7 +9713,7 @@
                     const chave = (item.loja||'').toLowerCase()+'|'+(item.mesa||'')+'|'+dataFiltro;
                     if (existentes.has(chave)) { dup++; continue; }
                     try {
-                        await onSalvar({ data: dataFiltro, loja: item.loja, mesa: item.mesa, preremanejo: item.preremanejo, volumes: item.volumes, lacre: item.lacre || '', qtdCaveirao: '', colaborador: '', horarioFinalizacao: '', obs: '' });
+                        await onSalvar({ data: dataFiltro, loja: item.loja, mesa: item.mesa, preremanejo: item.preremanejo, volumes: item.volumes, lacre: item.lacre || '', qtdCaveirao: '1/1', colaborador: '', horarioFinalizacao: '', obs: '' });
                         existentes.add(chave);
                         ok++;
                     } catch(e) { console.error('Importação LV:', e); }
@@ -9867,7 +9867,7 @@
                         const lacre = dados.lacre || '';
                         const preremanejo = dados.preremanejo || '';
                         const volumes = dados.volumes || '0';
-                        const qtdCaveirao = dados.qtdCaveirao || '';
+                        const qtdCaveirao = dados.qtdCaveirao || '1/1';
                         todasFolhas.push(`
 <div class="folha">
   <div class="topo">
@@ -10151,7 +10151,7 @@ ${todasFolhas.join('\n')}
                 const lacre = dados.lacre || '';
                 const preremanejo = dados.preremanejo || '';
                 const volumes = dados.volumes || '0';
-                const qtdCaveirao = dados.qtdCaveirao || '';
+                const qtdCaveirao = dados.qtdCaveirao || '1/1';
 
                 const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
 <title>Identificacao - ${loja}</title>
@@ -10323,7 +10323,7 @@ ${todasFolhas.join('\n')}
                     const lacre = dados.lacre || '';
                     const preremanejo = dados.preremanejo || '';
                     const volumes = dados.volumes || '0';
-                    const qtdCaveirao = dados.qtdCaveirao || '';
+                    const qtdCaveirao = dados.qtdCaveirao || '1/1';
                     return `
 <div class="folha">
   <div class="topo">
@@ -10607,7 +10607,7 @@ ${folhas.join('\n')}
                         ) : (
                             <div>
                                 {/* HEADER DO GRID */}
-                                <div style={{display:'grid',gridTemplateColumns:'32px 1fr 1fr 90px 90px 80px 120px 80px 90px 160px',gap:'6px',padding:'7px 10px',background:'#f3f4f6',borderRadius:'10px 10px 0 0',marginBottom:'2px',alignItems:'center'}}>
+                                <div style={{display:'grid',gridTemplateColumns:'32px 1fr 1fr 90px 90px 80px 90px 120px 80px 90px 160px',gap:'6px',padding:'7px 10px',background:'#f3f4f6',borderRadius:'10px 10px 0 0',marginBottom:'2px',alignItems:'center'}}>
                                     <div style={{textAlign:'center'}}>
                                         <input type="checkbox"
                                             style={{width:'14px',height:'14px',cursor:'pointer'}}
@@ -10619,12 +10619,12 @@ ${folhas.join('\n')}
                                             checked={registrosDoDia.length > 0 && registrosDoDia.every(r => selRegistros[r.id])}
                                         />
                                     </div>
-                                    {['🏬 Loja','📋 Pré-Romaneio','🔒 Lacre','📦 Vol','🪑 Mesa','👤 Colaborador','⏰ Fin.','📝 Obs','Ações'].map(h=>(
+                                    {['🏬 Loja','📋 Pré-Romaneio','🔒 Lacre','📦 Vol','🪑 Mesa','💀 Caveirão','👤 Colaborador','⏰ Fin.','📝 Obs','Ações'].map(h=>(
                                         <div key={h} style={{fontSize:'11px',fontWeight:'700',color:'#374151',textTransform:'uppercase',letterSpacing:'0.04em',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{h}</div>
                                     ))}
                                 </div>
                                 {registrosDoDia.map((reg) => (
-                                    <div key={reg.id} style={{display:'grid',gridTemplateColumns:'32px 1fr 1fr 90px 90px 80px 120px 80px 90px 160px',gap:'6px',padding:'6px 10px',background: selRegistros[reg.id] ? '#fef2f2' : 'white',borderBottom:'1px solid #f3f4f6',alignItems:'center',transition:'background 0.15s'}}>
+                                    <div key={reg.id} style={{display:'grid',gridTemplateColumns:'32px 1fr 1fr 90px 90px 80px 90px 120px 80px 90px 160px',gap:'6px',padding:'6px 10px',background: selRegistros[reg.id] ? '#fef2f2' : 'white',borderBottom:'1px solid #f3f4f6',alignItems:'center',transition:'background 0.15s'}}>
                                         {/* CHECKBOX */}
                                         <div style={{textAlign:'center'}}>
                                             <input type="checkbox"
@@ -10675,6 +10675,14 @@ ${folhas.join('\n')}
                                                 placeholder="Mesa..." autoComplete="off"
                                                 style={{width:'100%',padding:'5px 7px',border:'1.5px solid #d1d5db',borderRadius:'6px',fontSize:'12px',outline:'none',boxSizing:'border-box'}} />
                                             {renderSugestoes(reg,'mesa',historicoMesas)}
+                                        </div>
+                                        {/* CAVEIRÃO */}
+                                        <div>
+                                            <input type="text" value={valorCampo(reg,'qtdCaveirao')}
+                                                onChange={e => handleInputChange(reg.id,'qtdCaveirao',e.target.value)}
+                                                onBlur={() => handleSalvarCampo(reg,'qtdCaveirao')}
+                                                placeholder="1/1"
+                                                style={{width:'100%',padding:'5px 7px',border:'1.5px solid #dc2626',borderRadius:'6px',fontSize:'13px',fontWeight:'700',color:'#dc2626',outline:'none',boxSizing:'border-box',textAlign:'center'}} />
                                         </div>
                                         {/* COLABORADOR */}
                                         <div style={{position:'relative'}}>
