@@ -829,6 +829,12 @@
             if (isMaximized) applyMaximizeStyles(true);
         });
         observer.observe(document.getElementById('root'), { childList: true, subtree: false });
+
+        // Inicia o sistema já em tela cheia (largura total), evitando cortes de conteúdo em todas as abas.
+        isMaximized = true;
+        document.getElementById('btnMaximize').title = 'Restaurar';
+        document.getElementById('btnMaximize').textContent = '\u29C1';
+        applyMaximizeStyles(true);
     </script>
 
     <script type="text/plain" id="appSource">
