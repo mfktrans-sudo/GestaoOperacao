@@ -12,6 +12,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
     <!-- Firebase SDK (CDN) -->
     <script type="module">
@@ -1401,6 +1403,347 @@
             );
         }
 
+        // ========== APRESENTAÇÃO EXECUTIVA (geração + exportação PPTX/PDF/XLSX) ==========
+        function ApresentacaoExecutivaModal({ onClose, periodo, kpi, porOperacao, evolucao, porSemana, porMes, nomeMes, resumoExecutivo, fmtN, fmtFull, fmtD }) {
+            const { useState, useEffect, useRef, useMemo } = React;
+            const [exportando, setExportando] = useState(null); // null | 'pptx' | 'pdf' | 'xlsx'
+            const [erroExport, setErroExport] = useState('');
+            const slideRefs = useRef([]);
+            const refPie = useRef(null), refLineDia = useRef(null), refBarSemana = useRef(null), refLineMes = useRef(null);
+            const instPie = useRef(null), instLineDia = useRef(null), instBarSemana = useRef(null), instLineMes = useRef(null);
+
+            const DARKBLUE = '#1e3a8a', BLUE = '#2563eb', PURPLE = '#7c3aed', GREEN = '#10b981', AMBER = '#f59e0b', RED = '#ef4444';
+            const PALETA = ['#7c3aed','#2563eb','#10b981','#f59e0b','#ef4444','#0891b2','#db2777','#65a30d','#9333ea','#0d9488'];
+
+            const totalVol = useMemo(() => porOperacao.reduce((s,o)=>s+(o.vol||0),0), [porOperacao]);
+            const diasQtd = evolucao.length || 1;
+            const mediaDiaria = totalVol / diasQtd;
+            const mediaSemanal = porSemana.length ? totalVol / porSemana.length : 0;
+            const mediaMensal = porMes.length ? totalVol / porMes.length : 0;
+
+            const melhorDia = evolucao.length ? [...evolucao].sort((a,b)=>b.vol-a.vol)[0] : null;
+            const piorDia   = evolucao.length ? [...evolucao].sort((a,b)=>a.vol-b.vol)[0] : null;
+            const melhorSemana = porSemana.length ? [...porSemana].sort((a,b)=>b.vol-a.vol)[0] : null;
+            const piorSemana   = porSemana.length ? [...porSemana].sort((a,b)=>a.vol-b.vol)[0] : null;
+            const ultimoMes = porMes.length ? porMes[porMes.length-1] : null;
+
+            const ranking = useMemo(() => porOperacao.map((o,i)=>({
+                ...o, posicao:i+1, participacao: totalVol>0 ? (o.vol/totalVol*100) : 0
+            })), [porOperacao, totalVol]);
+
+            const topRanking = ranking.slice(0,8);
+
+            // ══ Gráficos (Chart.js) — criados uma vez, todos os slides visíveis simultaneamente ══
+            useEffect(() => {
+                const kill = ref => { try { if(ref.current){ref.current.destroy();ref.current=null;} } catch(e){} };
+                kill(instPie); kill(instLineDia); kill(instBarSemana); kill(instLineMes);
+
+                if (refPie.current && topRanking.length) {
+                    instPie.current = new Chart(refPie.current, {
+                        type:'doughnut',
+                        data:{ labels: topRanking.map(r=>r.op),
+                            datasets:[{ data: topRanking.map(r=>r.vol), backgroundColor: PALETA, borderWidth:2, borderColor:'#fff' }] },
+                        options:{ responsive:true, maintainAspectRatio:false,
+                            plugins:{ legend:{ position:'right', labels:{ boxWidth:12, font:{size:11} } } } }
+                    });
+                }
+                if (refLineDia.current && evolucao.length) {
+                    instLineDia.current = new Chart(refLineDia.current, {
+                        type:'line',
+                        data:{ labels: evolucao.map(d=>fmtD(d.data)),
+                            datasets:[{ label:'Volume', data: evolucao.map(d=>d.vol), borderColor:PURPLE,
+                                backgroundColor:'rgba(124,58,237,0.15)', tension:0.4, fill:true, pointRadius:2, borderWidth:2 }] },
+                        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+                            scales:{ y:{ beginAtZero:true } } }
+                    });
+                }
+                if (refBarSemana.current && porSemana.length) {
+                    instBarSemana.current = new Chart(refBarSemana.current, {
+                        type:'bar',
+                        data:{ labels: porSemana.map(s=>fmtD(s.inicio)),
+                            datasets:[{ label:'Volume Semanal', data: porSemana.map(s=>s.vol), backgroundColor:BLUE, borderRadius:4 }] },
+                        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+                            scales:{ y:{ beginAtZero:true } } }
+                    });
+                }
+                if (refLineMes.current && porMes.length) {
+                    instLineMes.current = new Chart(refLineMes.current, {
+                        type:'line',
+                        data:{ labels: porMes.map(m=>nomeMes(m.mes)),
+                            datasets:[{ label:'Volume Mensal', data: porMes.map(m=>m.vol), borderColor:DARKBLUE,
+                                backgroundColor:'rgba(30,58,138,0.12)', tension:0.35, fill:true, pointRadius:3, borderWidth:2.5 }] },
+                        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+                            scales:{ y:{ beginAtZero:true } } }
+                    });
+                }
+                return () => { kill(instPie); kill(instLineDia); kill(instBarSemana); kill(instLineMes); };
+            }, [topRanking, evolucao, porSemana, porMes]);
+
+            // ══ Captura de slides em alta resolução (para PPTX e PDF) ══
+            const capturarSlides = async () => {
+                const imgs = [];
+                for (const el of slideRefs.current) {
+                    if (!el) continue;
+                    const canvas = await html2canvas(el, { scale: 2, backgroundColor:'#ffffff', useCORS:true });
+                    imgs.push(canvas.toDataURL('image/png'));
+                }
+                return imgs;
+            };
+
+            const exportarPPTX = async () => {
+                setExportando('pptx'); setErroExport('');
+                try {
+                    const imgs = await capturarSlides();
+                    const PptxCtor = window.PptxGenJS;
+                    const pptx = new PptxCtor();
+                    pptx.defineLayout({ name:'EXEC', width:13.33, height:7.5 });
+                    pptx.layout = 'EXEC';
+                    imgs.forEach(dataUrl => {
+                        const slide = pptx.addSlide();
+                        slide.addImage({ data: dataUrl, x:0, y:0, w:13.33, h:7.5 });
+                    });
+                    await pptx.writeFile({ fileName: `Apresentacao_Executiva_${periodo.ini}_a_${periodo.fim}.pptx` });
+                } catch (e) {
+                    console.error(e); setErroExport('Falha ao gerar PowerPoint. Tente novamente.');
+                } finally { setExportando(null); }
+            };
+
+            const exportarPDF = async () => {
+                setExportando('pdf'); setErroExport('');
+                try {
+                    const imgs = await capturarSlides();
+                    const { jsPDF } = window.jspdf;
+                    const pdf = new jsPDF({ orientation:'landscape', unit:'in', format:[13.33,7.5] });
+                    imgs.forEach((dataUrl, i) => {
+                        if (i>0) pdf.addPage([13.33,7.5], 'landscape');
+                        pdf.addImage(dataUrl, 'PNG', 0, 0, 13.33, 7.5);
+                    });
+                    pdf.save(`Apresentacao_Executiva_${periodo.ini}_a_${periodo.fim}.pdf`);
+                } catch (e) {
+                    console.error(e); setErroExport('Falha ao gerar PDF. Tente novamente.');
+                } finally { setExportando(null); }
+            };
+
+            const exportarExcel = async () => {
+                setExportando('xlsx'); setErroExport('');
+                try {
+                    const wb = XLSX.utils.book_new();
+
+                    const wsResumo = XLSX.utils.aoa_to_sheet([
+                        ['Apresentação Executiva'],
+                        ['Período', `${fmtFull(periodo.ini)} a ${fmtFull(periodo.fim)}`],
+                        ['Operação filtrada', periodo.opFiltro],
+                        [],
+                        ['Volume Total', totalVol],
+                        ['Média Diária', Math.round(mediaDiaria)],
+                        ['Média Semanal', Math.round(mediaSemanal)],
+                        ['Média Mensal', Math.round(mediaMensal)],
+                        ['Dias Analisados', diasQtd],
+                        [],
+                        ['Resumo Executivo'],
+                        [resumoExecutivo],
+                    ]);
+                    XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo');
+
+                    const wsRanking = XLSX.utils.json_to_sheet(ranking.map(r => ({
+                        Posição:r.posicao, Operação:r.op, Volume:Math.round(r.vol), 'Participação %': +r.participacao.toFixed(1),
+                        'Notas Fiscais': Math.round(r.nf||0), 'Registros': r.total
+                    })));
+                    XLSX.utils.book_append_sheet(wb, wsRanking, 'Por Operação');
+
+                    const wsDiario = XLSX.utils.json_to_sheet(evolucao.map(d => ({
+                        Data: fmtFull(d.data), Volume: Math.round(d.vol), Registros: d.total
+                    })));
+                    XLSX.utils.book_append_sheet(wb, wsDiario, 'Diário');
+
+                    const wsSemanal = XLSX.utils.json_to_sheet(porSemana.map(s => ({
+                        'Início da Semana': fmtFull(s.inicio), Volume: Math.round(s.vol), Registros: s.total
+                    })));
+                    XLSX.utils.book_append_sheet(wb, wsSemanal, 'Semanal');
+
+                    const wsMensal = XLSX.utils.json_to_sheet(porMes.map(m => ({
+                        Mês: nomeMes(m.mes), Volume: Math.round(m.vol), Registros: m.total,
+                        'Variação %': m.variacao === null ? '' : +m.variacao.toFixed(1)
+                    })));
+                    XLSX.utils.book_append_sheet(wb, wsMensal, 'Mensal');
+
+                    XLSX.writeFile(wb, `Apresentacao_Executiva_${periodo.ini}_a_${periodo.fim}.xlsx`);
+                } catch (e) {
+                    console.error(e); setErroExport('Falha ao gerar Excel. Tente novamente.');
+                } finally { setExportando(null); }
+            };
+
+            const slideStyle = { width:960, height:540, margin:'0 auto 28px', background:'#fff', borderRadius:10,
+                boxShadow:'0 6px 24px rgba(0,0,0,0.12)', padding:'36px 44px', boxSizing:'border-box', position:'relative', overflow:'hidden' };
+            const tituloStyle = { fontSize:26, fontWeight:800, color:DARKBLUE, marginBottom:18, borderBottom:`3px solid ${PURPLE}`, paddingBottom:10 };
+            const setRef = i => el => { slideRefs.current[i] = el; };
+            const kpiBox = (label, valor, cor) => (
+                <div style={{flex:1, background:'#f8fafc', borderRadius:10, padding:'16px 18px', textAlign:'center', border:'1px solid #e2e8f0'}}>
+                    <div style={{fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.05em'}}>{label}</div>
+                    <div style={{fontSize:24, fontWeight:800, color: cor||DARKBLUE, marginTop:6}}>{valor}</div>
+                </div>
+            );
+
+            return (
+                <div style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.75)',backdropFilter:'blur(4px)',zIndex:3000,display:'flex',flexDirection:'column'}}>
+                    {/* Header */}
+                    <div style={{padding:'14px 28px',background:'linear-gradient(135deg,#1e3a8a,#4c1d95)',color:'#fff',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0,boxShadow:'0 2px 12px rgba(0,0,0,0.3)'}}>
+                        <div>
+                            <div style={{fontWeight:800,fontSize:17}}>📊 Apresentação Executiva</div>
+                            <div style={{fontSize:12,opacity:0.85,marginTop:2}}>{fmtFull(periodo.ini)} → {fmtFull(periodo.fim)} · {periodo.opFiltro}</div>
+                        </div>
+                        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                            <button disabled={!!exportando} onClick={exportarPPTX} style={{background:exportando==='pptx'?'#94a3b8':'#f59e0b',border:'none',color:'#fff',borderRadius:8,padding:'8px 16px',cursor:exportando?'default':'pointer',fontWeight:700,fontSize:12}}>
+                                {exportando==='pptx' ? '⏳ Gerando...' : '📽️ Exportar PPTX'}
+                            </button>
+                            <button disabled={!!exportando} onClick={exportarPDF} style={{background:exportando==='pdf'?'#94a3b8':'#ef4444',border:'none',color:'#fff',borderRadius:8,padding:'8px 16px',cursor:exportando?'default':'pointer',fontWeight:700,fontSize:12}}>
+                                {exportando==='pdf' ? '⏳ Gerando...' : '📄 Exportar PDF'}
+                            </button>
+                            <button disabled={!!exportando} onClick={exportarExcel} style={{background:exportando==='xlsx'?'#94a3b8':'#10b981',border:'none',color:'#fff',borderRadius:8,padding:'8px 16px',cursor:exportando?'default':'pointer',fontWeight:700,fontSize:12}}>
+                                {exportando==='xlsx' ? '⏳ Gerando...' : '📊 Exportar Excel'}
+                            </button>
+                            <button onClick={onClose} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'#fff',borderRadius:8,padding:'8px 14px',cursor:'pointer',fontWeight:700,fontSize:13,marginLeft:8}}>✕ Fechar</button>
+                        </div>
+                    </div>
+                    {erroExport && <div style={{background:'#fee2e2',color:'#991b1b',padding:'8px 20px',fontSize:12,fontWeight:600}}>{erroExport}</div>}
+
+                    {/* Slides */}
+                    <div style={{flex:1,overflowY:'auto',padding:'28px 20px',background:'#0f172a'}}>
+
+                        {/* Slide 1 — Capa */}
+                        <div ref={setRef(0)} style={{...slideStyle, display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', textAlign:'center', background:'linear-gradient(135deg,#1e3a8a,#4c1d95)'}}>
+                            <div style={{fontSize:42,fontWeight:900,color:'#fff',marginBottom:14}}>Relatório Executivo de Operações</div>
+                            <div style={{fontSize:16,color:'rgba(255,255,255,0.85)',marginBottom:34}}>Consolidação inteligente de destinos · Indicadores de desempenho</div>
+                            <div style={{fontSize:14,color:'#fff',background:'rgba(255,255,255,0.15)',borderRadius:10,padding:'14px 28px'}}>
+                                <div>Período analisado: <strong>{fmtFull(periodo.ini)} até {fmtFull(periodo.fim)}</strong></div>
+                                <div style={{marginTop:6}}>Operação: <strong>{periodo.opFiltro}</strong></div>
+                                <div style={{marginTop:6}}>Data de geração: <strong>{fmtFull(new Date().toISOString().split('T')[0])}</strong></div>
+                            </div>
+                        </div>
+
+                        {/* Slide 2 — Resumo Executivo */}
+                        <div ref={setRef(1)} style={slideStyle}>
+                            <div style={tituloStyle}>Resumo Executivo</div>
+                            <p style={{fontSize:17,lineHeight:1.8,color:'#1f2937'}}>{resumoExecutivo}</p>
+                            <div style={{display:'flex',gap:14,marginTop:30}}>
+                                {kpiBox('Volume Total', fmtN(totalVol), PURPLE)}
+                                {kpiBox('Média Diária', fmtN(mediaDiaria), BLUE)}
+                                {kpiBox('Dias Analisados', diasQtd, GREEN)}
+                            </div>
+                        </div>
+
+                        {/* Slide 3 — Volume Total por Operação */}
+                        <div ref={setRef(2)} style={slideStyle}>
+                            <div style={tituloStyle}>Volume Total por Operação</div>
+                            <div style={{display:'flex',gap:14,marginBottom:20}}>
+                                {kpiBox('Volume Total do Período', fmtN(totalVol), PURPLE)}
+                                {kpiBox('Total de Operações', ranking.length, BLUE)}
+                                {kpiBox('Melhor Operação', ranking[0]?ranking[0].op:'—', GREEN)}
+                            </div>
+                            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                                <thead><tr>
+                                    {['Operação','Quantidade','% Participação'].map(c=><th key={c} style={{textAlign:'left',padding:'8px 10px',background:'#eef2ff',color:DARKBLUE,fontWeight:700,fontSize:11,textTransform:'uppercase'}}>{c}</th>)}
+                                </tr></thead>
+                                <tbody>
+                                    {ranking.slice(0,6).map((r,i)=>(
+                                        <tr key={i} style={{background:i%2===0?'#fff':'#f8fafc'}}>
+                                            <td style={{padding:'8px 10px',fontWeight:700,borderBottom:'1px solid #f1f5f9'}}>{r.op}</td>
+                                            <td style={{padding:'8px 10px',borderBottom:'1px solid #f1f5f9'}}>{fmtN(r.vol)}</td>
+                                            <td style={{padding:'8px 10px',borderBottom:'1px solid #f1f5f9'}}>{r.participacao.toFixed(0)}%</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Slide 4 — Participação por Operação (gráfico) */}
+                        <div ref={setRef(3)} style={slideStyle}>
+                            <div style={tituloStyle}>Participação por Operação</div>
+                            <div style={{height:420}}><canvas ref={refPie}></canvas></div>
+                        </div>
+
+                        {/* Slide 5 — Evolução Diária */}
+                        <div ref={setRef(4)} style={slideStyle}>
+                            <div style={tituloStyle}>Evolução Diária</div>
+                            <div style={{display:'flex',gap:14,marginBottom:16}}>
+                                {kpiBox('Média Diária', fmtN(mediaDiaria), BLUE)}
+                                {kpiBox('Melhor Dia', melhorDia?`${fmtFull(melhorDia.data)} (${fmtN(melhorDia.vol)})`:'—', GREEN)}
+                                {kpiBox('Pior Dia', piorDia?`${fmtFull(piorDia.data)} (${fmtN(piorDia.vol)})`:'—', RED)}
+                            </div>
+                            <div style={{height:300}}><canvas ref={refLineDia}></canvas></div>
+                        </div>
+
+                        {/* Slide 6 — Evolução Semanal */}
+                        <div ref={setRef(5)} style={slideStyle}>
+                            <div style={tituloStyle}>Evolução Semanal</div>
+                            <div style={{display:'flex',gap:14,marginBottom:16}}>
+                                {kpiBox('Média Semanal', fmtN(mediaSemanal), BLUE)}
+                                {kpiBox('Melhor Semana', melhorSemana?`${fmtFull(melhorSemana.inicio)} (${fmtN(melhorSemana.vol)})`:'—', GREEN)}
+                                {kpiBox('Pior Semana', piorSemana?`${fmtFull(piorSemana.inicio)} (${fmtN(piorSemana.vol)})`:'—', RED)}
+                            </div>
+                            <div style={{height:300}}><canvas ref={refBarSemana}></canvas></div>
+                        </div>
+
+                        {/* Slide 7 — Evolução Mensal */}
+                        <div ref={setRef(6)} style={slideStyle}>
+                            <div style={tituloStyle}>Evolução Mensal</div>
+                            <div style={{display:'flex',gap:14,marginBottom:16}}>
+                                {kpiBox('Média Mensal', fmtN(mediaMensal), BLUE)}
+                                {kpiBox('Último Mês', ultimoMes?nomeMes(ultimoMes.mes):'—', PURPLE)}
+                                {kpiBox('Variação vs. Mês Anterior', ultimoMes && ultimoMes.variacao!==null ? `${ultimoMes.variacao>=0?'+':''}${ultimoMes.variacao.toFixed(1)}%` : '—', ultimoMes && ultimoMes.variacao<0 ? RED : GREEN)}
+                            </div>
+                            <div style={{height:300}}><canvas ref={refLineMes}></canvas></div>
+                        </div>
+
+                        {/* Slide 8 — Ranking das Operações */}
+                        <div ref={setRef(7)} style={slideStyle}>
+                            <div style={tituloStyle}>Ranking das Operações</div>
+                            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                                <thead><tr>
+                                    {['#','Operação','Volume','% Participação','NFs','Registros'].map(c=><th key={c} style={{textAlign:'left',padding:'7px 10px',background:'#eef2ff',color:DARKBLUE,fontWeight:700,fontSize:10,textTransform:'uppercase'}}>{c}</th>)}
+                                </tr></thead>
+                                <tbody>
+                                    {topRanking.map((r,i)=>(
+                                        <tr key={i} style={{background:i%2===0?'#fff':'#f8fafc'}}>
+                                            <td style={{padding:'7px 10px',fontWeight:800,color:PURPLE,borderBottom:'1px solid #f1f5f9'}}>{r.posicao}º</td>
+                                            <td style={{padding:'7px 10px',fontWeight:700,borderBottom:'1px solid #f1f5f9'}}>{r.op}</td>
+                                            <td style={{padding:'7px 10px',borderBottom:'1px solid #f1f5f9'}}>{fmtN(r.vol)}</td>
+                                            <td style={{padding:'7px 10px',borderBottom:'1px solid #f1f5f9'}}>{r.participacao.toFixed(1)}%</td>
+                                            <td style={{padding:'7px 10px',borderBottom:'1px solid #f1f5f9'}}>{fmtN(r.nf||0)}</td>
+                                            <td style={{padding:'7px 10px',borderBottom:'1px solid #f1f5f9'}}>{r.total}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Slide 9 — Principais Insights */}
+                        <div ref={setRef(8)} style={slideStyle}>
+                            <div style={tituloStyle}>Principais Insights</div>
+                            <ul style={{fontSize:15,lineHeight:2.2,color:'#1f2937',paddingLeft:22}}>
+                                <li>Volume total processado no período: <strong>{fmtN(totalVol)}</strong> unidades em <strong>{diasQtd}</strong> dia(s) analisado(s).</li>
+                                {ranking[0] && <li>A operação <strong>{ranking[0].op}</strong> lidera o volume, com <strong>{ranking[0].participacao.toFixed(0)}%</strong> de participação.</li>}
+                                {melhorDia && <li>O pico operacional ocorreu em <strong>{fmtFull(melhorDia.data)}</strong>, com <strong>{fmtN(melhorDia.vol)}</strong> unidades.</li>}
+                                {ultimoMes && ultimoMes.variacao !== null && <li>{ultimoMes.variacao>=0?'Crescimento':'Redução'} de <strong>{Math.abs(ultimoMes.variacao).toFixed(0)}%</strong> no volume mensal em relação ao mês anterior.</li>}
+                                <li>Nomes de destinos com variações de digitação/numeração foram consolidados automaticamente para evitar divergências nos totais.</li>
+                            </ul>
+                        </div>
+
+                        {/* Slide 10 — Conclusão */}
+                        <div ref={setRef(9)} style={{...slideStyle, display:'flex', flexDirection:'column', justifyContent:'center'}}>
+                            <div style={tituloStyle}>Conclusão</div>
+                            <p style={{fontSize:16,lineHeight:1.9,color:'#1f2937'}}>
+                                A operação apresentou desempenho consolidado de <strong>{fmtN(totalVol)}</strong> unidades no período de <strong>{fmtFull(periodo.ini)}</strong> a <strong>{fmtFull(periodo.fim)}</strong>,
+                                com média diária de <strong>{fmtN(mediaDiaria)}</strong> unidades. {ranking[0] && <>A operação <strong>{ranking[0].op}</strong> se destacou como principal responsável pelo volume movimentado.</>} Recomenda-se manter o acompanhamento
+                                contínuo dos indicadores diários, semanais e mensais para sustentar a performance operacional e antecipar desvios.
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+            );
+        }
+
         // ========== TORRE DE CONTROLE — V13 PALETA ORIGINAL ==========
         function TorreDeControle({ operacoes, listaOperacoes }) {
             const { useState, useEffect, useMemo, useRef } = React;
@@ -1415,7 +1758,10 @@
             const [periodo, setPeriodo]   = useState('mensal');
             const [dataIni, setDataIni]   = useState('');
             const [dataFim, setDataFim]   = useState(hoje);
-            const [opFiltro, setOpFiltro] = useState('TODAS');
+            const [opsFiltro, setOpsFiltro] = useState([]);
+            const [opDropdownOpen, setOpDropdownOpen] = useState(false);
+            const opDropdownRef = useRef(null);
+            const [mesSelecionado, setMesSelecionado] = useState('');
             const [showCustom, setShowCustom] = useState(false);
             const [customIni, setCustomIni]   = useState('');
             const [customFim, setCustomFim]   = useState('');
@@ -1453,12 +1799,60 @@
                 if (periodo==='custom' && customIni && customFim) { setDataIni(customIni); setDataFim(customFim); }
             }, [customIni, customFim, periodo]);
 
-            // ══ HELPER: normaliza nome removendo sufixo numérico (ex: "PAVUNA 1" → "PAVUNA") ══
+            // Fecha a caixa de operações ao clicar fora dela
+            useEffect(() => {
+                if (!opDropdownOpen) return;
+                const fecharAoClicarFora = (e) => {
+                    if (opDropdownRef.current && !opDropdownRef.current.contains(e.target)) {
+                        setOpDropdownOpen(false);
+                    }
+                };
+                document.addEventListener('mousedown', fecharAoClicarFora);
+                return () => document.removeEventListener('mousedown', fecharAoClicarFora);
+            }, [opDropdownOpen]);
+
+            // Filtro por mês específico (ex: Janeiro, Fevereiro...) — sobrepõe o período quando selecionado
+            useEffect(() => {
+                if (mesSelecionado) {
+                    const [y,m] = mesSelecionado.split('-');
+                    const ultimoDia = new Date(parseInt(y,10), parseInt(m,10), 0).getDate();
+                    setDataIni(`${y}-${m}-01`);
+                    setDataFim(`${y}-${m}-${String(ultimoDia).padStart(2,'0')}`);
+                    setShowCustom(false);
+                }
+            }, [mesSelecionado]);
+
+            // ══ HELPER: normaliza nome de destino/operação (consolidação inteligente) ══
+            // Ignora maiúsculas/minúsculas, hífens, underscores, espaços extras e caracteres especiais.
+            // Agrupa versões numeradas do mesmo destino (ex: "Pavuna 2", "Pavuna-2", "Pavuna_2", "PAVUNA", "pavuna" → "PAVUNA").
             const normalizarNome = (nome) => {
                 if (!nome) return '—';
-                // Remove sufixo " 1", " 2", " 3"... no final (com ou sem espaço extra)
-                return nome.trim().replace(/\s+\d+$/, '').trim();
+                let n = nome.toString().trim().toUpperCase();
+                // remove acentos
+                n = n.normalize ? n.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : n;
+                // hífens e underscores viram espaço
+                n = n.replace(/[-_]+/g, ' ');
+                // remove qualquer caractere que não seja letra, número ou espaço
+                n = n.replace(/[^A-Z0-9 ]+/g, ' ');
+                // colapsa espaços
+                n = n.replace(/\s+/g, ' ').trim();
+                // remove sufixo numérico no final (versão/veículo): "PAVUNA 2" → "PAVUNA"
+                n = n.replace(/\s*\d+$/, '').trim();
+                return n || '—';
             };
+
+            // ══ HELPER: nome do mês (pt-BR) a partir da chave "YYYY-MM" ══
+            const MESES_PT_TORRE = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+            const formatMesAnoTorre = (key) => {
+                const [y,m] = key.split('-');
+                return MESES_PT_TORRE[parseInt(m,10)-1] + '/' + y;
+            };
+
+            // Meses disponíveis — só os meses que realmente existem nos dados cadastrados
+            const mesesDisponiveis = useMemo(() => {
+                const s = new Set(operacoes.map(o => (o.data||'').slice(0,7)).filter(k => k && k.length===7));
+                return Array.from(s).sort().map(k => ({ key:k, label: formatMesAnoTorre(k) }));
+            }, [operacoes]);
 
             // Operações disponíveis — nomes normalizados (sem duplicatas)
             const opsDisponiveis = useMemo(() => {
@@ -1466,13 +1860,44 @@
                 return ['TODAS', ...Array.from(s).sort()];
             }, [operacoes]);
 
-            // Filtro principal — compara nome normalizado com o filtro selecionado
+            // Alterna uma operação na seleção múltipla (flegagem). "TODAS" limpa as demais.
+            const toggleOpFiltro = (op) => {
+                setDrillOp(null);
+                setOpsFiltro(prev => {
+                    const todasOps = opsDisponiveis.filter(o => o !== 'TODAS');
+                    if (op === 'TODAS') {
+                        // Só marca todas quando o usuário clica explicitamente em "Todas"; clicar de novo desmarca
+                        return prev.includes('TODAS') ? [] : ['TODAS'];
+                    }
+                    let next;
+                    if (prev.includes('TODAS')) {
+                        // Estava tudo marcado (✓ em todas) — desmarcar uma específica mantém as outras marcadas
+                        next = todasOps.filter(o => o !== op);
+                    } else {
+                        next = prev.includes(op) ? prev.filter(x => x !== op) : [...prev, op];
+                    }
+                    // Se todas as operações individuais acabaram marcadas, colapsa para "TODAS"
+                    if (next.length > 0 && next.length === todasOps.length && todasOps.every(o => next.includes(o))) {
+                        next = ['TODAS'];
+                    }
+                    return next;
+                });
+            };
+
+            // Texto exibido no seletor de operações
+            const opFiltroLabel = useMemo(() => {
+                if (opsFiltro.length === 0 || opsFiltro.includes('TODAS')) return 'TODAS';
+                if (opsFiltro.length === 1) return opsFiltro[0];
+                return `${opsFiltro.length} operações selecionadas`;
+            }, [opsFiltro]);
+
+            // Filtro principal — compara nome normalizado com as operações selecionadas
             const opsFiltradas = useMemo(() => operacoes.filter(o => {
                 if (!dataIni || !dataFim) return true;
                 const dentroData = o.data >= dataIni && o.data <= dataFim;
-                const dentroOp   = opFiltro === 'TODAS' || normalizarNome(o.operacao) === opFiltro;
+                const dentroOp   = opsFiltro.length === 0 || opsFiltro.includes('TODAS') || opsFiltro.includes(normalizarNome(o.operacao));
                 return dentroData && dentroOp;
-            }), [operacoes, dataIni, dataFim, opFiltro, ticker]);
+            }), [operacoes, dataIni, dataFim, opsFiltro, ticker]);
 
             // KPIs gerais
             const kpi = useMemo(() => {
@@ -1545,7 +1970,88 @@
 
             const ultimasOps = useMemo(() => [...opsFiltradas].sort((a,b)=>b.data.localeCompare(a.data)).slice(0,10), [opsFiltradas]);
 
+            // ══ APRESENTAÇÃO EXECUTIVA — estado e agregações ══
+            const [showApresentacao, setShowApresentacao] = useState(false);
+
+            // Indicadores semanais (semana começa na segunda-feira)
+            const porSemana = useMemo(() => {
+                const map = {};
+                opsFiltradas.forEach(o => {
+                    if (!o.data) return;
+                    const d = new Date(o.data + 'T00:00:00');
+                    const dia = d.getDay();
+                    const diffSeg = (dia === 0 ? -6 : 1 - dia);
+                    const seg = new Date(d); seg.setDate(d.getDate() + diffSeg);
+                    const key = seg.toISOString().split('T')[0];
+                    if (!map[key]) map[key] = { inicio: key, vol: 0, total: 0 };
+                    map[key].vol += Number(o.vol) || 0;
+                    map[key].total++;
+                });
+                return Object.values(map).sort((a,b) => a.inicio.localeCompare(b.inicio));
+            }, [opsFiltradas]);
+
+            // Indicadores mensais com variação % em relação ao mês anterior
+            const porMes = useMemo(() => {
+                const map = {};
+                opsFiltradas.forEach(o => {
+                    if (!o.data) return;
+                    const key = o.data.slice(0,7); // YYYY-MM
+                    if (!map[key]) map[key] = { mes: key, vol: 0, total: 0 };
+                    map[key].vol += Number(o.vol) || 0;
+                    map[key].total++;
+                });
+                const arr = Object.values(map).sort((a,b) => a.mes.localeCompare(b.mes));
+                return arr.map((m,i) => {
+                    const anterior = arr[i-1];
+                    const variacao = anterior && anterior.vol > 0 ? ((m.vol - anterior.vol) / anterior.vol) * 100 : null;
+                    return { ...m, variacao };
+                });
+            }, [opsFiltradas]);
+
+            const nomeMes = (key) => {
+                const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+                const [y,m] = key.split('-');
+                return meses[parseInt(m,10)-1] + '/' + y;
+            };
+
             // ══ MODAL TORRE ══
+            // ══ EXPORTAR EXCEL — exporta exatamente o que está filtrado na Torre de Controle ══
+            const exportarExcelTorre = () => {
+                const dadosExcel = [...opsFiltradas]
+                    .sort((a,b) => b.data.localeCompare(a.data))
+                    .map(o => {
+                        const nomeOrig = (o.operacao||'').trim();
+                        const nomeBase = normalizarNome(nomeOrig);
+                        const sufixo = nomeOrig !== nomeBase ? nomeOrig.replace(nomeBase,'').trim() : '';
+                        return {
+                            'Data': o.data || '',
+                            'Operação': nomeBase,
+                            'Veículo/Sufixo': sufixo,
+                            'Volume': Number(o.vol) || 0,
+                            'NFs': Number(o.nf) || 0,
+                            'Cubagem m³': parseFloat(o.cubagem || 0),
+                            'Início': o.inicio || '',
+                            'Término': o.termino || '',
+                            'Status': o.status === 'verde' ? 'No Prazo' : o.status === 'vermelho' ? 'Crítico' : 'Atenção',
+                        };
+                    });
+
+                const wb = XLSX.utils.book_new();
+                const ws = XLSX.utils.json_to_sheet(dadosExcel);
+                ws['!cols'] = [
+                    { wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 10 },
+                    { wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 },
+                ];
+                XLSX.utils.book_append_sheet(wb, ws, 'Torre de Controle');
+
+                let nomeArquivo = 'Torre_de_Controle';
+                nomeArquivo += mesSelecionado ? `_${mesSelecionado}` : (dataIni && dataFim ? `_${dataIni}_a_${dataFim}` : '');
+                nomeArquivo += (opsFiltro.length===0 || opsFiltro.includes('TODAS')) ? '' : `_${opsFiltro.length===1 ? opsFiltro[0].replace(/[^a-zA-Z0-9]/g,'_') : 'multi'}`;
+                nomeArquivo += '.xlsx';
+
+                XLSX.writeFile(wb, nomeArquivo);
+            };
+
             const abrirTorreModal = (tipo) => {
                 const PURPLE_C='#7c3aed', AMBER_C='#f59e0b', GREEN_C='#10b981', RED_C='#ef4444', BLUE_C='#3b82f6';
                 let titulo='', dados=[], colunas=[];
@@ -1626,6 +2132,27 @@
             const fmtN    = n => { const v=Number(n)||0; return Math.round(v).toLocaleString('pt-BR'); };
             const fmtD    = s => { if(!s) return ''; const [,m,d]=s.split('-'); return d+'/'+m; };
             const fmtFull = s => { if(!s) return ''; const [y,m,d]=s.split('-'); return d+'/'+m+'/'+y; };
+
+            // Resumo executivo automático (texto dinâmico conforme filtros)
+            const resumoExecutivo = useMemo(() => {
+                const totalVol = opsFiltradas.reduce((s,o)=>s+(Number(o.vol)||0),0);
+                const diasQtd = new Set(opsFiltradas.map(o=>o.data)).size || 1;
+                const mediaDiaria = totalVol / diasQtd;
+                const topOp = porOperacao[0];
+                const participacaoTop = topOp && totalVol > 0 ? (topOp.vol/totalVol*100) : 0;
+                const melhorDia = evolucao.length ? [...evolucao].sort((a,b)=>b.vol-a.vol)[0] : null;
+                const ultimoMes = porMes.length ? porMes[porMes.length-1] : null;
+
+                let texto = `Durante o período analisado (${fmtFull(dataIni)||'—'} a ${fmtFull(dataFim)||'—'}) foram processadas ${fmtN(totalVol)} unidades.`;
+                if (topOp) texto += ` A operação ${topOp.op} representou ${participacaoTop.toFixed(0)}% do volume total movimentado.`;
+                texto += ` A média diária foi de ${fmtN(mediaDiaria)} unidades`;
+                if (melhorDia) texto += `, com pico operacional registrado em ${fmtFull(melhorDia.data)}`;
+                texto += '.';
+                if (ultimoMes && ultimoMes.variacao !== null) {
+                    texto += ` Observou-se ${ultimoMes.variacao >= 0 ? 'crescimento' : 'redução'} de ${Math.abs(ultimoMes.variacao).toFixed(0)}% em relação ao mês anterior.`;
+                }
+                return texto;
+            }, [opsFiltradas, porOperacao, evolucao, porMes, dataIni, dataFim]);
             const slaColor = v => v>=80?'#10b981':v>=60?'#f59e0b':'#ef4444';
             const slaLabel = v => v>=80?'Excelente':v>=60?'Atenção':'Crítico';
             const pillStyle = v => {
@@ -1785,7 +2312,7 @@
                             const isActive = periodo === k;
                             return (
                                 <button key={k}
-                                    onClick={() => setPeriodo(k)}
+                                    onClick={() => {setPeriodo(k); setMesSelecionado('');}}
                                     style={{
                                         padding:'7px 16px',
                                         borderRadius:20,
@@ -1818,17 +2345,54 @@
                                     style={{padding:'6px 10px',borderRadius:8,border:'1.5px solid rgba(255,255,255,0.5)',background:'rgba(255,255,255,0.15)',color:'#fff',fontSize:12,fontWeight:600,outline:'none'}}/>
                             </>
                         )}
-                        <span style={{fontSize:11,fontWeight:700,color:'#e9d5ff',textTransform:'uppercase',letterSpacing:'0.08em',flexShrink:0}}>Operação:</span>
-                        <select value={opFiltro} onChange={e=>{setOpFiltro(e.target.value);setDrillOp(null);}}
+                        <span style={{fontSize:11,fontWeight:700,color:'#e9d5ff',textTransform:'uppercase',letterSpacing:'0.08em',flexShrink:0}}>Mês:</span>
+                        <select value={mesSelecionado} onChange={e=>setMesSelecionado(e.target.value)}
                             style={{padding:'6px 12px',borderRadius:10,fontSize:12,fontWeight:700,border:'1.5px solid rgba(255,255,255,0.5)',color:'#4c1d95',background:'#fff',cursor:'pointer',outline:'none'}}>
-                            {opsDisponiveis.map(o=><option key={o} value={o}>{o}</option>)}
+                            <option value="">Todos os meses</option>
+                            {mesesDisponiveis.map(m=><option key={m.key} value={m.key}>{m.label}</option>)}
                         </select>
+                        {mesSelecionado && (
+                            <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,0.9)',borderRadius:20,padding:'5px 14px',fontSize:12,color:PURPLE,fontWeight:700}}>
+                                📅 {mesesDisponiveis.find(m=>m.key===mesSelecionado)?.label || mesSelecionado}
+                                <span onClick={()=>setMesSelecionado('')} style={{cursor:'pointer',color:RED,fontWeight:900,fontSize:15,lineHeight:1}}>✕</span>
+                            </div>
+                        )}
+                        <span style={{fontSize:11,fontWeight:700,color:'#e9d5ff',textTransform:'uppercase',letterSpacing:'0.08em',flexShrink:0}}>Operação:</span>
+                        <div ref={opDropdownRef} className="torre-op-dropdown" style={{position:'relative'}}>
+                            <button type="button" onClick={()=>setOpDropdownOpen(v=>!v)}
+                                style={{padding:'6px 12px',borderRadius:10,fontSize:12,fontWeight:700,border:'1.5px solid rgba(255,255,255,0.5)',color:'#4c1d95',background:'#fff',cursor:'pointer',outline:'none',display:'inline-flex',alignItems:'center',gap:6,minWidth:140,justifyContent:'space-between'}}>
+                                <span style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:180}}>{opFiltroLabel}</span>
+                                <span style={{fontSize:10}}>▾</span>
+                            </button>
+                            {opDropdownOpen && (
+                                <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,zIndex:50,background:'#fff',border:'1.5px solid #a78bfa',borderRadius:10,padding:8,minWidth:230,maxHeight:260,overflowY:'auto',boxShadow:'0 10px 28px rgba(0,0,0,0.22)'}}>
+                                    <label style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:6,cursor:'pointer',fontSize:12,fontWeight:700,color:'#4c1d95',borderBottom:'1px solid #ede9fe',marginBottom:4}}>
+                                        <input type="checkbox" checked={opsFiltro.includes('TODAS')} onChange={()=>toggleOpFiltro('TODAS')} />
+                                        Todas
+                                    </label>
+                                    {opsDisponiveis.filter(o=>o!=='TODAS').map(o=>(
+                                        <label key={o} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:6,cursor:'pointer',fontSize:12,color:'#374151'}}>
+                                            <input type="checkbox" checked={opsFiltro.includes('TODAS') || opsFiltro.includes(o)} onChange={()=>toggleOpFiltro(o)} />
+                                            {o}
+                                        </label>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                         {drillOp && (
                             <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,0.9)',borderRadius:20,padding:'5px 14px',fontSize:12,color:PURPLE,fontWeight:700}}>
                                 🔍 {drillOp}
                                 <span onClick={()=>setDrillOp(null)} style={{cursor:'pointer',color:RED,fontWeight:900,fontSize:15,lineHeight:1}}>✕</span>
                             </div>
                         )}
+                        <button onClick={exportarExcelTorre}
+                            style={{marginLeft:'auto',padding:'8px 18px',borderRadius:20,fontSize:12,fontWeight:800,border:'2px solid #fff',background:'rgba(255,255,255,0.15)',color:'#fff',cursor:'pointer',whiteSpace:'nowrap'}}>
+                            📥 Baixar Excel
+                        </button>
+                        <button onClick={()=>setShowApresentacao(true)}
+                            style={{padding:'8px 18px',borderRadius:20,fontSize:12,fontWeight:800,border:'2px solid #fff',background:'#fff',color:'#6d28d9',cursor:'pointer',boxShadow:'0 3px 12px rgba(0,0,0,0.25)',whiteSpace:'nowrap'}}>
+                            📊 Gerar Apresentação Executiva
+                        </button>
                     </div>
                 </div>
 
@@ -2207,7 +2771,7 @@
                             <div style={{padding:'18px 22px',background:'linear-gradient(135deg,#4c1d95,#7c3aed)',color:'#fff',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
                                 <div>
                                     <div style={{fontWeight:800,fontSize:16}}>{torreModal.titulo}</div>
-                                    <div style={{fontSize:12,opacity:0.8,marginTop:2}}>{torreModal.dados.length} registro(s) · {fmtFull(dataIni)} → {fmtFull(dataFim)} · {opFiltro}</div>
+                                    <div style={{fontSize:12,opacity:0.8,marginTop:2}}>{torreModal.dados.length} registro(s) · {fmtFull(dataIni)} → {fmtFull(dataFim)} · {opFiltroLabel}</div>
                                 </div>
                                 <button onClick={()=>setTorreModal(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'#fff',borderRadius:8,padding:'6px 14px',cursor:'pointer',fontWeight:700,fontSize:14}}>✕ Fechar</button>
                             </div>
@@ -2237,6 +2801,24 @@
                             </div>
                         </div>
                     </div>
+                )}
+
+                {/* ══ APRESENTAÇÃO EXECUTIVA ══ */}
+                {showApresentacao && (
+                    <ApresentacaoExecutivaModal
+                        onClose={() => setShowApresentacao(false)}
+                        periodo={{ ini: dataIni, fim: dataFim, opFiltro: opFiltroLabel }}
+                        kpi={kpi}
+                        porOperacao={porOperacao}
+                        evolucao={evolucao}
+                        porSemana={porSemana}
+                        porMes={porMes}
+                        nomeMes={nomeMes}
+                        resumoExecutivo={resumoExecutivo}
+                        fmtN={fmtN}
+                        fmtFull={fmtFull}
+                        fmtD={fmtD}
+                    />
                 )}
 
                 </div>
@@ -5370,8 +5952,20 @@
                 termino: '',
                 conferentes: '',
                 doca: '',
-                obs: ''
+                obs: '',
+                otimizada: false,
+                destinos: [ { nome: '', nf: '', vol: '', cubagem: '' }, { nome: '', nf: '', vol: '', cubagem: '' } ]
             });
+
+            const addDestino = () => {
+                setFormData(prev => ({ ...prev, destinos: [...prev.destinos, { nome: '', nf: '', vol: '', cubagem: '' }] }));
+            };
+            const removeDestino = (idx) => {
+                setFormData(prev => ({ ...prev, destinos: prev.destinos.filter((_, i) => i !== idx) }));
+            };
+            const updateDestino = (idx, campo, valor) => {
+                setFormData(prev => ({ ...prev, destinos: prev.destinos.map((d, i) => i === idx ? { ...d, [campo]: valor } : d) }));
+            };
 
             const [mensagem, setMensagem] = useState('');
             const [historicoDoca, setHistoricoDoca] = useState(() => {
@@ -5402,18 +5996,48 @@
                     return;
                 }
 
+                let nfFinal, volFinal, cubagemFinal, destinosFinal = null;
+
+                if (formData.otimizada) {
+                    if (!formData.destinos || formData.destinos.length < 2) {
+                        setMensagem('⚠️ Operação otimizada requer pelo menos 2 destinos!');
+                        return;
+                    }
+                    for (const d of formData.destinos) {
+                        if (!d.nome || !d.nome.trim() || d.nf === '' || d.vol === '' || d.cubagem === '') {
+                            setMensagem('⚠️ Preencha Nome, NF, Volumetria e Cubagem de todos os destinos!');
+                            return;
+                        }
+                    }
+                    destinosFinal = formData.destinos.map(d => ({
+                        nome: d.nome.trim(),
+                        nf: parseInt(d.nf) || 0,
+                        vol: parseInt(d.vol) || 0,
+                        cubagem: parseFloat(String(d.cubagem).replace(',', '.')) || 0
+                    }));
+                    nfFinal = destinosFinal.reduce((s, d) => s + d.nf, 0);
+                    volFinal = destinosFinal.reduce((s, d) => s + d.vol, 0);
+                    cubagemFinal = destinosFinal.reduce((s, d) => s + d.cubagem, 0);
+                } else {
+                    nfFinal = parseInt(formData.nf) || 0;
+                    volFinal = parseInt(formData.vol) || 0;
+                    cubagemFinal = parseFloat(String(formData.cubagem).replace(',', '.')) || 0;
+                }
+
                 const operacaoConfig = listaOperacoes.find(op => op.nome === formData.operacao);
                 const meta = operacaoConfig?.meta || '12:00';
 
                 const novaOperacao = {
                     ...formData,
-                    nf: parseInt(formData.nf) || 0,
-                    vol: parseInt(formData.vol) || 0,
-                    cubagem: parseFloat(String(formData.cubagem).replace(',', '.')) || 0,
+                    nf: nfFinal,
+                    vol: volFinal,
+                    cubagem: cubagemFinal,
                     conferentes: formData.conferentes || '',
                     doca: formData.doca || '',
                     meta: meta,
-                    status: calcularStatus(meta, formData.termino)
+                    status: calcularStatus(meta, formData.termino),
+                    otimizada: !!formData.otimizada,
+                    destinos: destinosFinal
                 };
 
                 await onSalvar(novaOperacao);
@@ -5432,7 +6056,9 @@
                     termino: '',
                     conferentes: '',
                     doca: '',
-                    obs: ''
+                    obs: '',
+                    otimizada: false,
+                    destinos: [ { nome: '', nf: '', vol: '', cubagem: '' }, { nome: '', nf: '', vol: '', cubagem: '' } ]
                 });
 
                 setTimeout(() => setMensagem(''), 3000);
@@ -5480,6 +6106,59 @@
                                 </select>
                             </div>
 
+                            <div className="md:col-span-2">
+                                <label className="flex items-center gap-3 cursor-pointer select-none bg-purple-50 border-2 border-purple-200 rounded-lg p-3">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.otimizada}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, otimizada: e.target.checked }))}
+                                        className="w-5 h-5 accent-purple-600"
+                                    />
+                                    <span className="text-sm font-bold text-purple-800">🔗 Operação Otimizada (uma carreta atende mais de um destino)</span>
+                                </label>
+                            </div>
+
+                            {formData.otimizada && (
+                                <div className="md:col-span-2 border-2 border-purple-200 rounded-lg p-4 bg-purple-50/40 space-y-3">
+                                    <div className="flex items-center justify-between flex-wrap gap-2">
+                                        <span className="text-sm font-bold text-gray-700">📍 Destinos desta operação (NF, Volumetria e Cubagem são obrigatórios para cada destino)</span>
+                                        <button type="button" onClick={addDestino} className="bg-purple-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-purple-700">+ Adicionar destino</button>
+                                    </div>
+                                    {formData.destinos.map((d, idx) => (
+                                        <div key={idx} className="grid grid-cols-2 md:grid-cols-5 gap-2 items-end bg-white p-3 rounded-lg border border-gray-200">
+                                            <div className="col-span-2 md:col-span-2">
+                                                <label className="block text-xs font-bold mb-1 text-gray-600">Destino {idx+1} *</label>
+                                                <input type="text" value={d.nome} onChange={e=>updateDestino(idx,'nome',e.target.value)} className="w-full p-2 border-2 border-gray-300 rounded-lg text-sm focus:border-purple-500 focus:outline-none" placeholder="Nome do destino..." />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold mb-1 text-gray-600">NF *</label>
+                                                <input type="number" value={d.nf} onChange={e=>updateDestino(idx,'nf',e.target.value)} className="w-full p-2 border-2 border-gray-300 rounded-lg text-sm focus:border-purple-500 focus:outline-none" placeholder="0" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold mb-1 text-gray-600">Volumetria *</label>
+                                                <input type="number" value={d.vol} onChange={e=>updateDestino(idx,'vol',e.target.value)} className="w-full p-2 border-2 border-gray-300 rounded-lg text-sm focus:border-purple-500 focus:outline-none" placeholder="0" />
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <div className="flex-1">
+                                                    <label className="block text-xs font-bold mb-1 text-gray-600">Cubagem (m³) *</label>
+                                                    <input type="text" inputMode="decimal" value={d.cubagem} onChange={e=>{const val=e.target.value.replace(/[^0-9.,]/g,''); updateDestino(idx,'cubagem',val);}} className="w-full p-2 border-2 border-gray-300 rounded-lg text-sm focus:border-purple-500 focus:outline-none" placeholder="0,00" />
+                                                </div>
+                                                {formData.destinos.length > 2 && (
+                                                    <button type="button" onClick={()=>removeDestino(idx)} title="Remover destino" className="text-red-600 font-bold px-2 pb-2">✕</button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <div className="flex gap-4 flex-wrap text-xs font-bold text-purple-800 bg-purple-100 rounded-lg p-2">
+                                        <span>Total NF: {formData.destinos.reduce((s,d)=>s+(parseInt(d.nf)||0),0)}</span>
+                                        <span>Total Volume: {formData.destinos.reduce((s,d)=>s+(parseInt(d.vol)||0),0)}</span>
+                                        <span>Total Cubagem: {formData.destinos.reduce((s,d)=>s+(parseFloat(String(d.cubagem).replace(',','.'))||0),0).toFixed(2)} m³</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {!formData.otimizada && (
+                            <>
                             <div>
                                 <label className="block text-sm font-bold mb-2">NF</label>
                                 <input 
@@ -5519,6 +6198,8 @@
                                     placeholder="0,00"
                                 />
                             </div>
+                            </>
+                            )}
 
                             <div>
                                 <label className="block text-sm font-bold mb-2">Início</label>
@@ -5669,9 +6350,25 @@
 
             const handleSalvar = async () => {
                 const meta = dadosEdicao.meta;
+                let dadosFinais = { ...dadosEdicao };
+                if (dadosEdicao.otimizada && Array.isArray(dadosEdicao.destinos)) {
+                    const destinosFinal = dadosEdicao.destinos.map(d => ({
+                        nome: (d.nome || '').trim(),
+                        nf: parseInt(d.nf) || 0,
+                        vol: parseInt(d.vol) || 0,
+                        cubagem: parseFloat(String(d.cubagem).replace(',', '.')) || 0
+                    }));
+                    dadosFinais = {
+                        ...dadosFinais,
+                        destinos: destinosFinal,
+                        nf: destinosFinal.reduce((s,d)=>s+d.nf,0),
+                        vol: destinosFinal.reduce((s,d)=>s+d.vol,0),
+                        cubagem: destinosFinal.reduce((s,d)=>s+d.cubagem,0)
+                    };
+                }
                 const operacaoAtualizada = {
-                    ...dadosEdicao,
-                    status: calcularStatus(meta, dadosEdicao.termino)
+                    ...dadosFinais,
+                    status: calcularStatus(meta, dadosFinais.termino)
                 };
                 if (dadosEdicao.conferentes) salvarHistoricoConferente(dadosEdicao.conferentes);
                 if (dadosEdicao.doca) salvarHistoricoDocaEditar(dadosEdicao.doca);
@@ -5688,6 +6385,16 @@
 
             const handleChange = (campo, valor) => {
                 setDadosEdicao(prev => ({ ...prev, [campo]: valor }));
+            };
+
+            const addDestinoEd = () => {
+                setDadosEdicao(prev => ({ ...prev, destinos: [...(prev.destinos || []), { nome: '', nf: '', vol: '', cubagem: '' }] }));
+            };
+            const removeDestinoEd = (idx) => {
+                setDadosEdicao(prev => ({ ...prev, destinos: (prev.destinos || []).filter((_, i) => i !== idx) }));
+            };
+            const updateDestinoEd = (idx, campo, valor) => {
+                setDadosEdicao(prev => ({ ...prev, destinos: (prev.destinos || []).map((d, i) => i === idx ? { ...d, [campo]: valor } : d) }));
             };
 
             return (
@@ -5733,7 +6440,7 @@
                                         <React.Fragment key={op.id}>
                                             <tr className={`border-b editable-row${editando === op.id ? ' bg-blue-50' : ' hover:bg-gray-50'}`}>
                                                 <td className="px-4 py-3">{formatarData(op.data)}</td>
-                                                <td className="px-4 py-3 font-medium">{op.operacao}</td>
+                                                <td className="px-4 py-3 font-medium">{op.operacao}{op.otimizada && <span title="Operação Otimizada — múltiplos destinos" style={{marginLeft:6,background:'#ede9fe',color:'#6d28d9',padding:'1px 8px',borderRadius:10,fontSize:10,fontWeight:800}}>🔗 Otimizada</span>}</td>
                                                 <td className="px-4 py-3">{op.nf}</td>
                                                 <td className="px-4 py-3">{op.vol}</td>
                                                 <td className="px-4 py-3">{op.cubagem}</td>
@@ -5784,7 +6491,7 @@
                                                 <tr>
                                                     <td colSpan="11" style={{padding:'0',background:'#f0f4ff',borderBottom:'2px solid #667eea'}}>
                                                         <div style={{padding:'18px 20px',borderLeft:'4px solid #667eea'}}>
-                                                            <div style={{fontWeight:'800',fontSize:'13px',color:'#667eea',marginBottom:'14px'}}>✏️ Editando: {dadosEdicao.operacao}</div>
+                                                            <div style={{fontWeight:'800',fontSize:'13px',color:'#667eea',marginBottom:'14px'}}>✏️ Editando: {dadosEdicao.operacao}{dadosEdicao.otimizada && <span style={{marginLeft:6,background:'#ede9fe',color:'#6d28d9',padding:'1px 8px',borderRadius:10,fontSize:10,fontWeight:800}}>🔗 Otimizada</span>}</div>
                                                             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'10px',marginBottom:'12px'}}>
                                                                 <div>
                                                                     <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Data</label>
@@ -5794,6 +6501,8 @@
                                                                     <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Operação</label>
                                                                     <input type="text" value={dadosEdicao.operacao} onChange={(e) => handleChange('operacao', e.target.value)} className="w-full p-2 border rounded input-edit" />
                                                                 </div>
+                                                                {!dadosEdicao.otimizada && (
+                                                                <>
                                                                 <div>
                                                                     <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>NF</label>
                                                                     <input type="number" value={dadosEdicao.nf} onChange={(e) => handleChange('nf', parseInt(e.target.value))} className="w-full p-2 border rounded input-edit" />
@@ -5806,6 +6515,8 @@
                                                                     <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Cubagem</label>
                                                                     <input type="text" inputMode="decimal" value={dadosEdicao.cubagem} onChange={(e) => { const val = e.target.value.replace(/[^0-9.,]/g, ''); handleChange('cubagem', val); }} onBlur={(e) => { const num = parseFloat(String(e.target.value).replace(',', '.')) || 0; handleChange('cubagem', num); }} className="w-full p-2 border rounded input-edit" placeholder="0,00" />
                                                                 </div>
+                                                                </>
+                                                                )}
                                                                 <div>
                                                                     <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Início</label>
                                                                     <input type="time" value={dadosEdicao.inicio} onChange={(e) => handleChange('inicio', e.target.value)} className="w-full p-2 border rounded input-edit" />
@@ -5867,6 +6578,42 @@
                                                                     )}
                                                                 </div>
                                                             </div>
+                                                            {dadosEdicao.otimizada && (
+                                                                <div style={{border:'2px solid #ddd6fe',borderRadius:'10px',padding:'14px',background:'#faf5ff',marginBottom:'12px'}}>
+                                                                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'8px',marginBottom:'10px'}}>
+                                                                        <span style={{fontSize:'12px',fontWeight:800,color:'#6d28d9'}}>📍 Destinos desta operação (NF, Volumetria e Cubagem obrigatórios)</span>
+                                                                        <button type="button" onClick={addDestinoEd} style={{background:'#7c3aed',color:'#fff',border:'none',borderRadius:'8px',padding:'5px 12px',fontWeight:700,fontSize:'11px',cursor:'pointer'}}>+ Adicionar destino</button>
+                                                                    </div>
+                                                                    {(dadosEdicao.destinos || []).map((d, idx) => (
+                                                                        <div key={idx} style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr auto',gap:'8px',alignItems:'end',background:'#fff',padding:'10px',borderRadius:'8px',border:'1px solid #e2e8f0',marginBottom:'8px'}}>
+                                                                            <div>
+                                                                                <label style={{display:'block',fontSize:'10px',fontWeight:700,color:'#6b7280',marginBottom:'3px',textTransform:'uppercase'}}>Destino {idx+1} *</label>
+                                                                                <input type="text" value={d.nome} onChange={(e)=>updateDestinoEd(idx,'nome',e.target.value)} className="w-full p-2 border rounded input-edit" placeholder="Nome do destino..." />
+                                                                            </div>
+                                                                            <div>
+                                                                                <label style={{display:'block',fontSize:'10px',fontWeight:700,color:'#6b7280',marginBottom:'3px',textTransform:'uppercase'}}>NF *</label>
+                                                                                <input type="number" value={d.nf} onChange={(e)=>updateDestinoEd(idx,'nf',e.target.value)} className="w-full p-2 border rounded input-edit" />
+                                                                            </div>
+                                                                            <div>
+                                                                                <label style={{display:'block',fontSize:'10px',fontWeight:700,color:'#6b7280',marginBottom:'3px',textTransform:'uppercase'}}>Volumetria *</label>
+                                                                                <input type="number" value={d.vol} onChange={(e)=>updateDestinoEd(idx,'vol',e.target.value)} className="w-full p-2 border rounded input-edit" />
+                                                                            </div>
+                                                                            <div>
+                                                                                <label style={{display:'block',fontSize:'10px',fontWeight:700,color:'#6b7280',marginBottom:'3px',textTransform:'uppercase'}}>Cubagem *</label>
+                                                                                <input type="text" inputMode="decimal" value={d.cubagem} onChange={(e)=>{const val=e.target.value.replace(/[^0-9.,]/g,''); updateDestinoEd(idx,'cubagem',val);}} className="w-full p-2 border rounded input-edit" placeholder="0,00" />
+                                                                            </div>
+                                                                            {(dadosEdicao.destinos||[]).length > 2 && (
+                                                                                <button type="button" onClick={()=>removeDestinoEd(idx)} title="Remover destino" style={{color:'#dc2626',fontWeight:800,background:'none',border:'none',cursor:'pointer',paddingBottom:'8px'}}>✕</button>
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                    <div style={{display:'flex',gap:'14px',flexWrap:'wrap',fontSize:'11px',fontWeight:800,color:'#6d28d9',background:'#ede9fe',borderRadius:'8px',padding:'8px 12px'}}>
+                                                                        <span>Total NF: {(dadosEdicao.destinos||[]).reduce((s,d)=>s+(parseInt(d.nf)||0),0)}</span>
+                                                                        <span>Total Volume: {(dadosEdicao.destinos||[]).reduce((s,d)=>s+(parseInt(d.vol)||0),0)}</span>
+                                                                        <span>Total Cubagem: {(dadosEdicao.destinos||[]).reduce((s,d)=>s+(parseFloat(String(d.cubagem).replace(',','.'))||0),0).toFixed(2)} m³</span>
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                             <div style={{display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap',paddingTop:'10px',borderTop:'1px solid #c7d2fe'}}>
                                                                 <span style={{fontSize:'12px',color:'#6b7280'}}>Status calculado: <strong style={{color: calcularStatus(dadosEdicao.meta,dadosEdicao.termino)==='verde'?'#10b981':calcularStatus(dadosEdicao.meta,dadosEdicao.termino)==='vermelho'?'#ef4444':'#f59e0b'}}>{calcularStatus(dadosEdicao.meta, dadosEdicao.termino).toUpperCase()}</strong></span>
                                                                 <div style={{marginLeft:'auto',display:'flex',gap:'8px'}}>
