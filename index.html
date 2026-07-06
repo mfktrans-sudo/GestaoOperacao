@@ -5267,7 +5267,7 @@
                                                 <td className="px-4 py-2 text-sm font-medium">{op.operacao}</td>
                                                 <td className="px-4 py-2 text-sm">{op.nf}</td>
                                                 <td className="px-4 py-2 text-sm">{op.vol}</td>
-                                                <td className="px-4 py-2 text-sm">{op.cubagem}</td>
+                                                <td className="px-4 py-2 text-sm">{(Math.round((parseFloat(op.cubagem)||0)*100)/100).toFixed(2)}</td>
                                                 <td className="px-4 py-2 text-sm">{op.inicio}</td>
                                                 <td className="px-4 py-2 text-sm">{op.termino}</td>
                                                 <td className="px-4 py-2 text-sm">{op.meta}</td>
@@ -6017,7 +6017,7 @@
                     }));
                     nfFinal = destinosFinal.reduce((s, d) => s + d.nf, 0);
                     volFinal = destinosFinal.reduce((s, d) => s + d.vol, 0);
-                    cubagemFinal = destinosFinal.reduce((s, d) => s + d.cubagem, 0);
+                    cubagemFinal = Math.round(destinosFinal.reduce((s, d) => s + d.cubagem, 0) * 100) / 100;
                 } else {
                     nfFinal = parseInt(formData.nf) || 0;
                     volFinal = parseInt(formData.vol) || 0;
@@ -6363,7 +6363,7 @@
                         destinos: destinosFinal,
                         nf: destinosFinal.reduce((s,d)=>s+d.nf,0),
                         vol: destinosFinal.reduce((s,d)=>s+d.vol,0),
-                        cubagem: destinosFinal.reduce((s,d)=>s+d.cubagem,0)
+                        cubagem: Math.round(destinosFinal.reduce((s,d)=>s+d.cubagem,0) * 100) / 100
                     };
                 }
                 const operacaoAtualizada = {
@@ -6443,7 +6443,7 @@
                                                 <td className="px-4 py-3 font-medium">{op.operacao}{op.otimizada && <span title="Operação Otimizada — múltiplos destinos" style={{marginLeft:6,background:'#ede9fe',color:'#6d28d9',padding:'1px 8px',borderRadius:10,fontSize:10,fontWeight:800}}>🔗 Otimizada</span>}</td>
                                                 <td className="px-4 py-3">{op.nf}</td>
                                                 <td className="px-4 py-3">{op.vol}</td>
-                                                <td className="px-4 py-3">{op.cubagem}</td>
+                                                <td className="px-4 py-3">{(Math.round((parseFloat(op.cubagem)||0)*100)/100).toFixed(2)}</td>
                                                 <td className="px-4 py-3">{op.inicio}</td>
                                                 <td className="px-4 py-3">{op.termino}</td>
                                                 <td className="px-4 py-3">{op.conferentes || <span style={{color:'#94a3b8'}}>—</span>}</td>
