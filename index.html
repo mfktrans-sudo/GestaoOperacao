@@ -19,7 +19,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, setDoc, getDoc, query, where, onSnapshot, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, setDoc, getDoc, query, where, onSnapshot, orderBy, arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         // ========== CONFIGURAÇÃO FIREBASE ==========
         // Cole aqui as credenciais do seu projeto Firebase
@@ -42,7 +42,7 @@
         window.__firebaseDb = db;
         window.__firebaseFns = {
             signInWithEmailAndPassword, signOut, onAuthStateChanged,
-            collection, addDoc, getDocs, doc, updateDoc, deleteDoc, setDoc, getDoc, query, where, onSnapshot, orderBy
+            collection, addDoc, getDocs, doc, updateDoc, deleteDoc, setDoc, getDoc, query, where, onSnapshot, orderBy, arrayUnion
         };
         window.__firebaseReady = true;
         setTimeout(() => { window.dispatchEvent(new Event('firebase-ready')); }, 150);
@@ -940,6 +940,10 @@
             const dbRef = useRef(null);
             const [operacoes, setOperacoes] = useState([]);
             const [linhaVermelha, setLinhaVermelha] = useState([]);
+            const [chatMensagens, setChatMensagens] = useState([]);
+            const chatPrevIdsRef = useRef(new Set());
+            const chatPrimeiraCargaRef = useRef(true);
+            const chatTituloOriginalRef = useRef(document.title);
             const [abaSelecionada, setAbaSelecionada] = useState('torre');
             const [dataSelecionada, setDataSelecionada] = useState(() => {
                 const now = new Date();
@@ -1132,6 +1136,106 @@
                 return () => unsubscribe();
             }, [user]);
 
+            // ========== REAL-TIME LISTENER PARA CHAT (COMUNICAÇÕES) ==========
+            useEffect(() => {
+                if (!user) return;
+                const { collection, onSnapshot } = window.__firebaseFns;
+                const db = window.__firebaseDb;
+                const unsubscribe = onSnapshot(
+                    collection(db, 'chatMensagens'),
+                    (snapshot) => {
+                        const msgs = snapshot.docs
+                            .map(d => ({ ...d.data(), id: d.id }))
+                            .sort((a, b) => (a.criadoEm || 0) - (b.criadoEm || 0));
+                        setChatMensagens(msgs);
+                    },
+                    (err) => { console.error('Erro no listener em tempo real (chat):', err); }
+                );
+                return () => unsubscribe();
+            }, [user]);
+
+            // ── Beep de notificação (Web Audio API, sem arquivo externo) ──
+            const tocarBipNotificacao = () => {
+                try {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (!AudioCtx) return;
+                    const ctx = new AudioCtx();
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(880, ctx.currentTime);
+                    osc.frequency.setValueAtTime(660, ctx.currentTime + 0.12);
+                    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.01);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start();
+                    osc.stop(ctx.currentTime + 0.4);
+                    osc.onended = () => { try { ctx.close(); } catch(e) {} };
+                } catch(e) {}
+            };
+
+            // Contagem de mensagens do chat ainda não vistas pelo usuário atual
+            const chatNaoLidas = user ? chatMensagens.filter(m => m.autorEmail !== user.email && !(m.lidoPor || []).includes(user.email)).length : 0;
+
+            // Detecta chegada de mensagens novas (via outra pessoa) para tocar som/alerta
+            // quando o usuário está fora da aba "Comunicações" ou fora da janela do navegador
+            useEffect(() => {
+                if (!user) return;
+                if (chatPrimeiraCargaRef.current) {
+                    chatPrimeiraCargaRef.current = false;
+                    chatMensagens.forEach(m => chatPrevIdsRef.current.add(m.id));
+                    return;
+                }
+                const novas = chatMensagens.filter(m => !chatPrevIdsRef.current.has(m.id));
+                chatMensagens.forEach(m => chatPrevIdsRef.current.add(m.id));
+                if (novas.length === 0) return;
+                const novasDeOutros = novas.filter(m => m.autorEmail !== user.email);
+                if (novasDeOutros.length === 0) return;
+                const foraDaAba = abaSelecionada !== 'comunicacoes' || document.hidden;
+                if (foraDaAba) {
+                    tocarBipNotificacao();
+                }
+            }, [chatMensagens, user, abaSelecionada]);
+
+            // Título da aba do navegador pisca com o total de mensagens não lidas
+            // e volta ao normal assim que a pessoa visualiza (chatNaoLidas some)
+            useEffect(() => {
+                document.title = chatNaoLidas > 0
+                    ? `🔴 (${chatNaoLidas}) ${chatTituloOriginalRef.current}`
+                    : chatTituloOriginalRef.current;
+            }, [chatNaoLidas]);
+
+            const handleEnviarMensagemChat = async (texto) => {
+                if (!user || !texto || !texto.trim()) return;
+                const { collection, addDoc } = window.__firebaseFns;
+                const db = window.__firebaseDb;
+                const now = new Date();
+                const brt = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+                const y = brt.getFullYear();
+                const m = String(brt.getMonth() + 1).padStart(2, '0');
+                const d = String(brt.getDate()).padStart(2, '0');
+                await addDoc(collection(db, 'chatMensagens'), {
+                    texto: texto.trim(),
+                    autorEmail: user.email,
+                    criadoEm: Date.now(),
+                    dia: `${y}-${m}-${d}`,
+                    lidoPor: []
+                });
+            };
+
+            const handleMarcarMensagensLidas = async (ids) => {
+                if (!user || !ids || ids.length === 0) return;
+                const { doc, updateDoc, arrayUnion } = window.__firebaseFns;
+                const db = window.__firebaseDb;
+                for (const id of ids) {
+                    try {
+                        await updateDoc(doc(db, 'chatMensagens', id), { lidoPor: arrayUnion(user.email) });
+                    } catch(e) {}
+                }
+            };
+
             // ========== MONITORAMENTO DE USUÁRIOS ONLINE ==========
             const [usuariosOnline, setUsuariosOnline] = useState(1);
             useEffect(() => {
@@ -1277,10 +1381,11 @@
                         </header>
 
                         <nav className="flex gap-2 mb-6 flex-wrap">
-                            {['torre', 'dashboard', 'performance', 'graficos', 'capacidade', 'cadastrar', 'linhavermelha', 'planejamento', 'editar', 'gerenciar', 'relatorios', 'upload', 'configuracoes'].map(aba => (
+                            {['torre', 'dashboard', 'performance', 'graficos', 'capacidade', 'cadastrar', 'linhavermelha', 'comunicacoes', 'planejamento', 'editar', 'gerenciar', 'relatorios', 'upload', 'configuracoes'].map(aba => (
                                 <button
                                     key={aba}
                                     onClick={() => trocarAba(aba)}
+                                    style={aba === 'comunicacoes' && chatNaoLidas > 0 ? {position:'relative'} : undefined}
                                     className={`px-6 py-3 rounded-xl font-bold transition-all ${
                                         abaSelecionada === aba ? 'tab-active' : 'tab-inactive'
                                     }`}
@@ -1293,6 +1398,15 @@
                                     {aba === 'capacidade' && <><span className="icon-bounce inline-block">👥</span> Capacidade</>}
                                     {aba === 'cadastrar' && <><span className="icon-bounce inline-block">➕</span> Cadastrar</>}
                                     {aba === 'linhavermelha' && <><span className="icon-pulse inline-block">🚦</span> Linha Vermelha</>}
+                                    {aba === 'comunicacoes' && <><span className="icon-pulse inline-block">💬</span> Comunicações</>}
+                                    {aba === 'comunicacoes' && chatNaoLidas > 0 && (
+                                        <span style={{
+                                            position:'absolute', top:-8, right:-8, minWidth:22, height:22, padding:'0 5px',
+                                            borderRadius:'99px', background:'#ef4444', color:'#fff', fontSize:11, fontWeight:800,
+                                            display:'flex', alignItems:'center', justifyContent:'center',
+                                            boxShadow:'0 0 0 2px #fff', animation:'pulse 1.4s infinite'
+                                        }}>{chatNaoLidas > 99 ? '99+' : chatNaoLidas}</span>
+                                    )}
                                     {aba === 'planejamento' && <><span className="icon-bounce inline-block">🎯</span> Planejamento Operacional</>}
                                     {aba === 'editar' && <><span className="icon-swing inline-block">✏️</span> Editar</>}
                                     {aba === 'gerenciar' && <><span className="icon-rotate inline-block">🔧</span> Gerenciar Operações</>}
@@ -1339,6 +1453,15 @@
                                     onDeletar={handleDeletarLinhaVermelha}
                                 />
                             )}
+                            {abaSelecionada === 'comunicacoes' && (
+                                <Comunicacoes
+                                    user={user}
+                                    mensagens={chatMensagens}
+                                    abaAtiva={abaSelecionada === 'comunicacoes'}
+                                    onEnviar={handleEnviarMensagemChat}
+                                    onMarcarLidas={handleMarcarMensagensLidas}
+                                />
+                            )}
                             {abaSelecionada === 'planejamento' && (
                                 <PlanejamentoOperacional />
                             )}
@@ -1370,6 +1493,224 @@
                                 />
                             )}
                         </main>
+                    </div>
+                </div>
+            );
+        }
+
+        // ========== COMUNICAÇÕES (CHAT PARA ANÁLISE DE CARGAS) ==========
+        function Comunicacoes({ user, mensagens, abaAtiva, onEnviar, onMarcarLidas }) {
+            const [texto, setTexto] = useState('');
+            const [enviando, setEnviando] = useState(false);
+            const [diasAbertos, setDiasAbertos] = useState({});
+            const chatFimRef = useRef(null);
+            const marcadasRef = useRef(new Set());
+
+            const hojeStr = (() => {
+                const now = new Date();
+                const brt = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+                const y = brt.getFullYear();
+                const m = String(brt.getMonth() + 1).padStart(2, '0');
+                const d = String(brt.getDate()).padStart(2, '0');
+                return `${y}-${m}-${d}`;
+            })();
+
+            // Agrupa mensagens por dia
+            const porDia = React.useMemo(() => {
+                const grupos = {};
+                mensagens.forEach(m => {
+                    const dia = m.dia || hojeStr;
+                    if (!grupos[dia]) grupos[dia] = [];
+                    grupos[dia].push(m);
+                });
+                return grupos;
+            }, [mensagens, hojeStr]);
+
+            const mensagensHoje = porDia[hojeStr] || [];
+            const diasAnteriores = Object.keys(porDia).filter(d => d !== hojeStr).sort((a, b) => b.localeCompare(a));
+
+            const formatarDia = (diaISO) => {
+                const [y, m, d] = diaISO.split('-');
+                const dt = new Date(Number(y), Number(m) - 1, Number(d));
+                return dt.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+            };
+
+            const formatarHora = (ts) => {
+                if (!ts) return '';
+                return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+            };
+
+            // Marca como lidas as mensagens de hoje assim que visualizadas (aba ativa e janela visível)
+            useEffect(() => {
+                if (!abaAtiva || !user) return;
+                const naoLidas = mensagensHoje.filter(m =>
+                    m.autorEmail !== user.email &&
+                    !(m.lidoPor || []).includes(user.email) &&
+                    !marcadasRef.current.has(m.id)
+                );
+                if (naoLidas.length === 0) return;
+                naoLidas.forEach(m => marcadasRef.current.add(m.id));
+                onMarcarLidas(naoLidas.map(m => m.id));
+            }, [mensagensHoje, abaAtiva, user]);
+
+            // Marca como lidas também as mensagens de um dia anterior que a pessoa abrir
+            const abrirDiaAnterior = (dia) => {
+                setDiasAbertos(prev => ({ ...prev, [dia]: !prev[dia] }));
+                if (!diasAbertos[dia] && user) {
+                    const naoLidas = (porDia[dia] || []).filter(m =>
+                        m.autorEmail !== user.email &&
+                        !(m.lidoPor || []).includes(user.email) &&
+                        !marcadasRef.current.has(m.id)
+                    );
+                    if (naoLidas.length > 0) {
+                        naoLidas.forEach(m => marcadasRef.current.add(m.id));
+                        onMarcarLidas(naoLidas.map(m => m.id));
+                    }
+                }
+            };
+
+            // Auto-scroll para a última mensagem de hoje
+            useEffect(() => {
+                if (abaAtiva && chatFimRef.current) {
+                    chatFimRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                }
+            }, [mensagensHoje.length, abaAtiva]);
+
+            const handleEnviar = async () => {
+                if (!texto.trim() || enviando) return;
+                setEnviando(true);
+                try {
+                    await onEnviar(texto);
+                    setTexto('');
+                } finally {
+                    setEnviando(false);
+                }
+            };
+
+            const handleKeyDown = (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleEnviar();
+                }
+            };
+
+            const Bolha = ({ m }) => {
+                const propria = user && m.autorEmail === user.email;
+                const lida = (m.lidoPor || []).some(email => email !== m.autorEmail);
+                return (
+                    <div style={{ display: 'flex', justifyContent: propria ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
+                        <div style={{ maxWidth: '72%' }}>
+                            {!propria && (
+                                <div style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', marginBottom: 3, marginLeft: 12 }}>
+                                    {m.autorEmail}
+                                </div>
+                            )}
+                            <div style={{
+                                background: propria ? 'linear-gradient(135deg,#7c3aed,#2563eb)' : '#f3f4f6',
+                                color: propria ? '#fff' : '#1f2937',
+                                padding: '10px 14px',
+                                borderRadius: propria ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                                fontSize: 14,
+                                lineHeight: 1.4,
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word'
+                            }}>
+                                {m.texto}
+                            </div>
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: 4, justifyContent: propria ? 'flex-end' : 'flex-start',
+                                fontSize: 10, color: '#9ca3af', marginTop: 3, marginRight: propria ? 4 : 0, marginLeft: propria ? 0 : 12
+                            }}>
+                                <span>{formatarHora(m.criadoEm)}</span>
+                                {propria && (
+                                    <span style={{ color: lida ? '#2563eb' : '#9ca3af', fontWeight: 700 }} title={lida ? 'Visualizado' : 'Enviado'}>
+                                        {lida ? '✓✓' : '✓'}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="animate-slide-in">
+                    <h2 className="text-3xl font-bold mb-1 text-gray-800">
+                        <span className="icon-pulse inline-block">💬</span> Comunicações
+                    </h2>
+                    <p className="text-gray-500 text-sm mb-6">Converse em tempo real sobre a análise e liberação das cargas.</p>
+
+                    {diasAnteriores.length > 0 && (
+                        <div style={{ marginBottom: 16 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', marginBottom: 6 }}>📅 Histórico de conversas anteriores</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                {diasAnteriores.map(dia => {
+                                    const naoLidasDia = (porDia[dia] || []).filter(m => user && m.autorEmail !== user.email && !(m.lidoPor || []).includes(user.email)).length;
+                                    return (
+                                        <div key={dia} style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+                                            <button
+                                                onClick={() => abrirDiaAnterior(dia)}
+                                                style={{
+                                                    width: '100%', textAlign: 'left', padding: '10px 14px', background: '#f9fafb',
+                                                    border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: '#374151',
+                                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                                                }}
+                                            >
+                                                <span>{diasAbertos[dia] ? '▾' : '▸'} {formatarDia(dia)} · {(porDia[dia] || []).length} mensagem(ns)</span>
+                                                {naoLidasDia > 0 && (
+                                                    <span style={{ background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 99, padding: '2px 7px' }}>
+                                                        {naoLidasDia}
+                                                    </span>
+                                                )}
+                                            </button>
+                                            {diasAbertos[dia] && (
+                                                <div style={{ padding: 14, background: '#fff' }}>
+                                                    {(porDia[dia] || []).map(m => <Bolha key={m.id} m={m} />)}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', marginBottom: 6 }}>💬 Hoje · {formatarDia(hojeStr)}</div>
+                    <div style={{
+                        border: '1px solid #e5e7eb', borderRadius: 14, background: '#fafafa',
+                        padding: 16, minHeight: 320, maxHeight: 480, overflowY: 'auto'
+                    }}>
+                        {mensagensHoje.length === 0 ? (
+                            <p className="text-gray-400 italic text-sm text-center" style={{ marginTop: 100 }}>
+                                Nenhuma mensagem ainda hoje. Comece a conversa abaixo 👇
+                            </p>
+                        ) : (
+                            mensagensHoje.map(m => <Bolha key={m.id} m={m} />)
+                        )}
+                        <div ref={chatFimRef}></div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+                        <textarea
+                            value={texto}
+                            onChange={e => setTexto(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder="Digite sua mensagem sobre a carga... (Enter envia, Shift+Enter quebra linha)"
+                            rows={2}
+                            style={{
+                                flex: 1, border: '1.5px solid #ddd6fe', borderRadius: 12, padding: '10px 14px',
+                                fontSize: 14, outline: 'none', resize: 'none', fontFamily: 'inherit'
+                            }}
+                        />
+                        <button
+                            onClick={handleEnviar}
+                            disabled={enviando || !texto.trim()}
+                            className="bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold px-6 rounded-xl hover:opacity-90 transition-all disabled:opacity-50"
+                            style={{ minWidth: 100 }}
+                        >
+                            {enviando ? '⏳' : '📨 Enviar'}
+                        </button>
                     </div>
                 </div>
             );
