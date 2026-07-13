@@ -1436,7 +1436,7 @@
                                 <Graficos operacoes={operacoes} listaOperacoes={listaOperacoes} />
                             )}
                             {abaSelecionada === 'capacidade' && (
-                                <AnaliseCapacidade operacoes={operacoes} />
+                                <AnaliseCapacidade operacoes={operacoes} db={db} />
                             )}
                             {abaSelecionada === 'cadastrar' && (
                                 <Cadastrar 
@@ -8648,7 +8648,7 @@
         }
 
         // ========== ANÁLISE DE CAPACIDADE — NOVA VERSÃO COM DIMENSIONAMENTO ==========
-        function AnaliseCapacidade({ operacoes }) {
+        function AnaliseCapacidade({ operacoes, db }) {
             const _now2 = new Date(); const _brt2 = new Date(_now2.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
             const hoje = `${_brt2.getFullYear()}-${String(_brt2.getMonth()+1).padStart(2,'0')}-${String(_brt2.getDate()).padStart(2,'0')}`;
             const [filtroTipo, setFiltroTipo] = useState('dia');
@@ -9017,7 +9017,7 @@
 
                     {/* Sub-tabs */}
                     <div style={{display:'flex',gap:'4px',marginBottom:'24px',background:'#f1f5f9',padding:'4px',borderRadius:'12px',width:'fit-content'}}>
-                        {[['dimensionamento','⚡ Dimensionamento'],['capacidade','📊 Capacidade'],['configuracoes','⚙️ Parâmetros']].map(([k,lb])=>(
+                        {[['dimensionamento','⚡ Dimensionamento'],['capacidade','📊 Capacidade'],['porOperacao','📦 Por Operação'],['configuracoes','⚙️ Parâmetros']].map(([k,lb])=>(
                             <button key={k} onClick={()=>setSubAba(k)} style={{padding:'8px 16px',fontWeight:'700',fontSize:'13px',border:'none',cursor:'pointer',borderRadius:'9px',background:subAba===k?'white':'transparent',color:subAba===k?'#4f46e5':'#64748b',boxShadow:subAba===k?'0 2px 8px rgba(0,0,0,0.1)':'none',transition:'all 0.2s'}}>{lb}</button>
                         ))}
                     </div>
@@ -9052,7 +9052,9 @@
                         </div>
                     </div>
 
-                    {dadosFiltrados.length === 0 ? (
+                    {subAba === 'porOperacao' ? (
+                        <CapacidadePorOperacao db={db} />
+                    ) : dadosFiltrados.length === 0 ? (
                         <div style={{background:'#f8fafc',border:'2px dashed #e2e8f0',borderRadius:'16px',padding:'60px',textAlign:'center'}}>
                             <div style={{fontSize:'48px',marginBottom:'12px'}}>📭</div>
                             <div style={{fontSize:'18px',fontWeight:'700',color:'#64748b'}}>Nenhum dado para este período</div>
@@ -9476,6 +9478,647 @@
                         )}
                         </>
                     )}
+                </div>
+            );
+        }
+
+        // ========== CAPACIDADE POR OPERAÇÃO (TS / TS TP / VM TP / TZ) ==========
+        function CapacidadePorOperacao({ db }) {
+            const OPERACOES = ['TS','TS TP','VM TP','TZ'];
+            const METRICAS = ['NF','Volumetria','Cubagem'];
+            const MESES_LABEL = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho*'];
+
+            const DADOS_PADRAO = {
+                'TS':    { NF:[4232,4324,4557,4467,4880,4864,1773], Volumetria:[15241,16263,14091,13915,16783,16447,6015], Cubagem:[557.70,673.01,492.86,446.47,559.17,630.02,225.32] },
+                'TS TP': { NF:[1435,1510,1670,1552,1620,1886,629],  Volumetria:[5115,5896,5502,5382,6243,7230,2413],       Cubagem:[253,255,229,190,241,309,114] },
+                'VM TP': { NF:[11000,10139,11954,8648,9362,9547,3851], Volumetria:[12529,11732,13688,10204,11193,11210,4377], Cubagem:[4054,3536,4503,3287,3466,3364,1325] },
+                'TZ':    { NF:[1116,1534,3479,2854,2622,3437,1413], Volumetria:[1900,5082,12815,18723,9379,15309,7002],    Cubagem:[402.85,715.28,1658.70,1337.51,1401.66,1572.93,663.86] },
+            };
+            const DIAS_PADRAO = { TS:[22,20,22,22,21,22,8], OUTRAS:[26,24,27,26,26,26,9] };
+            const COLABORADORES_PADRAO = [
+                { nome:'Adriano Aparecido Faria', linha:'Linha Branca', operacao:'', nf:'', vol:'' },
+                { nome:'Alef Pereira Alves de Oliveira', linha:'Linha Branca', operacao:'', nf:'', vol:'' },
+                { nome:'Allan Amorim', linha:'Linha Marrom', operacao:'', nf:'', vol:'' },
+                { nome:'Fabio Aparecido Rodrigues', linha:'Linha Marrom', operacao:'', nf:'', vol:'' },
+                { nome:'Joao Victor Feliciano do Nascimento', linha:'Linha Refrigeradores', operacao:'', nf:'', vol:'' },
+                { nome:'Matheus Joansen Teixeira', linha:'Linha Refrigeradores', operacao:'', nf:'', vol:'' },
+                { nome:'Nicolas Chaves da Cunha', linha:'Linha Refrigeradores', operacao:'', nf:'', vol:'' },
+                { nome:'Lucas Sousa Oliveira', linha:'Linha Refrigeradores', operacao:'', nf:'', vol:'' },
+                { nome:'Amanda Oliveira Sabino', linha:'Linha Vermelha', operacao:'', nf:'', vol:'' },
+                { nome:'Bianca do Nascimento Lima', linha:'Linha Vermelha', operacao:'', nf:'', vol:'' },
+                { nome:'Ashyley Rafaelly Gomes dos Santos', linha:'Linha Vermelha', operacao:'', nf:'', vol:'' },
+            ];
+
+            const [carregando, setCarregando] = React.useState(true);
+            const [dados, setDados] = React.useState(DADOS_PADRAO);
+            const [diasUteis, setDiasUteis] = React.useState(DIAS_PADRAO);
+            const [metaNF, setMetaNF] = React.useState(80);
+            const [capVol, setCapVol] = React.useState(250);
+            const [colaboradores, setColaboradores] = React.useState(COLABORADORES_PADRAO);
+            const [equipeAtual, setEquipeAtual] = React.useState({ TS:'', 'TS TP':'', 'VM TP':'', TZ:'' });
+            const [salvando, setSalvando] = React.useState(false);
+            const [msgSalvo, setMsgSalvo] = React.useState('');
+
+            const [opsAtivas, setOpsAtivas] = React.useState({ TS:true, 'TS TP':true, 'VM TP':true, TZ:true });
+            const [mesIni, setMesIni] = React.useState(0);
+            const [mesFim, setMesFim] = React.useState(6);
+            const [showApresentacao, setShowApresentacao] = React.useState(false);
+
+            React.useEffect(() => {
+                let cancelado = false;
+                (async () => {
+                    if (!db) { setCarregando(false); return; }
+                    try {
+                        const cfg = await db.getConfig('capacidadePorOperacao');
+                        if (cfg && !cancelado) {
+                            if (cfg.dados) setDados(cfg.dados);
+                            if (cfg.diasUteis) setDiasUteis(cfg.diasUteis);
+                            if (cfg.metaNF) setMetaNF(cfg.metaNF);
+                            if (cfg.capVol) setCapVol(cfg.capVol);
+                            if (cfg.colaboradores) setColaboradores(cfg.colaboradores);
+                            if (cfg.equipeAtual) setEquipeAtual(cfg.equipeAtual);
+                        }
+                    } catch(e) { console.error('Erro ao carregar Capacidade por Operação:', e); }
+                    if (!cancelado) setCarregando(false);
+                })();
+                return () => { cancelado = true; };
+            }, [db]);
+
+            const salvarTudo = async () => {
+                if (!db) { alert('❌ Banco de dados não disponível.'); return; }
+                setSalvando(true);
+                try {
+                    await db.setConfig('capacidadePorOperacao', { dados, diasUteis, metaNF, capVol, colaboradores, equipeAtual });
+                    setMsgSalvo('✅ Salvo às ' + new Date().toLocaleTimeString('pt-BR', { timeZone:'America/Sao_Paulo' }));
+                    setTimeout(() => setMsgSalvo(''), 4000);
+                } catch(e) { console.error(e); alert('❌ Erro ao salvar.'); }
+                setSalvando(false);
+            };
+
+            const atualizarValor = (op, metrica, idx, valor) => {
+                setDados(prev => {
+                    const novo = { ...prev };
+                    novo[op] = { ...novo[op] };
+                    novo[op][metrica] = [...novo[op][metrica]];
+                    novo[op][metrica][idx] = parseFloat(valor) || 0;
+                    return novo;
+                });
+            };
+
+            const atualizarDias = (tipo, idx, valor) => {
+                setDiasUteis(prev => {
+                    const novo = { ...prev };
+                    novo[tipo] = [...novo[tipo]];
+                    novo[tipo][idx] = parseInt(valor) || 0;
+                    return novo;
+                });
+            };
+
+            const atualizarColaborador = (idx, campo, valor) => {
+                setColaboradores(prev => {
+                    const novo = [...prev];
+                    novo[idx] = { ...novo[idx], [campo]: valor };
+                    return novo;
+                });
+            };
+
+            const opsFiltradas = OPERACOES.filter(op => opsAtivas[op]);
+
+            const resumoPorOperacao = React.useMemo(() => {
+                return OPERACOES.map(op => {
+                    const nf = dados[op].NF.slice(mesIni, mesFim+1).reduce((a,b)=>a+b,0);
+                    const vol = dados[op].Volumetria.slice(mesIni, mesFim+1).reduce((a,b)=>a+b,0);
+                    const cub = dados[op].Cubagem.slice(mesIni, mesFim+1).reduce((a,b)=>a+b,0);
+                    const diasArr = op === 'TS' ? diasUteis.TS : diasUteis.OUTRAS;
+                    const dias = diasArr.slice(mesIni, mesFim+1).reduce((a,b)=>a+b,0) || 1;
+                    const mediaNF = nf/dias, mediaVol = vol/dias;
+                    const sepNF = Math.ceil(mediaNF / Math.max(metaNF,1));
+                    const sepVol = Math.ceil(mediaVol / Math.max(capVol,1));
+                    const recomendado = Math.max(sepNF, sepVol);
+                    const atual = parseInt(equipeAtual[op]) || 0;
+                    return { op, nf, vol, cub, dias, mediaNF, mediaVol, sepNF, sepVol, recomendado, atual, diff: recomendado-atual };
+                });
+            }, [dados, diasUteis, metaNF, capVol, equipeAtual, mesIni, mesFim]);
+
+            const resumoAtivo = resumoPorOperacao.filter(r => opsAtivas[r.op]);
+            const totalRecomendado = resumoAtivo.reduce((a,r)=>a+r.recomendado,0);
+            const totalAtual = resumoAtivo.reduce((a,r)=>a+r.atual,0);
+
+            const chartVolRef = React.useRef(null); const chartVolInst = React.useRef(null);
+            const chartNFRef = React.useRef(null); const chartNFInst = React.useRef(null);
+            const chartSepRef = React.useRef(null); const chartSepInst = React.useRef(null);
+
+            React.useEffect(() => {
+                const kill = (ref) => { try{ if(ref.current){ref.current.destroy();ref.current=null;} }catch(e){} };
+                kill(chartVolInst); kill(chartNFInst); kill(chartSepInst);
+                const cores = { TS:'#2563eb', 'TS TP':'#ef4444', 'VM TP':'#84cc16', TZ:'#7c3aed' };
+                const labels = MESES_LABEL.slice(mesIni, mesFim+1);
+
+                if (chartVolRef.current) {
+                    chartVolInst.current = new Chart(chartVolRef.current, {
+                        type:'line',
+                        data:{ labels, datasets: opsFiltradas.map(op => ({
+                            label: op, data: dados[op].Volumetria.slice(mesIni,mesFim+1),
+                            borderColor: cores[op], backgroundColor: cores[op]+'20', tension:0.35, fill:false, borderWidth:2.5, pointRadius:3
+                        })) },
+                        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{boxWidth:10,font:{size:11}}}} }
+                    });
+                }
+                if (chartNFRef.current) {
+                    chartNFInst.current = new Chart(chartNFRef.current, {
+                        type:'bar',
+                        data:{ labels, datasets: opsFiltradas.map(op => ({
+                            label: op, data: dados[op].NF.slice(mesIni,mesFim+1), backgroundColor: cores[op]
+                        })) },
+                        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{boxWidth:10,font:{size:11}}}},
+                            scales:{ x:{stacked:true}, y:{stacked:true} } }
+                    });
+                }
+                if (chartSepRef.current) {
+                    chartSepInst.current = new Chart(chartSepRef.current, {
+                        type:'bar',
+                        data:{ labels: resumoAtivo.map(r=>r.op),
+                            datasets:[
+                                { label:'Por Volumetria', data: resumoAtivo.map(r=>r.sepVol), backgroundColor:'#8b5cf6' },
+                                { label:'Por NF', data: resumoAtivo.map(r=>r.sepNF), backgroundColor:'#0ea5e9' },
+                                { label:'Recomendado', data: resumoAtivo.map(r=>r.recomendado), backgroundColor:'#10b981' },
+                            ] },
+                        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{boxWidth:10,font:{size:11}}}} }
+                    });
+                }
+                return () => { kill(chartVolInst); kill(chartNFInst); kill(chartSepInst); };
+            }, [dados, mesIni, mesFim, opsAtivas]);
+
+            const exportarExcel = () => {
+                const wb = XLSX.utils.book_new();
+                const aoaDados = [['Operação','Métrica', ...MESES_LABEL, 'Total']];
+                OPERACOES.forEach(op => {
+                    METRICAS.forEach(m => {
+                        const vals = dados[op][m];
+                        const total = vals.reduce((a,b)=>a+b,0);
+                        aoaDados.push([op, m, ...vals, +total.toFixed(2)]);
+                    });
+                });
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoaDados), 'Dados Mensais');
+
+                const aoaDim = [['Operação','Dias Uteis','Volumetria Total','Media Vol dia','Sep Volumetria','NF Total','Media NF dia','Sep NF','Recomendado','Equipe Atual','Diferenca']];
+                resumoPorOperacao.forEach(r => {
+                    aoaDim.push([r.op, r.dias, r.vol, +r.mediaVol.toFixed(1), r.sepVol, r.nf, +r.mediaNF.toFixed(1), r.sepNF, r.recomendado, r.atual, r.diff]);
+                });
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoaDim), 'Dimensionamento');
+
+                const aoaColab = [['Nome','Linha','Operacao','NF dia','Volumes dia','% Meta NF','% Meta Vol']];
+                colaboradores.forEach(c => {
+                    const pctNF = c.nf ? ((parseFloat(c.nf)/metaNF)*100).toFixed(1)+'%' : '';
+                    const pctVol = c.vol ? ((parseFloat(c.vol)/capVol)*100).toFixed(1)+'%' : '';
+                    aoaColab.push([c.nome, c.linha, c.operacao||'', c.nf||'', c.vol||'', pctNF, pctVol]);
+                });
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoaColab), 'Colaboradores');
+
+                XLSX.writeFile(wb, `Capacidade_Operacional_${MESES_LABEL[mesIni]}_a_${MESES_LABEL[mesFim]}.xlsx`);
+            };
+
+            if (carregando) return <div style={{padding:'60px',textAlign:'center',color:'#64748b',fontWeight:700}}>⏳ Carregando dados de capacidade...</div>;
+
+            return (
+                <div style={{fontFamily:"'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
+                    {/* Filtros */}
+                    <div style={{background:'linear-gradient(135deg,#0f172a,#1e293b)',borderRadius:16,padding:20,marginBottom:20,color:'#fff',boxShadow:'0 4px 24px rgba(0,0,0,0.2)'}}>
+                        <div style={{display:'flex',flexWrap:'wrap',gap:16,alignItems:'flex-end'}}>
+                            <div>
+                                <label style={{display:'block',fontSize:11,fontWeight:700,marginBottom:6,opacity:.8,textTransform:'uppercase',letterSpacing:'0.5px'}}>Operações</label>
+                                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                                    {OPERACOES.map(op => (
+                                        <label key={op} style={{display:'flex',alignItems:'center',gap:4,background:opsAtivas[op]?'rgba(255,255,255,0.22)':'rgba(255,255,255,0.06)',padding:'7px 12px',borderRadius:8,cursor:'pointer',fontSize:12,fontWeight:700}}>
+                                            <input type="checkbox" checked={opsAtivas[op]} onChange={()=>setOpsAtivas(p=>({...p,[op]:!p[op]}))}/> {op}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                            <div>
+                                <label style={{display:'block',fontSize:11,fontWeight:700,marginBottom:6,opacity:.8,textTransform:'uppercase',letterSpacing:'0.5px'}}>De</label>
+                                <select value={mesIni} onChange={e=>setMesIni(Math.min(parseInt(e.target.value),mesFim))} style={{padding:9,borderRadius:8,border:'none',fontWeight:700}}>
+                                    {MESES_LABEL.map((m,i)=><option key={i} value={i}>{m}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label style={{display:'block',fontSize:11,fontWeight:700,marginBottom:6,opacity:.8,textTransform:'uppercase',letterSpacing:'0.5px'}}>Até</label>
+                                <select value={mesFim} onChange={e=>setMesFim(Math.max(parseInt(e.target.value),mesIni))} style={{padding:9,borderRadius:8,border:'none',fontWeight:700}}>
+                                    {MESES_LABEL.map((m,i)=><option key={i} value={i}>{m}</option>)}
+                                </select>
+                            </div>
+                            <div style={{marginLeft:'auto',display:'flex',gap:8,flexWrap:'wrap'}}>
+                                <button onClick={exportarExcel} style={{background:'#10b981',color:'#fff',border:'none',borderRadius:8,padding:'10px 16px',fontWeight:700,cursor:'pointer',fontSize:12}}>📊 Exportar Excel</button>
+                                <button onClick={()=>setShowApresentacao(true)} style={{background:'#f59e0b',color:'#fff',border:'none',borderRadius:8,padding:'10px 16px',fontWeight:700,cursor:'pointer',fontSize:12}}>📽️ Apresentação</button>
+                                <button onClick={salvarTudo} disabled={salvando} style={{background:'#6366f1',color:'#fff',border:'none',borderRadius:8,padding:'10px 16px',fontWeight:700,cursor:salvando?'default':'pointer',fontSize:12}}>{salvando?'⏳ Salvando...':'💾 Salvar'}</button>
+                            </div>
+                        </div>
+                        {msgSalvo && <div style={{marginTop:10,fontSize:12,fontWeight:700,color:'#a7f3d0'}}>{msgSalvo}</div>}
+                    </div>
+
+                    {/* KPIs */}
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:14,marginBottom:20}}>
+                        {[
+                            { label:'Total NF', val: resumoAtivo.reduce((a,r)=>a+r.nf,0), cor:'#2563eb' },
+                            { label:'Total Volumetria', val: resumoAtivo.reduce((a,r)=>a+r.vol,0), cor:'#10b981' },
+                            { label:'Total Cubagem', val: resumoAtivo.reduce((a,r)=>a+r.cub,0), cor:'#f59e0b', dec:true },
+                            { label:'Separadores Recomendados', val: totalRecomendado, cor:'#7c3aed' },
+                            { label:'Equipe Atual Informada', val: totalAtual, cor:'#0ea5e9' },
+                        ].map(k => (
+                            <div key={k.label} style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:14,padding:16,boxShadow:'0 2px 12px rgba(0,0,0,0.04)'}}>
+                                <div style={{fontSize:11,fontWeight:700,color:'#94a3b8',textTransform:'uppercase',marginBottom:6,letterSpacing:'0.4px'}}>{k.label}</div>
+                                <div style={{fontSize:24,fontWeight:900,color:k.cor}}>{k.dec ? k.val.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : Math.round(k.val).toLocaleString('pt-BR')}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Alerta TS São Paulo */}
+                    {opsAtivas['TS'] && (() => {
+                        const ts = resumoPorOperacao.find(r=>r.op==='TS');
+                        if (!ts) return null;
+                        const semDado = !equipeAtual['TS'];
+                        const risco = ts.diff > 0;
+                        return (
+                            <div style={{background: semDado ? '#fef9c3' : (risco ? '#fee2e2':'#dcfce7'), border:`2px solid ${semDado?'#fde047':(risco?'#fca5a5':'#86efac')}`, borderRadius:14, padding:'16px 20px', marginBottom:20, fontWeight:700, color: semDado?'#854d0e':(risco?'#991b1b':'#166534'), fontSize:13, lineHeight:1.5 }}>
+                                {semDado ? '📝 ' : (risco ? '⚠️ ' : '✅ ')}
+                                <strong>TS São Paulo:</strong> {ts.recomendado} separador(es) recomendado(s) com base na demanda média ({Math.round(ts.mediaVol)} vol/dia, {Math.round(ts.mediaNF)} NF/dia).
+                                {semDado
+                                    ? ' Informe a equipe atual na tabela de Dimensionamento abaixo para comparar.'
+                                    : ` Equipe atual informada: ${ts.atual}. ${risco ? `Reduzir abaixo desse número compromete a meta de ${metaNF} NF/dia e ${capVol} volumes/dia por auxiliar.` : 'Equipe dentro ou acima da necessidade calculada.'}`}
+                            </div>
+                        );
+                    })()}
+
+                    {/* Gráficos */}
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(380px,1fr))',gap:16,marginBottom:20}}>
+                        <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:14,padding:16,height:300}}>
+                            <div style={{fontWeight:800,fontSize:13,marginBottom:8,color:'#0f172a'}}>Volumetria Mensal por Operação</div>
+                            <div style={{height:230}}><canvas ref={chartVolRef}></canvas></div>
+                        </div>
+                        <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:14,padding:16,height:300}}>
+                            <div style={{fontWeight:800,fontSize:13,marginBottom:8,color:'#0f172a'}}>Notas Fiscais Mensais por Operação</div>
+                            <div style={{height:230}}><canvas ref={chartNFRef}></canvas></div>
+                        </div>
+                        <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:14,padding:16,height:300}}>
+                            <div style={{fontWeight:800,fontSize:13,marginBottom:8,color:'#0f172a'}}>Separadores Necessários por Operação</div>
+                            <div style={{height:230}}><canvas ref={chartSepRef}></canvas></div>
+                        </div>
+                    </div>
+
+                    {/* Tabela Dimensionamento */}
+                    <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:14,padding:20,marginBottom:20,overflowX:'auto'}}>
+                        <div style={{fontWeight:800,fontSize:15,marginBottom:4,color:'#0f172a'}}>📐 Dimensionamento de Equipe</div>
+                        <div style={{fontSize:12,color:'#64748b',marginBottom:14}}>
+                            Meta: <input type="number" value={metaNF} onChange={e=>setMetaNF(parseInt(e.target.value)||1)} style={{width:60,padding:4,border:'1px solid #e2e8f0',borderRadius:6,fontWeight:700}}/> NF/dia · Capacidade: <input type="number" value={capVol} onChange={e=>setCapVol(parseInt(e.target.value)||1)} style={{width:70,padding:4,border:'1px solid #e2e8f0',borderRadius:6,fontWeight:700}}/> volumes/dia por auxiliar
+                        </div>
+                        <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                            <thead>
+                                <tr style={{background:'#1f4e78',color:'#fff'}}>
+                                    {['Operação','Dias Úteis','Volumetria','Média Vol/dia','Sep. Volumetria','NF Total','Média NF/dia','Sep. NF','Recomendado','Equipe Atual','Diferença'].map(h=>(
+                                        <th key={h} style={{padding:'8px 10px',textAlign:'center',fontWeight:700,fontSize:11,whiteSpace:'nowrap'}}>{h}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {resumoPorOperacao.map(r => (
+                                    <tr key={r.op} style={{background: r.op==='TS' ? '#eff6ff':'#fff', borderBottom:'1px solid #e2e8f0', opacity: opsAtivas[r.op]?1:0.4}}>
+                                        <td style={{padding:'8px 10px',fontWeight:800}}>{r.op}</td>
+                                        <td style={{padding:'8px 10px',textAlign:'center'}}>{r.dias}</td>
+                                        <td style={{padding:'8px 10px',textAlign:'center'}}>{r.vol.toLocaleString('pt-BR')}</td>
+                                        <td style={{padding:'8px 10px',textAlign:'center'}}>{Math.round(r.mediaVol)}</td>
+                                        <td style={{padding:'8px 10px',textAlign:'center'}}>{r.sepVol}</td>
+                                        <td style={{padding:'8px 10px',textAlign:'center'}}>{r.nf.toLocaleString('pt-BR')}</td>
+                                        <td style={{padding:'8px 10px',textAlign:'center'}}>{Math.round(r.mediaNF)}</td>
+                                        <td style={{padding:'8px 10px',textAlign:'center'}}>{r.sepNF}</td>
+                                        <td style={{padding:'8px 10px',textAlign:'center',fontWeight:800,color:'#7c3aed'}}>{r.recomendado}</td>
+                                        <td style={{padding:'8px 10px',textAlign:'center'}}>
+                                            <input type="number" value={equipeAtual[r.op]??''} onChange={e=>setEquipeAtual(p=>({...p,[r.op]:e.target.value}))} placeholder="—" style={{width:50,padding:4,border:'2px solid #fde047',background:'#fefce8',borderRadius:6,fontWeight:700,textAlign:'center'}}/>
+                                        </td>
+                                        <td style={{padding:'8px 10px',textAlign:'center',fontWeight:800,color: r.diff>0?'#dc2626':(r.diff<0?'#16a34a':'#64748b')}}>{r.diff>0?'+':''}{r.diff}</td>
+                                    </tr>
+                                ))}
+                                <tr style={{background:'#f1f5f9',fontWeight:800}}>
+                                    <td style={{padding:'8px 10px'}}>TOTAL (operações ativas)</td>
+                                    <td colSpan={7}></td>
+                                    <td style={{padding:'8px 10px',textAlign:'center'}}>{totalRecomendado}</td>
+                                    <td style={{padding:'8px 10px',textAlign:'center'}}>{totalAtual}</td>
+                                    <td style={{padding:'8px 10px',textAlign:'center'}}>{totalRecomendado-totalAtual>0?'+':''}{totalRecomendado-totalAtual}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Dados Mensais editáveis */}
+                    <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:14,padding:20,marginBottom:20,overflowX:'auto'}}>
+                        <div style={{fontWeight:800,fontSize:15,marginBottom:14,color:'#0f172a'}}>📅 Dados Mensais (editável)</div>
+                        {OPERACOES.map(op => (
+                            <div key={op} style={{marginBottom:18}}>
+                                <div style={{fontWeight:800,fontSize:13,color:'#1f4e78',marginBottom:6}}>{op}</div>
+                                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                                    <thead>
+                                        <tr style={{background:'#f1f5f9'}}>
+                                            <th style={{padding:6,textAlign:'left'}}>Métrica</th>
+                                            {MESES_LABEL.map(m=><th key={m} style={{padding:6,textAlign:'center'}}>{m}</th>)}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {METRICAS.map(m => (
+                                            <tr key={m}>
+                                                <td style={{padding:6,fontWeight:700,color:'#64748b'}}>{m}</td>
+                                                {dados[op][m].map((v,i)=>(
+                                                    <td key={i} style={{padding:3,textAlign:'center'}}>
+                                                        <input type="number" value={v} onChange={e=>atualizarValor(op,m,i,e.target.value)} style={{width:70,padding:4,border:'1px solid #e2e8f0',borderRadius:6,textAlign:'center'}}/>
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ))}
+                        <div style={{marginTop:10}}>
+                            <div style={{fontWeight:800,fontSize:13,color:'#1f4e78',marginBottom:6}}>Dias Úteis Considerados</div>
+                            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                                <thead><tr style={{background:'#f1f5f9'}}><th style={{padding:6,textAlign:'left'}}>Regra</th>{MESES_LABEL.map(m=><th key={m} style={{padding:6,textAlign:'center'}}>{m}</th>)}</tr></thead>
+                                <tbody>
+                                    <tr>
+                                        <td style={{padding:6,fontWeight:700}}>TS (Seg-Sex)</td>
+                                        {diasUteis.TS.map((v,i)=>(<td key={i} style={{padding:3,textAlign:'center'}}><input type="number" value={v} onChange={e=>atualizarDias('TS',i,e.target.value)} style={{width:50,padding:4,border:'1px solid #e2e8f0',borderRadius:6,textAlign:'center'}}/></td>))}
+                                    </tr>
+                                    <tr>
+                                        <td style={{padding:6,fontWeight:700}}>TS TP / VM TP / TZ (Dom-Sex)</td>
+                                        {diasUteis.OUTRAS.map((v,i)=>(<td key={i} style={{padding:3,textAlign:'center'}}><input type="number" value={v} onChange={e=>atualizarDias('OUTRAS',i,e.target.value)} style={{width:50,padding:4,border:'1px solid #e2e8f0',borderRadius:6,textAlign:'center'}}/></td>))}
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <div style={{fontSize:11,color:'#94a3b8',marginTop:6}}>Premissa: TS TP, VM TP e TZ seguem a mesma escala do usuário (domingo a sexta). Ajuste se alguma operação tiver regra diferente.</div>
+                        </div>
+                    </div>
+
+                    {/* Colaboradores */}
+                    <div style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:14,padding:20,overflowX:'auto'}}>
+                        <div style={{fontWeight:800,fontSize:15,marginBottom:14,color:'#0f172a'}}>👥 Colaboradores por Linha</div>
+                        <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                            <thead>
+                                <tr style={{background:'#1f4e78',color:'#fff'}}>
+                                    {['Nome','Linha','Operação','NF/dia','Volumes/dia','% Meta NF','% Meta Vol'].map(h=><th key={h} style={{padding:8,textAlign:'left'}}>{h}</th>)}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {colaboradores.map((c,i) => (
+                                    <tr key={i} style={{borderBottom:'1px solid #e2e8f0'}}>
+                                        <td style={{padding:8}}>{c.nome}</td>
+                                        <td style={{padding:8}}>{c.linha}</td>
+                                        <td style={{padding:6}}>
+                                            <select value={c.operacao||''} onChange={e=>atualizarColaborador(i,'operacao',e.target.value)} style={{padding:5,border:'2px solid #fde047',background:'#fefce8',borderRadius:6}}>
+                                                <option value="">—</option>
+                                                {OPERACOES.map(op=><option key={op} value={op}>{op}</option>)}
+                                            </select>
+                                        </td>
+                                        <td style={{padding:6}}><input type="number" value={c.nf||''} onChange={e=>atualizarColaborador(i,'nf',e.target.value)} style={{width:70,padding:5,border:'2px solid #fde047',background:'#fefce8',borderRadius:6}}/></td>
+                                        <td style={{padding:6}}><input type="number" value={c.vol||''} onChange={e=>atualizarColaborador(i,'vol',e.target.value)} style={{width:70,padding:5,border:'2px solid #fde047',background:'#fefce8',borderRadius:6}}/></td>
+                                        <td style={{padding:8,fontWeight:700,color: c.nf && (c.nf/metaNF)<1 ? '#dc2626':'#16a34a'}}>{c.nf ? ((c.nf/metaNF)*100).toFixed(0)+'%' : '—'}</td>
+                                        <td style={{padding:8,fontWeight:700,color: c.vol && (c.vol/capVol)<1 ? '#dc2626':'#16a34a'}}>{c.vol ? ((c.vol/capVol)*100).toFixed(0)+'%' : '—'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {showApresentacao && (
+                        <ApresentacaoCapacidadeModal
+                            onClose={()=>setShowApresentacao(false)}
+                            resumoPorOperacao={resumoAtivo}
+                            dados={dados}
+                            mesIni={mesIni} mesFim={mesFim}
+                            mesesLabel={MESES_LABEL}
+                            opsFiltradas={opsFiltradas}
+                            metaNF={metaNF} capVol={capVol}
+                            totalRecomendado={totalRecomendado}
+                            totalAtual={totalAtual}
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        // ========== MODAL DE APRESENTAÇÃO - CAPACIDADE POR OPERAÇÃO ==========
+        function ApresentacaoCapacidadeModal({ onClose, resumoPorOperacao, dados, mesIni, mesFim, mesesLabel, opsFiltradas, metaNF, capVol, totalRecomendado, totalAtual }) {
+            const [exportando, setExportando] = React.useState(null);
+            const [erroExport, setErroExport] = React.useState('');
+            const slideRefs = React.useRef([]);
+            const refVol = React.useRef(null); const instVol = React.useRef(null);
+            const refSep = React.useRef(null); const instSep = React.useRef(null);
+            const setRef = i => el => { slideRefs.current[i] = el; };
+
+            const DARKBLUE = '#1e3a8a', PURPLE = '#7c3aed';
+            const cores = { TS:'#2563eb', 'TS TP':'#ef4444', 'VM TP':'#84cc16', TZ:'#7c3aed' };
+            const labels = mesesLabel.slice(mesIni, mesFim+1);
+            const periodoTxt = `${mesesLabel[mesIni]} a ${mesesLabel[mesFim]}`;
+
+            const totalNF = resumoPorOperacao.reduce((a,r)=>a+r.nf,0);
+            const totalVol = resumoPorOperacao.reduce((a,r)=>a+r.vol,0);
+            const totalCub = resumoPorOperacao.reduce((a,r)=>a+r.cub,0);
+            const ts = resumoPorOperacao.find(r=>r.op==='TS');
+
+            React.useEffect(() => {
+                const kill = ref => { try{ if(ref.current){ref.current.destroy();ref.current=null;} }catch(e){} };
+                kill(instVol); kill(instSep);
+                if (refVol.current) {
+                    instVol.current = new Chart(refVol.current, {
+                        type:'line',
+                        data:{ labels, datasets: opsFiltradas.map(op => ({
+                            label: op, data: dados[op].Volumetria.slice(mesIni,mesFim+1),
+                            borderColor: cores[op], backgroundColor: cores[op]+'20', tension:0.35, fill:false, borderWidth:2.5, pointRadius:3
+                        })) },
+                        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}} }
+                    });
+                }
+                if (refSep.current) {
+                    instSep.current = new Chart(refSep.current, {
+                        type:'bar',
+                        data:{ labels: resumoPorOperacao.map(r=>r.op),
+                            datasets:[{ label:'Recomendado', data: resumoPorOperacao.map(r=>r.recomendado), backgroundColor:'#10b981' },
+                                      { label:'Equipe Atual', data: resumoPorOperacao.map(r=>r.atual), backgroundColor:'#f59e0b' }] },
+                        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}} }
+                    });
+                }
+                return () => { kill(instVol); kill(instSep); };
+            }, []);
+
+            const capturarSlides = async () => {
+                const imgs = [];
+                for (const el of slideRefs.current) {
+                    if (!el) continue;
+                    const canvas = await html2canvas(el, { scale:2, backgroundColor:'#ffffff', useCORS:true });
+                    imgs.push(canvas.toDataURL('image/png'));
+                }
+                return imgs;
+            };
+
+            const exportarPPTX = async () => {
+                setExportando('pptx'); setErroExport('');
+                try {
+                    const imgs = await capturarSlides();
+                    const PptxCtor = window.PptxGenJS;
+                    const pptx = new PptxCtor();
+                    pptx.defineLayout({ name:'CAP', width:13.33, height:7.5 });
+                    pptx.layout = 'CAP';
+                    imgs.forEach(dataUrl => {
+                        const slide = pptx.addSlide();
+                        slide.addImage({ data: dataUrl, x:0, y:0, w:13.33, h:7.5 });
+                    });
+                    await pptx.writeFile({ fileName: `Capacidade_Operacional_${periodoTxt.replace(/ /g,'_')}.pptx` });
+                } catch(e) { console.error(e); setErroExport('Falha ao gerar PowerPoint. Tente novamente.'); }
+                finally { setExportando(null); }
+            };
+
+            const exportarPDF = async () => {
+                setExportando('pdf'); setErroExport('');
+                try {
+                    const imgs = await capturarSlides();
+                    const { jsPDF } = window.jspdf;
+                    const pdf = new jsPDF({ orientation:'landscape', unit:'in', format:[13.33,7.5] });
+                    imgs.forEach((dataUrl, i) => {
+                        if (i>0) pdf.addPage([13.33,7.5], 'landscape');
+                        pdf.addImage(dataUrl, 'PNG', 0, 0, 13.33, 7.5);
+                    });
+                    pdf.save(`Capacidade_Operacional_${periodoTxt.replace(/ /g,'_')}.pdf`);
+                } catch(e) { console.error(e); setErroExport('Falha ao gerar PDF. Tente novamente.'); }
+                finally { setExportando(null); }
+            };
+
+            const exportarExcelResumo = () => {
+                const wb = XLSX.utils.book_new();
+                const aoa = [['Operação','Volumetria','NF','Cubagem','Recomendado','Equipe Atual','Diferença']];
+                resumoPorOperacao.forEach(r => aoa.push([r.op, r.vol, r.nf, +r.cub.toFixed(2), r.recomendado, r.atual, r.diff]));
+                aoa.push([]); aoa.push(['TOTAL', totalVol, totalNF, +totalCub.toFixed(2), totalRecomendado, totalAtual, totalRecomendado-totalAtual]);
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Resumo Apresentacao');
+                XLSX.writeFile(wb, `Capacidade_Operacional_Resumo_${periodoTxt.replace(/ /g,'_')}.xlsx`);
+            };
+
+            const slideStyle = { width:960, height:540, margin:'0 auto 28px', background:'#fff', borderRadius:10,
+                boxShadow:'0 6px 24px rgba(0,0,0,0.12)', padding:'36px 44px', boxSizing:'border-box', position:'relative', overflow:'hidden' };
+            const tituloStyle = { fontSize:26, fontWeight:800, color:DARKBLUE, marginBottom:18, borderBottom:`3px solid ${PURPLE}`, paddingBottom:10 };
+            const kpiBox = (label, valor, cor) => (
+                <div style={{flex:1, background:'#f8fafc', borderRadius:10, padding:'16px 18px', textAlign:'center', border:'1px solid #e2e8f0'}}>
+                    <div style={{fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.05em'}}>{label}</div>
+                    <div style={{fontSize:24, fontWeight:800, color: cor||DARKBLUE, marginTop:6}}>{valor}</div>
+                </div>
+            );
+
+            return (
+                <div style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.75)',backdropFilter:'blur(4px)',zIndex:3000,display:'flex',flexDirection:'column'}}>
+                    <div style={{padding:'14px 28px',background:'linear-gradient(135deg,#1e3a8a,#4c1d95)',color:'#fff',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0,boxShadow:'0 2px 12px rgba(0,0,0,0.3)'}}>
+                        <div>
+                            <div style={{fontWeight:800,fontSize:17}}>📊 Apresentação - Capacidade Operacional</div>
+                            <div style={{fontSize:12,opacity:0.85,marginTop:2}}>{periodoTxt} · {opsFiltradas.join(', ')}</div>
+                        </div>
+                        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                            <button disabled={!!exportando} onClick={exportarPPTX} style={{background:exportando==='pptx'?'#94a3b8':'#f59e0b',border:'none',color:'#fff',borderRadius:8,padding:'8px 16px',cursor:exportando?'default':'pointer',fontWeight:700,fontSize:12}}>
+                                {exportando==='pptx' ? '⏳ Gerando...' : '📽️ Exportar PPTX'}
+                            </button>
+                            <button disabled={!!exportando} onClick={exportarPDF} style={{background:exportando==='pdf'?'#94a3b8':'#ef4444',border:'none',color:'#fff',borderRadius:8,padding:'8px 16px',cursor:exportando?'default':'pointer',fontWeight:700,fontSize:12}}>
+                                {exportando==='pdf' ? '⏳ Gerando...' : '📄 Exportar PDF'}
+                            </button>
+                            <button disabled={!!exportando} onClick={exportarExcelResumo} style={{background:exportando==='xlsx'?'#94a3b8':'#10b981',border:'none',color:'#fff',borderRadius:8,padding:'8px 16px',cursor:exportando?'default':'pointer',fontWeight:700,fontSize:12}}>
+                                📊 Exportar Excel
+                            </button>
+                            <button onClick={onClose} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'#fff',borderRadius:8,padding:'8px 14px',cursor:'pointer',fontWeight:700,fontSize:13,marginLeft:8}}>✕ Fechar</button>
+                        </div>
+                    </div>
+                    {erroExport && <div style={{background:'#fee2e2',color:'#991b1b',padding:'8px 20px',fontSize:12,fontWeight:600}}>{erroExport}</div>}
+
+                    <div style={{flex:1,overflowY:'auto',padding:'28px 20px',background:'#0f172a'}}>
+                        {/* Slide 1 — Capa */}
+                        <div ref={setRef(0)} style={{...slideStyle, display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', textAlign:'center', background:'linear-gradient(135deg,#1e3a8a,#4c1d95)'}}>
+                            <div style={{fontSize:42,fontWeight:900,color:'#fff',marginBottom:14}}>Capacidade Operacional</div>
+                            <div style={{fontSize:16,color:'rgba(255,255,255,0.85)',marginBottom:34}}>Dimensionamento de equipe por operação · TS, TS TP, VM TP, TZ</div>
+                            <div style={{fontSize:14,color:'#fff',background:'rgba(255,255,255,0.15)',borderRadius:10,padding:'14px 28px'}}>
+                                <div>Período analisado: <strong>{periodoTxt}</strong></div>
+                                <div style={{marginTop:6}}>Operações: <strong>{opsFiltradas.join(', ')}</strong></div>
+                            </div>
+                        </div>
+
+                        {/* Slide 2 — KPIs gerais */}
+                        <div ref={setRef(1)} style={slideStyle}>
+                            <div style={tituloStyle}>Indicadores Gerais do Período</div>
+                            <div style={{display:'flex',gap:16,marginBottom:24}}>
+                                {kpiBox('Notas Fiscais', totalNF.toLocaleString('pt-BR'), '#2563eb')}
+                                {kpiBox('Volumetria', totalVol.toLocaleString('pt-BR'), '#10b981')}
+                                {kpiBox('Cubagem', totalCub.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}), '#f59e0b')}
+                            </div>
+                            <div style={{display:'flex',gap:16,marginBottom:24}}>
+                                {kpiBox('Separadores Recomendados', totalRecomendado, '#7c3aed')}
+                                {kpiBox('Equipe Atual Informada', totalAtual, '#0ea5e9')}
+                                {kpiBox('Diferença', (totalRecomendado-totalAtual>0?'+':'')+(totalRecomendado-totalAtual), totalRecomendado-totalAtual>0?'#dc2626':'#16a34a')}
+                            </div>
+                            <div style={{fontSize:13,color:'#475569',lineHeight:1.6}}>
+                                Meta individual utilizada: <strong>{metaNF} NF/dia</strong> e <strong>{capVol} volumes/dia</strong> por auxiliar.
+                            </div>
+                        </div>
+
+                        {/* Slide 3 — Foco TS São Paulo */}
+                        {ts && (
+                            <div ref={setRef(2)} style={slideStyle}>
+                                <div style={tituloStyle}>Foco: TS São Paulo</div>
+                                <div style={{display:'flex',gap:16,marginBottom:24}}>
+                                    {kpiBox('Volumetria (período)', ts.vol.toLocaleString('pt-BR'), '#2563eb')}
+                                    {kpiBox('NF (período)', ts.nf.toLocaleString('pt-BR'), '#2563eb')}
+                                    {kpiBox('Dias úteis', ts.dias, '#64748b')}
+                                </div>
+                                <div style={{display:'flex',gap:16,marginBottom:24}}>
+                                    {kpiBox('Média Vol/dia', Math.round(ts.mediaVol), '#10b981')}
+                                    {kpiBox('Média NF/dia', Math.round(ts.mediaNF), '#10b981')}
+                                    {kpiBox('Recomendado', ts.recomendado, '#7c3aed')}
+                                    {kpiBox('Equipe Atual', ts.atual || '—', '#0ea5e9')}
+                                </div>
+                                <div style={{fontSize:14,fontWeight:700, color: ts.diff>0?'#dc2626':'#16a34a', background: ts.diff>0?'#fee2e2':'#dcfce7', borderRadius:10, padding:'14px 18px'}}>
+                                    {ts.diff>0
+                                        ? `⚠️ A demanda atual exige ${ts.recomendado} separador(es). Reduzir a equipe abaixo desse número compromete a meta operacional.`
+                                        : `✅ A equipe atual atende ou supera a necessidade calculada de ${ts.recomendado} separador(es).`}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Slide 4 — Gráfico Volumetria */}
+                        <div ref={setRef(3)} style={slideStyle}>
+                            <div style={tituloStyle}>Volumetria Mensal por Operação</div>
+                            <div style={{height:400}}><canvas ref={refVol}></canvas></div>
+                        </div>
+
+                        {/* Slide 5 — Gráfico Separadores */}
+                        <div ref={setRef(4)} style={slideStyle}>
+                            <div style={tituloStyle}>Separadores: Recomendado x Equipe Atual</div>
+                            <div style={{height:400}}><canvas ref={refSep}></canvas></div>
+                        </div>
+
+                        {/* Slide 6 — Tabela resumo */}
+                        <div ref={setRef(5)} style={slideStyle}>
+                            <div style={tituloStyle}>Resumo por Operação</div>
+                            <table style={{width:'100%',borderCollapse:'collapse',fontSize:14}}>
+                                <thead>
+                                    <tr style={{background:DARKBLUE,color:'#fff'}}>
+                                        {['Operação','Volumetria','NF','Recomendado','Equipe Atual','Diferença'].map(h=>(
+                                            <th key={h} style={{padding:'10px 12px',textAlign:'center'}}>{h}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {resumoPorOperacao.map(r => (
+                                        <tr key={r.op} style={{borderBottom:'1px solid #e2e8f0'}}>
+                                            <td style={{padding:'10px 12px',fontWeight:800}}>{r.op}</td>
+                                            <td style={{padding:'10px 12px',textAlign:'center'}}>{r.vol.toLocaleString('pt-BR')}</td>
+                                            <td style={{padding:'10px 12px',textAlign:'center'}}>{r.nf.toLocaleString('pt-BR')}</td>
+                                            <td style={{padding:'10px 12px',textAlign:'center',fontWeight:800,color:PURPLE}}>{r.recomendado}</td>
+                                            <td style={{padding:'10px 12px',textAlign:'center'}}>{r.atual||'—'}</td>
+                                            <td style={{padding:'10px 12px',textAlign:'center',fontWeight:800,color: r.diff>0?'#dc2626':'#16a34a'}}>{r.diff>0?'+':''}{r.diff}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             );
         }
