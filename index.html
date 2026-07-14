@@ -12258,7 +12258,7 @@
                 if (!lvUpPending.length) return;
                 lvFlashUp('⏳ Importando '+lvUpPending.length+' registros...','load');
                 let ok = 0, dup = 0;
-                const existentes = new Set((registros||[]).map(r => (r.loja||'').toLowerCase()+'|'+(r.mesa||'')+'|'+dataFiltro));
+                const existentes = new Set((registros||[]).filter(r => r.data === dataFiltro).map(r => (r.loja||'').toLowerCase()+'|'+(r.mesa||'')+'|'+dataFiltro));
                 for (const item of lvUpPending) {
                     const chave = (item.loja||'').toLowerCase()+'|'+(item.mesa||'')+'|'+dataFiltro;
                     if (existentes.has(chave)) { dup++; continue; }
