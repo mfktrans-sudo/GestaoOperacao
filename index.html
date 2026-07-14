@@ -9775,13 +9775,13 @@
                             </div>
                             <div>
                                 <label style={{display:'block',fontSize:11,fontWeight:700,marginBottom:6,opacity:.8,textTransform:'uppercase',letterSpacing:'0.5px'}}>De</label>
-                                <select value={mesIni} onChange={e=>setMesIni(Math.min(parseInt(e.target.value),mesFim))} style={{padding:9,borderRadius:8,border:'none',fontWeight:700}}>
+                                <select value={mesIni} onChange={e=>setMesIni(Math.min(parseInt(e.target.value),mesFim))} style={{padding:9,borderRadius:8,border:'none',fontWeight:700,background:'#fff',color:'#0f172a'}}>
                                     {MESES_LABEL.map((m,i)=><option key={i} value={i}>{m}</option>)}
                                 </select>
                             </div>
                             <div>
                                 <label style={{display:'block',fontSize:11,fontWeight:700,marginBottom:6,opacity:.8,textTransform:'uppercase',letterSpacing:'0.5px'}}>Até</label>
-                                <select value={mesFim} onChange={e=>setMesFim(Math.max(parseInt(e.target.value),mesIni))} style={{padding:9,borderRadius:8,border:'none',fontWeight:700}}>
+                                <select value={mesFim} onChange={e=>setMesFim(Math.max(parseInt(e.target.value),mesIni))} style={{padding:9,borderRadius:8,border:'none',fontWeight:700,background:'#fff',color:'#0f172a'}}>
                                     {MESES_LABEL.map((m,i)=><option key={i} value={i}>{m}</option>)}
                                 </select>
                             </div>
