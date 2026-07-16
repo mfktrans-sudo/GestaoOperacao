@@ -8561,6 +8561,11 @@
             };
 
             const handleLimparDados = async () => {
+                if (!isAdmin) {
+                    setMensagem('🔒 Apenas o administrador pode limpar todos os dados.');
+                    setTimeout(() => setMensagem(''), 3000);
+                    return;
+                }
                 if (confirm('⚠️ ATENÇÃO! Isso irá deletar TODOS os dados. Deseja continuar?')) {
                     await db.clearAll();
                     onUpdate(db);
@@ -8604,6 +8609,7 @@
                             />
                         </div>
 
+                        {isAdmin && (
                         <div className="bg-red-50 p-6 rounded-lg shadow-lg border-2 border-red-200">
                             <h3 className="text-xl font-bold mb-4 text-red-700">🗑️ Zona de Perigo</h3>
                             <p className="text-red-600 mb-4">Esta ação é IRREVERSÍVEL e deletará TODOS os dados!</p>
@@ -8614,6 +8620,7 @@
                                 ⚠️ Limpar Todos os Dados
                             </button>
                         </div>
+                        )}
 
                         <div className="bg-white p-6 rounded-lg shadow-lg">
                             <h3 className="text-xl font-bold mb-4">ℹ️ Informações do Sistema</h3>
