@@ -1135,13 +1135,11 @@
                 const currentDb = dbRef.current || db;
                 if (!currentDb) return;
                 if (!isAdmin) {
-                    alert('🔒 Apenas o administrador pode excluir operações.');
-                    return;
-                }
-                const op = operacoes.find(o => o.id === id);
-                if (!op || op.data !== getHojeStr()) {
-                    alert('🔒 Só é possível excluir operações cadastradas no dia vigente. Registros de dias anteriores não podem mais ser excluídos.');
-                    return;
+                    const op = operacoes.find(o => o.id === id);
+                    if (!op || op.data !== getHojeStr()) {
+                        alert('🔒 Só é possível excluir operações cadastradas no dia vigente. Registros de dias anteriores não podem mais ser excluídos.');
+                        return;
+                    }
                 }
                 await currentDb.deleteOperacao(id);
                 // onSnapshot atualiza automaticamente
@@ -7142,9 +7140,7 @@
                                                             onMouseEnter={e=>{e.currentTarget.style.transform='scale(1.1)';}}
                                                             onMouseLeave={e=>{e.currentTarget.style.transform='scale(1)';}}
                                                         >{editando === op.id ? '✕' : '✏️'}</button>
-                                                        {!isAdmin ? (
-                                                            <span title="Apenas o administrador pode excluir" style={{color:'#cbd5e1',fontSize:'13px',padding:'5px 8px'}}>🔒</span>
-                                                        ) : op.data !== getHojeStr() ? (
+                                                        {!isAdmin && op.data !== getHojeStr() ? (
                                                             <span title="Só é possível excluir operações do dia vigente" style={{color:'#cbd5e1',fontSize:'13px',padding:'5px 8px'}}>🔒</span>
                                                         ) : confirmandoDeletar === op.id ? (
                                                             <div style={{display:'flex',gap:'4px',alignItems:'center'}}>
@@ -8666,7 +8662,7 @@
                                         />
                                     </label>
                                     <div style={{fontSize:'11px',color:'#7c3aed',marginTop:'8px'}}>
-                                        A exclusão de operações é exclusiva do administrador ({ADMIN_EMAIL}) e só é permitida para registros cadastrados no dia vigente. Registros de dias anteriores não podem mais ser excluídos, apenas alterados.
+                                        Usuários comuns só podem excluir operações cadastradas no dia vigente. O administrador ({ADMIN_EMAIL}) pode excluir operações de qualquer data.
                                     </div>
                                 </div>
                             )}
