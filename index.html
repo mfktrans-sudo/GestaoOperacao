@@ -13004,20 +13004,21 @@ ${todasFolhas.join('\n')}
                 }
             };
 
-            // Aplica o horário de finalização global a todos os registros do dia e salva cada um
+            // Aplica o horário de finalização apenas às linhas marcadas (checkbox) e salva cada uma
             const handleHorarioFinalizacaoGlobal = async (novoHorario) => {
                 setHorarioFinalizacaoGlobal(novoHorario);
-                if (!registrosDoDia.length) return;
+                const registrosMarcados = registrosDoDia.filter(reg => selRegistros[reg.id]);
+                if (!registrosMarcados.length) return;
                 // Atualiza edicoesLocais para refletir na tela imediatamente
                 setEdicoesLocais(prev => {
                     const copia = { ...prev };
-                    registrosDoDia.forEach(reg => {
+                    registrosMarcados.forEach(reg => {
                         copia[reg.id] = { ...(copia[reg.id] || {}), horarioFinalizacao: novoHorario };
                     });
                     return copia;
                 });
-                // Persiste cada registro no Firebase
-                for (const reg of registrosDoDia) {
+                // Persiste cada registro marcado no Firebase
+                for (const reg of registrosMarcados) {
                     try {
                         await onAtualizar({ ...reg, ...(edicoesLocais[reg.id] || {}), horarioFinalizacao: novoHorario, id: reg.id });
                     } catch (e) {
@@ -13600,7 +13601,7 @@ ${folhas.join('\n')}
                     <div>
                         {/* CAMPO ÚNICO DE HORÁRIO DE FINALIZAÇÃO */}
                         <div style={{display:'flex',alignItems:'center',gap:'12px',marginBottom:'12px',background:'#fff7ed',border:'2px solid #fb923c',borderRadius:'10px',padding:'10px 16px',flexWrap:'wrap'}}>
-                            <span style={{fontSize:'14px',fontWeight:'700',color:'#9a3412'}}>⏰ Horário de Finalização (aplicado a todas as linhas):</span>
+                            <span style={{fontSize:'14px',fontWeight:'700',color:'#9a3412'}}>⏰ Horário de Finalização (aplicado apenas às linhas marcadas ✓):</span>
                             <input
                                 type="time"
                                 value={horarioFinalizacaoGlobal}
@@ -13609,7 +13610,7 @@ ${folhas.join('\n')}
                             />
                             {horarioFinalizacaoGlobal && (
                                 <span style={{fontSize:'12px',color:'#065f46',fontWeight:'600'}}>
-                                    ✅ Replicado para {registrosDoDia.length} linha{registrosDoDia.length !== 1 ? 's' : ''}
+                                    ✅ Replicado para {Object.values(selRegistros).filter(Boolean).length} linha{Object.values(selRegistros).filter(Boolean).length !== 1 ? 's' : ''} marcada{Object.values(selRegistros).filter(Boolean).length !== 1 ? 's' : ''}
                                 </span>
                             )}
                         </div>
@@ -13790,7 +13791,7 @@ ${folhas.join('\n')}
                                         </div>
                                         {/* FINALIZAÇÃO */}
                                         <div style={{textAlign:'center',fontSize:'13px',fontWeight:'700',color:'#374151'}}>
-                                            {horarioFinalizacaoGlobal || valorCampo(reg,'horarioFinalizacao') || '—'}
+                                            {(selRegistros[reg.id] ? horarioFinalizacaoGlobal : '') || valorCampo(reg,'horarioFinalizacao') || '—'}
                                         </div>
                                         {/* OBS */}
                                         <div>
