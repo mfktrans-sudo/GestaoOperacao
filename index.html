@@ -12504,8 +12504,13 @@
             const [selRegistros, setSelRegistros] = useState({});
             const [regEditando, setRegEditando] = useState(null);
 
-            // Horário de finalização único — replicado para todas as linhas do dia
+            // Horário de finalização único — replicado apenas às linhas marcadas do dia selecionado.
+            // Importante: este campo é reiniciado sempre que a data (dataFiltro) muda, para que
+            // o horário de um dia NUNCA seja aplicado/arrastado para outro dia.
             const [horarioFinalizacaoGlobal, setHorarioFinalizacaoGlobal] = useState('');
+            React.useEffect(() => {
+                setHorarioFinalizacaoGlobal('');
+            }, [dataFiltro]);
 
             // ── UPLOAD PLANILHA (Linha Vermelha) ──
             const [lvUpDrag,      setLvUpDrag]      = useState(false);
