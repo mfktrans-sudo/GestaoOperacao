@@ -13009,10 +13009,14 @@ ${todasFolhas.join('\n')}
                 }
             };
 
-            // Aplica o horário de finalização apenas às linhas marcadas (checkbox) e salva cada uma
+            // Aplica o horário de finalização automaticamente a TODAS as lojas cadastradas no dia
+            // selecionado (dataFiltro) — não depende mais do checkbox de seleção.
+            // Bloqueado no modo "Filtros Avançados" (período com múltiplos dias) para IMPEDIR que
+            // um mesmo horário seja gravado em registros de datas diferentes ao mesmo tempo.
             const handleHorarioFinalizacaoGlobal = async (novoHorario) => {
+                if (modoFiltroAvancado) return;
                 setHorarioFinalizacaoGlobal(novoHorario);
-                const registrosMarcados = registrosDoDia.filter(reg => selRegistros[reg.id]);
+                const registrosMarcados = registrosDoDia;
                 if (!registrosMarcados.length) return;
                 // Atualiza edicoesLocais para refletir na tela imediatamente
                 setEdicoesLocais(prev => {
@@ -13604,9 +13608,15 @@ ${folhas.join('\n')}
 
                     {/* TABELA */}
                     <div>
-                        {/* CAMPO ÚNICO DE HORÁRIO DE FINALIZAÇÃO */}
+                        {/* CAMPO ÚNICO DE HORÁRIO DE FINALIZAÇÃO — disponível apenas na visão de um único dia,
+                            para nunca aplicar o mesmo horário a registros de datas diferentes */}
+                        {modoFiltroAvancado ? (
+                            <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom:'12px',background:'#f3f4f6',border:'2px dashed #9ca3af',borderRadius:'10px',padding:'10px 16px',flexWrap:'wrap'}}>
+                                <span style={{fontSize:'13px',fontWeight:'700',color:'#4b5563'}}>⏰ Horário de Finalização: indisponível no modo "Filtros Avançados" (período com vários dias). Feche os Filtros Avançados e selecione um único dia para aplicar o horário.</span>
+                            </div>
+                        ) : (
                         <div style={{display:'flex',alignItems:'center',gap:'12px',marginBottom:'12px',background:'#fff7ed',border:'2px solid #fb923c',borderRadius:'10px',padding:'10px 16px',flexWrap:'wrap'}}>
-                            <span style={{fontSize:'14px',fontWeight:'700',color:'#9a3412'}}>⏰ Horário de Finalização (aplicado apenas às linhas marcadas ✓):</span>
+                            <span style={{fontSize:'14px',fontWeight:'700',color:'#9a3412'}}>⏰ Horário de Finalização (aplicado automaticamente a todas as lojas do dia {dataFiltro.split('-').reverse().join('/')}):</span>
                             <input
                                 type="time"
                                 value={horarioFinalizacaoGlobal}
@@ -13615,10 +13625,11 @@ ${folhas.join('\n')}
                             />
                             {horarioFinalizacaoGlobal && (
                                 <span style={{fontSize:'12px',color:'#065f46',fontWeight:'600'}}>
-                                    ✅ Replicado para {Object.values(selRegistros).filter(Boolean).length} linha{Object.values(selRegistros).filter(Boolean).length !== 1 ? 's' : ''} marcada{Object.values(selRegistros).filter(Boolean).length !== 1 ? 's' : ''}
+                                    ✅ Aplicado para {registrosDoDia.length} loja{registrosDoDia.length !== 1 ? 's' : ''} do dia
                                 </span>
                             )}
                         </div>
+                        )}
                         {/* BARRA DE SELEÇÃO EM LOTE */}
                         {Object.values(selRegistros).some(Boolean) && (() => {
                             const qtdSel = Object.values(selRegistros).filter(Boolean).length;
