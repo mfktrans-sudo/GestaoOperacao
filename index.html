@@ -1480,7 +1480,7 @@
                         </header>
 
                         <nav className="flex gap-2 mb-6 flex-wrap">
-                            {['torre', 'dashboard', 'performance', 'graficos', 'capacidade', 'cadastrar', 'linhavermelha', 'comunicacoes', 'planejamento', 'editar', 'gerenciar', 'relatorios', 'upload', 'configuracoes'].map(aba => (
+                            {['torre', 'dashboard', 'performance', 'graficos', 'capacidade', 'cadastrar', 'linhavermelha', 'comunicacoes', 'planejamento', 'rotatividade5s', 'editar', 'gerenciar', 'relatorios', 'upload', 'configuracoes'].map(aba => (
                                 <button
                                     key={aba}
                                     onClick={() => trocarAba(aba)}
@@ -1518,6 +1518,7 @@
                                         }}>{chatNaoLidas > 99 ? '99+' : chatNaoLidas}</span>
                                     )}
                                     {aba === 'planejamento' && <><span className="icon-bounce inline-block">🎯</span> Planejamento Operacional</>}
+                                    {aba === 'rotatividade5s' && <><span className="icon-rotate inline-block">🔄</span> Rotatividade 5S</>}
                                     {aba === 'editar' && <><span className="icon-swing inline-block">✏️</span> Editar</>}
                                     {aba === 'gerenciar' && <><span className="icon-rotate inline-block">🔧</span> Gerenciar Operações</>}
                                     {aba === 'relatorios' && <><span className="icon-pulse inline-block">📋</span> Relatórios</>}
@@ -1579,6 +1580,9 @@
                             )}
                             {abaSelecionada === 'planejamento' && (
                                 <PlanejamentoOperacional />
+                            )}
+                            {abaSelecionada === 'rotatividade5s' && (
+                                <Rotatividade5S />
                             )}
                             {abaSelecionada === 'editar' && (
                                 <Editar 
@@ -12452,6 +12456,296 @@
                             {busca.trim().length >= 2 && resultadosBusca.length === 0 && <p style={{ color: '#94a3b8', fontSize: '13px' }}>Nenhum resultado encontrado.</p>}
                         </div>
                     )}
+                </div>
+            );
+        }
+
+        // ========== ROTATIVIDADE 5S ==========
+        // Aba nova e isolada: rodízio dos colaboradores pelas áreas do estoque
+        // (blocos/ruas), com avanço automático a cada dia útil (seg-sex).
+        // Estado próprio em localStorage — não usa Firestore nem mexe em
+        // nenhum outro dado/aba da ferramenta.
+        function Rotatividade5S() {
+            const { useState, useEffect, useMemo } = React;
+
+            const AREAS_PADRAO = [
+                { id: 'a1', nome: 'BLOCO 8' },
+                { id: 'a2', nome: 'RUAS 1 E 2' },
+                { id: 'a3', nome: 'RUAS 3 E 4' },
+                { id: 'a4', nome: 'RUAS 5 E 6' },
+                { id: 'a5', nome: 'RUA 7' },
+                { id: 'a6', nome: 'RUAS 8 E 9' },
+            ];
+            const COLAB_PADRAO = Array.from({ length: 7 }, (_, i) => ({ id: 'c' + (i + 1), nome: 'COLABORADOR ' + (i + 1) }));
+            const DATA_INICIO = '2026-07-29';
+            const DATA_FIM = '2026-12-31';
+            const DIAS_SEMANA = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB'];
+
+            function carregarLS(key, def) {
+                try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : def; } catch (e) { return def; }
+            }
+            function salvarLS(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
+
+            const [areas, setAreas] = useState(() => carregarLS('r5s_areas_v1', AREAS_PADRAO));
+            const [colaboradores, setColaboradores] = useState(() => carregarLS('r5s_colaboradores_v1', COLAB_PADRAO));
+            const [novaAreaLabel, setNovaAreaLabel] = useState('');
+            const [novaAreaRuas, setNovaAreaRuas] = useState('');
+            const [novoColabNome, setNovoColabNome] = useState('');
+            const [passoAnim, setPassoAnim] = useState(0);
+            const [animando, setAnimando] = useState(false);
+
+            const hojeISO = useMemo(() => {
+                const n = new Date();
+                const b = new Date(n.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+                const iso = `${b.getFullYear()}-${String(b.getMonth() + 1).padStart(2, '0')}-${String(b.getDate()).padStart(2, '0')}`;
+                return iso >= DATA_INICIO && iso <= DATA_FIM ? iso : DATA_INICIO;
+            }, []);
+
+            const [dataEscolhida, setDataEscolhida] = useState(hojeISO);
+
+            useEffect(() => salvarLS('r5s_areas_v1', areas), [areas]);
+            useEffect(() => salvarLS('r5s_colaboradores_v1', colaboradores), [colaboradores]);
+
+            function parseISO(iso) { const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); }
+            function ehDiaUtil(dt) { const dow = dt.getUTCDay(); return dow >= 1 && dow <= 5; }
+            function fmtBR(iso) { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; }
+
+            // nº de dias úteis (seg-sex) entre DATA_INICIO e iso, 0-indexado
+            function offsetDiasUteis(iso) {
+                let cursor = parseISO(DATA_INICIO);
+                const alvo = parseISO(iso);
+                let offset = 0;
+                while (cursor.getTime() < alvo.getTime()) {
+                    cursor = new Date(cursor.getTime() + 86400000);
+                    if (ehDiaUtil(cursor)) offset++;
+                }
+                return offset;
+            }
+
+            // Quando há mais colaboradores que áreas, o excedente entra num
+            // slot de apoio/folga do rodízio naquele dia — todo mundo continua
+            // girando pelos mesmos slots, incluindo esse.
+            const numSlots = Math.max(areas.length, colaboradores.length, 1);
+            const slots = useMemo(() => {
+                const arr = areas.map(a => a.nome);
+                let n = 1;
+                while (arr.length < numSlots) { arr.push('APOIO / FOLGA DO RODÍZIO' + (n > 1 ? ' ' + n : '')); n++; }
+                return arr;
+            }, [areas, numSlots]);
+
+            function escalaDoDia(iso, offsetExtra) {
+                const dt = parseISO(iso);
+                if (!ehDiaUtil(dt)) return null;
+                const offset = offsetDiasUteis(iso) + (offsetExtra || 0);
+                return colaboradores.map((c, i) => ({ colaborador: c.nome, area: slots[(i + offset) % numSlots] }));
+            }
+
+            const escalaSelecionada = useMemo(() => escalaDoDia(dataEscolhida, 0), [dataEscolhida, colaboradores, areas]);
+            const ehFimDeSemana = !ehDiaUtil(parseISO(dataEscolhida));
+
+            // Próximos 5 dias úteis a partir da data escolhida, para a prévia da tabela
+            const proximosDiasUteis = useMemo(() => {
+                const out = [];
+                let cursor = parseISO(dataEscolhida);
+                let tentativas = 0;
+                while (out.length < 5 && tentativas < 30) {
+                    const iso = cursor.toISOString().slice(0, 10);
+                    if (ehDiaUtil(cursor) && iso <= DATA_FIM) out.push(iso);
+                    cursor = new Date(cursor.getTime() + 86400000);
+                    tentativas++;
+                }
+                return out;
+            }, [dataEscolhida, colaboradores, areas]);
+
+            function addArea() {
+                const label = novaAreaLabel.trim();
+                const ruas = novaAreaRuas.split(',').map(s => s.trim()).filter(Boolean);
+                if (!label && !ruas.length) { alert('Informe um nome de área ou os números das ruas (separados por vírgula).'); return; }
+                const nomeFinal = label || (ruas.length > 1 ? `RUAS ${ruas.join(' E ')}` : `RUA ${ruas[0]}`);
+                setAreas(prev => [...prev, { id: 'a_' + Date.now(), nome: nomeFinal.toUpperCase() }]);
+                setNovaAreaLabel(''); setNovaAreaRuas('');
+            }
+            function removerArea(id) {
+                if (!confirm('Remover esta área do rodízio? Isso muda a divisão de slots de todos os dias.')) return;
+                setAreas(prev => prev.filter(a => a.id !== id));
+            }
+            function addColaborador() {
+                const nome = novoColabNome.trim();
+                if (!nome) return;
+                setColaboradores(prev => [...prev, { id: 'c_' + Date.now(), nome: nome.toUpperCase() }]);
+                setNovoColabNome('');
+            }
+            function removerColaborador(id) {
+                if (!confirm('Remover este colaborador do rodízio?')) return;
+                setColaboradores(prev => prev.filter(c => c.id !== id));
+            }
+            function moverColaborador(idx, dir) {
+                setColaboradores(prev => {
+                    const arr = [...prev];
+                    const alvo = idx + dir;
+                    if (alvo < 0 || alvo >= arr.length) return arr;
+                    [arr[idx], arr[alvo]] = [arr[alvo], arr[idx]];
+                    return arr;
+                });
+            }
+
+            function simularProximoDia() {
+                setAnimando(true);
+                setPassoAnim(p => p + 1);
+                setTimeout(() => setAnimando(false), 850);
+            }
+
+            // Layout circular para a animação — 1 posição por slot
+            function posCirculo(index, total, raio, cx, cy) {
+                const ang = (index / total) * 2 * Math.PI - Math.PI / 2;
+                return { x: cx + raio * Math.cos(ang), y: cy + raio * Math.sin(ang) };
+            }
+            const raioAnim = 130, cxAnim = 160, cyAnim = 160;
+            const coresColab = ['#7c3aed', '#2563eb', '#059669', '#d97706', '#dc2626', '#0891b2', '#db2777', '#4338ca', '#65a30d', '#9333ea'];
+
+            return (
+                <div className="space-y-6">
+                    <div className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-2xl shadow-xl p-6 text-white">
+                        <h2 className="text-2xl font-bold flex items-center gap-2"><span className="icon-pulse inline-block">🔄</span> Rotatividade 5S</h2>
+                        <p className="text-sm opacity-90 mt-1">Rodízio dos colaboradores pelas áreas do estoque — avança automaticamente a cada dia útil (segunda a sexta), parametrizado até {fmtBR(DATA_FIM)}.</p>
+                    </div>
+
+                    {/* Configuração: Áreas */}
+                    <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+                        <h3 className="text-lg font-bold text-gray-800 mb-3">🏭 Áreas para organização</h3>
+                        <div className="flex flex-wrap gap-2 mb-4">
+                            {areas.map(a => (
+                                <span key={a.id} className="inline-flex items-center gap-2 bg-purple-50 border border-purple-200 text-purple-800 text-xs font-bold px-3 py-2 rounded-lg">
+                                    {a.nome}
+                                    <button onClick={() => removerArea(a.id)} className="text-purple-400 hover:text-red-600 font-bold" title="Remover área">✕</button>
+                                </span>
+                            ))}
+                            {!areas.length && <span className="text-xs text-gray-400">Nenhuma área cadastrada.</span>}
+                        </div>
+                        <div className="flex flex-wrap gap-2 items-end">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">Nome da área (ex: BLOCO 8)</label>
+                                <input value={novaAreaLabel} onChange={e => setNovaAreaLabel(e.target.value)} placeholder="Deixe em branco para gerar pelas ruas" className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-64" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">Ruas múltiplas (separadas por vírgula)</label>
+                                <input value={novaAreaRuas} onChange={e => setNovaAreaRuas(e.target.value)} placeholder="ex: 3, 4" className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-48" />
+                            </div>
+                            <button onClick={addArea} className="bg-purple-600 text-white text-sm font-bold px-4 py-2 rounded-lg hover:bg-purple-700">+ Adicionar área</button>
+                        </div>
+                    </div>
+
+                    {/* Configuração: Colaboradores */}
+                    <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+                        <h3 className="text-lg font-bold text-gray-800 mb-3">👥 Colaboradores no rodízio</h3>
+                        <div className="space-y-2 mb-4">
+                            {colaboradores.map((c, idx) => (
+                                <div key={c.id} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                                    <span className="text-xs font-bold text-gray-400 w-6">{idx + 1}º</span>
+                                    <span className="flex-1 text-sm font-bold text-gray-800">{c.nome}</span>
+                                    <button onClick={() => moverColaborador(idx, -1)} disabled={idx === 0} className="text-gray-400 hover:text-purple-600 disabled:opacity-20 font-bold px-1">↑</button>
+                                    <button onClick={() => moverColaborador(idx, 1)} disabled={idx === colaboradores.length - 1} className="text-gray-400 hover:text-purple-600 disabled:opacity-20 font-bold px-1">↓</button>
+                                    <button onClick={() => removerColaborador(c.id)} className="text-gray-400 hover:text-red-600 font-bold px-1" title="Remover colaborador">✕</button>
+                                </div>
+                            ))}
+                            {!colaboradores.length && <span className="text-xs text-gray-400">Nenhum colaborador cadastrado.</span>}
+                        </div>
+                        <div className="flex gap-2">
+                            <input value={novoColabNome} onChange={e => setNovoColabNome(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addColaborador(); }} placeholder="Nome do colaborador" className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1" />
+                            <button onClick={addColaborador} className="bg-purple-600 text-white text-sm font-bold px-4 py-2 rounded-lg hover:bg-purple-700">+ Adicionar colaborador</button>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-2">A ordem acima (↑/↓) define a posição de cada um no rodízio a partir de {fmtBR(DATA_INICIO)}. Se houver mais colaboradores que áreas, o excedente entra num slot de apoio/folga do rodízio, que também gira normalmente.</p>
+                    </div>
+
+                    {/* Escala do dia */}
+                    <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+                        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                            <h3 className="text-lg font-bold text-gray-800">📅 Escala do dia</h3>
+                            <input type="date" value={dataEscolhida} min={DATA_INICIO} max={DATA_FIM}
+                                onChange={e => setDataEscolhida(e.target.value)}
+                                className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                        </div>
+                        {ehFimDeSemana ? (
+                            <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">⚠️ {fmtBR(dataEscolhida)} cai num fim de semana — não há rodízio 5S nesse dia (time reduzido aos domingos).</p>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+                                        <tr><th className="text-left px-4 py-2 rounded-l-lg">Colaborador</th><th className="text-left px-4 py-2 rounded-r-lg">Área</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        {(escalaSelecionada || []).map((e, i) => (
+                                            <tr key={i} className="border-b border-gray-100">
+                                                <td className="px-4 py-2 font-bold text-gray-700">{e.colaborador}</td>
+                                                <td className="px-4 py-2 text-gray-600">{e.area}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        <h4 className="text-sm font-bold text-gray-500 mt-6 mb-2">Próximos dias úteis</h4>
+                        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+                            {proximosDiasUteis.map(iso => {
+                                const dt = parseISO(iso);
+                                const esc = escalaDoDia(iso, 0) || [];
+                                return (
+                                    <div key={iso} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                                        <div className="text-xs font-bold text-purple-700 mb-1">{DIAS_SEMANA[dt.getUTCDay()]} · {fmtBR(iso)}</div>
+                                        {esc.map((e, i) => (
+                                            <div key={i} className="text-xs text-gray-600 flex justify-between"><span>{e.colaborador.split(' ')[0]}</span><span className="font-bold">{e.area}</span></div>
+                                        ))}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Animação da rotatividade */}
+                    <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-bold text-gray-800">🎞️ Animação da rotatividade</h3>
+                            <button onClick={simularProximoDia} className="bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-bold px-4 py-2 rounded-lg hover:opacity-90">
+                                ⏭️ Simular avanço de 1 dia
+                            </button>
+                        </div>
+                        <p className="text-xs text-gray-400 mb-3">Cada clique simula o giro automático de um dia útil: os colaboradores avançam uma posição entre as áreas, na ordem definida acima.</p>
+                        <div className="flex justify-center">
+                            <svg viewBox="0 0 320 320" width="320" height="320">
+                                {slots.map((nome, i) => {
+                                    const p = posCirculo(i, numSlots, raioAnim, cxAnim, cyAnim);
+                                    return (
+                                        <g key={i}>
+                                            <circle cx={p.x} cy={p.y} r="34" fill="#f5f3ff" stroke="#c4b5fd" strokeWidth="2" />
+                                            <text x={p.x} y={p.y} textAnchor="middle" dominantBaseline="middle" fontSize="8.5" fontWeight="700" fill="#5b21b6">
+                                                {nome.length > 14 ? nome.slice(0, 13) + '…' : nome}
+                                            </text>
+                                        </g>
+                                    );
+                                })}
+                                {colaboradores.map((c, i) => {
+                                    const slotAtual = (i + passoAnim) % numSlots;
+                                    const p = posCirculo(slotAtual, numSlots, raioAnim, cxAnim, cyAnim);
+                                    const cor = coresColab[i % coresColab.length];
+                                    return (
+                                        <circle key={c.id} cx={p.x} cy={p.y} r="10" fill={cor} stroke="#fff" strokeWidth="2"
+                                            style={{ transition: 'cx 0.8s ease, cy 0.8s ease', opacity: animando ? 0.6 : 1 }}>
+                                            <title>{c.nome}</title>
+                                        </circle>
+                                    );
+                                })}
+                            </svg>
+                        </div>
+                        <div className="flex flex-wrap justify-center gap-3 mt-2">
+                            {colaboradores.map((c, i) => (
+                                <span key={c.id} className="inline-flex items-center gap-1 text-xs font-bold text-gray-600">
+                                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: coresColab[i % coresColab.length], display: 'inline-block' }}></span>
+                                    {c.nome}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
                 </div>
             );
         }
