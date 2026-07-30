@@ -12476,7 +12476,8 @@
                 { id: 'a5', nome: 'RUA 7' },
                 { id: 'a6', nome: 'RUAS 8 E 9' },
             ];
-            const COLAB_PADRAO = Array.from({ length: 7 }, (_, i) => ({ id: 'c' + (i + 1), nome: 'COLABORADOR ' + (i + 1) }));
+            const COLAB_PADRAO = Array.from({ length: 7 }, (_, i) => ({ id: 'c' + (i + 1), nome: 'COLABORADOR ' + (i + 1), foto: null }));
+            const TIPOS_OCORRENCIA_PADRAO = ['Área desorganizada', 'Não realizou o rodízio', 'Material fora do lugar', 'Identificação/etiquetas ausentes', 'Outro'];
             const DATA_INICIO = '2026-07-29';
             const DATA_FIM = '2026-12-31';
             const DIAS_SEMANA = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB'];
@@ -12487,10 +12488,18 @@
             function salvarLS(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
 
             const [areas, setAreas] = useState(() => carregarLS('r5s_areas_v1', AREAS_PADRAO));
-            const [colaboradores, setColaboradores] = useState(() => carregarLS('r5s_colaboradores_v1', COLAB_PADRAO));
+            const [colaboradores, setColaboradores] = useState(() => {
+                const salvos = carregarLS('r5s_colaboradores_v1', COLAB_PADRAO);
+                return salvos.map(c => ({ foto: null, ...c }));
+            });
+            const [overrides, setOverrides] = useState(() => carregarLS('r5s_overrides_v1', {}));
+            const [tiposOcorrencia, setTiposOcorrencia] = useState(() => carregarLS('r5s_tipos_ocorrencia_v1', TIPOS_OCORRENCIA_PADRAO));
+            const [ocorrencias, setOcorrencias] = useState(() => carregarLS('r5s_ocorrencias_v1', []));
+
             const [novaAreaLabel, setNovaAreaLabel] = useState('');
             const [novaAreaRuas, setNovaAreaRuas] = useState('');
             const [novoColabNome, setNovoColabNome] = useState('');
+            const [novoTipoOcorrencia, setNovoTipoOcorrencia] = useState('');
             const [passoAnim, setPassoAnim] = useState(0);
             const [animando, setAnimando] = useState(false);
             const [statusSalvamentoR5S, setStatusSalvamentoR5S] = useState(null); // null | 'saving' | 'saved' | 'error'
@@ -12498,6 +12507,12 @@
             const carregouFirestoreR5S = useRef(false);
             const pularProximoSalvamentoR5S = useRef(true); // evita reenviar ao Firestore o próprio dado que acabou de chegar dele
             const saveTimerR5S = useRef(null);
+
+            const [editandoEscala, setEditandoEscala] = useState(false);
+            const [gerandoPdf, setGerandoPdf] = useState(false);
+            const fotoInputRef = useRef(null);
+            const [colabAlvoFoto, setColabAlvoFoto] = useState(null);
+            const relatorioRef = useRef(null);
 
             const hojeISO = useMemo(() => {
                 const n = new Date();
@@ -12508,7 +12523,14 @@
 
             const [dataEscolhida, setDataEscolhida] = useState(hojeISO);
 
-            // Listener Firestore em tempo real — sincroniza áreas/colaboradores entre todos os usuários
+            // Formulário de nova ocorrência
+            const [ocorrData, setOcorrData] = useState(hojeISO);
+            const [ocorrColabId, setOcorrColabId] = useState('');
+            const [ocorrArea, setOcorrArea] = useState('');
+            const [ocorrTipo, setOcorrTipo] = useState('');
+            const [ocorrObs, setOcorrObs] = useState('');
+
+            // Listener Firestore em tempo real — sincroniza áreas/colaboradores/overrides/ocorrências entre todos os usuários
             useEffect(() => {
                 if (!window.__firebaseDb || !window.__firebaseFns) return;
                 const { doc, onSnapshot } = window.__firebaseFns;
@@ -12518,7 +12540,10 @@
                     if (snap.exists()) {
                         const data = snap.data();
                         setAreas(Array.isArray(data.areas) && data.areas.length ? data.areas : AREAS_PADRAO);
-                        setColaboradores(Array.isArray(data.colaboradores) && data.colaboradores.length ? data.colaboradores : COLAB_PADRAO);
+                        setColaboradores(Array.isArray(data.colaboradores) && data.colaboradores.length ? data.colaboradores.map(c => ({ foto: null, ...c })) : COLAB_PADRAO);
+                        setOverrides(data.overrides && typeof data.overrides === 'object' ? data.overrides : {});
+                        setTiposOcorrencia(Array.isArray(data.tiposOcorrencia) && data.tiposOcorrencia.length ? data.tiposOcorrencia : TIPOS_OCORRENCIA_PADRAO);
+                        setOcorrencias(Array.isArray(data.ocorrencias) ? data.ocorrencias : []);
                     }
                     carregouFirestoreR5S.current = true;
                     setSincronizadoR5S(true);
@@ -12530,11 +12555,14 @@
                 return () => unsub();
             }, []);
 
-            // Salva no Firestore (com debounce) toda vez que áreas/colaboradores mudam por ação local,
+            // Salva no Firestore (com debounce) toda vez que os dados mudam por ação local,
             // e sempre mantém uma cópia em localStorage como fallback offline.
             useEffect(() => {
                 salvarLS('r5s_areas_v1', areas);
                 salvarLS('r5s_colaboradores_v1', colaboradores);
+                salvarLS('r5s_overrides_v1', overrides);
+                salvarLS('r5s_tipos_ocorrencia_v1', tiposOcorrencia);
+                salvarLS('r5s_ocorrencias_v1', ocorrencias);
                 if (pularProximoSalvamentoR5S.current) { pularProximoSalvamentoR5S.current = false; return; }
                 if (!carregouFirestoreR5S.current || !window.__firebaseDb || !window.__firebaseFns) return;
                 if (saveTimerR5S.current) clearTimeout(saveTimerR5S.current);
@@ -12542,7 +12570,7 @@
                 saveTimerR5S.current = setTimeout(async () => {
                     try {
                         const { doc, setDoc } = window.__firebaseFns;
-                        await setDoc(doc(window.__firebaseDb, 'rotatividade5s', 'config'), { areas, colaboradores }, { merge: true });
+                        await setDoc(doc(window.__firebaseDb, 'rotatividade5s', 'config'), { areas, colaboradores, overrides, tiposOcorrencia, ocorrencias }, { merge: true });
                         setStatusSalvamentoR5S('saved');
                         setTimeout(() => setStatusSalvamentoR5S(null), 2000);
                     } catch (e) {
@@ -12551,7 +12579,7 @@
                         setTimeout(() => setStatusSalvamentoR5S(null), 3000);
                     }
                 }, 600);
-            }, [areas, colaboradores]);
+            }, [areas, colaboradores, overrides, tiposOcorrencia, ocorrencias]);
 
             function parseISO(iso) { const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); }
             function ehDiaUtil(dt) { const dow = dt.getUTCDay(); return dow >= 1 && dow <= 5; }
@@ -12580,14 +12608,29 @@
                 return arr;
             }, [areas, numSlots]);
 
+            // Iniciais para avatar quando não há foto cadastrada
+            function iniciais(nome) {
+                const partes = (nome || '').trim().split(/\s+/).filter(Boolean);
+                if (!partes.length) return '?';
+                if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+                return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
+            }
+
+            // Escala do dia: aplica a fórmula automática de rodízio, mas respeita
+            // atribuições manuais (overrides) feitas para aquela data específica.
             function escalaDoDia(iso, offsetExtra) {
                 const dt = parseISO(iso);
                 if (!ehDiaUtil(dt)) return null;
                 const offset = offsetDiasUteis(iso) + (offsetExtra || 0);
-                return colaboradores.map((c, i) => ({ colaborador: c.nome, area: slots[(i + offset) % numSlots] }));
+                return colaboradores.map((c, i) => {
+                    const chave = iso + '__' + c.id;
+                    const areaAuto = slots[(i + offset) % numSlots];
+                    const areaManual = overrides[chave];
+                    return { colaboradorId: c.id, colaborador: c.nome, foto: c.foto, area: areaManual || areaAuto, manual: !!areaManual };
+                });
             }
 
-            const escalaSelecionada = useMemo(() => escalaDoDia(dataEscolhida, 0), [dataEscolhida, colaboradores, areas]);
+            const escalaSelecionada = useMemo(() => escalaDoDia(dataEscolhida, 0), [dataEscolhida, colaboradores, areas, overrides]);
             const ehFimDeSemana = !ehDiaUtil(parseISO(dataEscolhida));
 
             // Extrai só a informação de ruas de uma área (ex.: "RUAS 3 E 4" -> "3, 4").
@@ -12616,7 +12659,7 @@
                     tentativas++;
                 }
                 return out;
-            }, [dataEscolhida, colaboradores, areas]);
+            }, [dataEscolhida, colaboradores, areas, overrides]);
 
             function addArea() {
                 const label = novaAreaLabel.trim();
@@ -12633,7 +12676,7 @@
             function addColaborador() {
                 const nome = novoColabNome.trim();
                 if (!nome) return;
-                setColaboradores(prev => [...prev, { id: 'c_' + Date.now(), nome: nome.toUpperCase() }]);
+                setColaboradores(prev => [...prev, { id: 'c_' + Date.now(), nome: nome.toUpperCase(), foto: null }]);
                 setNovoColabNome('');
             }
             function removerColaborador(id) {
@@ -12650,10 +12693,57 @@
                 });
             }
 
+            // Upload/edição de foto do colaborador — redimensiona e comprime no navegador
+            // (evita imagens gigantes no localStorage/Firestore).
+            function abrirSeletorFoto(colabId) {
+                setColabAlvoFoto(colabId);
+                if (fotoInputRef.current) { fotoInputRef.current.value = ''; fotoInputRef.current.click(); }
+            }
+            function onFotoSelecionada(e) {
+                const arquivo = e.target.files && e.target.files[0];
+                if (!arquivo || !colabAlvoFoto) return;
+                if (!arquivo.type.startsWith('image/')) { alert('Selecione um arquivo de imagem.'); return; }
+                const leitor = new FileReader();
+                leitor.onload = (ev) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const tam = 160;
+                        const canvas = document.createElement('canvas');
+                        canvas.width = tam; canvas.height = tam;
+                        const ctx = canvas.getContext('2d');
+                        const escala = Math.max(tam / img.width, tam / img.height);
+                        const w = img.width * escala, h = img.height * escala;
+                        ctx.drawImage(img, (tam - w) / 2, (tam - h) / 2, w, h);
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
+                        setColaboradores(prev => prev.map(c => c.id === colabAlvoFoto ? { ...c, foto: dataUrl } : c));
+                    };
+                    img.src = ev.target.result;
+                };
+                leitor.readAsDataURL(arquivo);
+            }
+            function removerFoto(colabId) {
+                setColaboradores(prev => prev.map(c => c.id === colabId ? { ...c, foto: null } : c));
+            }
+
+            // Atribuição manual: fixa um colaborador numa área específica só na data selecionada
+            function definirAreaManual(colaboradorId, areaNome) {
+                const chave = dataEscolhida + '__' + colaboradorId;
+                setOverrides(prev => ({ ...prev, [chave]: areaNome }));
+            }
+            function limparAtribuicoesManuaisDoDia() {
+                setOverrides(prev => {
+                    const prefixo = dataEscolhida + '__';
+                    const next = {};
+                    Object.keys(prev).forEach(k => { if (!k.startsWith(prefixo)) next[k] = prev[k]; });
+                    return next;
+                });
+            }
+            const temOverrideNoDia = useMemo(() => Object.keys(overrides).some(k => k.startsWith(dataEscolhida + '__')), [overrides, dataEscolhida]);
+
             function simularProximoDia() {
                 setAnimando(true);
                 setPassoAnim(p => p + 1);
-                setTimeout(() => setAnimando(false), 850);
+                setTimeout(() => setAnimando(false), 900);
             }
 
             // Layout circular para a animação — 1 posição por slot
@@ -12661,11 +12751,71 @@
                 const ang = (index / total) * 2 * Math.PI - Math.PI / 2;
                 return { x: cx + raio * Math.cos(ang), y: cy + raio * Math.sin(ang) };
             }
-            const raioAnim = 130, cxAnim = 160, cyAnim = 160;
+            const raioAnim = 138, cxAnim = 170, cyAnim = 170;
             const coresColab = ['#7c3aed', '#2563eb', '#059669', '#d97706', '#dc2626', '#0891b2', '#db2777', '#4338ca', '#65a30d', '#9333ea'];
+
+            // ── Gerar arquivo (PDF) do dia vigente com quem estava responsável ──
+            async function gerarRelatorioPDF() {
+                if (!relatorioRef.current || typeof html2canvas === 'undefined') { alert('Recurso de geração de PDF indisponível.'); return; }
+                setGerandoPdf(true);
+                try {
+                    const canvas = await html2canvas(relatorioRef.current, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+                    const imgData = canvas.toDataURL('image/png');
+                    const { jsPDF } = window.jspdf;
+                    const larguraPt = canvas.width, alturaPt = canvas.height;
+                    const orientacao = alturaPt >= larguraPt ? 'portrait' : 'landscape';
+                    const pdf = new jsPDF({ orientation: orientacao, unit: 'px', format: [larguraPt, alturaPt] });
+                    pdf.addImage(imgData, 'PNG', 0, 0, larguraPt, alturaPt);
+                    pdf.save(`Rotatividade_5S_${dataEscolhida}.pdf`);
+                } catch (e) {
+                    console.error('Erro ao gerar PDF da Rotatividade 5S:', e);
+                    alert('Não foi possível gerar o PDF. Tente novamente.');
+                } finally {
+                    setGerandoPdf(false);
+                }
+            }
+
+            // ── Ocorrências de organização ──
+            function addTipoOcorrencia() {
+                const t = novoTipoOcorrencia.trim();
+                if (!t) return;
+                if (tiposOcorrencia.some(x => x.toLowerCase() === t.toLowerCase())) { setNovoTipoOcorrencia(''); return; }
+                setTiposOcorrencia(prev => [...prev, t]);
+                setNovoTipoOcorrencia('');
+            }
+            function removerTipoOcorrencia(tipo) {
+                if (!confirm(`Remover o tipo de ocorrência "${tipo}"?`)) return;
+                setTiposOcorrencia(prev => prev.filter(t => t !== tipo));
+            }
+            function registrarOcorrencia() {
+                if (!ocorrColabId) { alert('Selecione o colaborador.'); return; }
+                if (!ocorrTipo) { alert('Selecione o tipo de ocorrência.'); return; }
+                const colab = colaboradores.find(c => c.id === ocorrColabId);
+                const nova = {
+                    id: 'oc_' + Date.now(),
+                    data: ocorrData,
+                    colaboradorId: ocorrColabId,
+                    colaborador: colab ? colab.nome : '',
+                    area: ocorrArea || '',
+                    tipo: ocorrTipo,
+                    obs: ocorrObs.trim(),
+                    criadoEm: new Date().toISOString(),
+                };
+                setOcorrencias(prev => [nova, ...prev]);
+                setOcorrArea(''); setOcorrTipo(''); setOcorrObs('');
+            }
+            function removerOcorrencia(id) {
+                if (!confirm('Remover esta ocorrência?')) return;
+                setOcorrencias(prev => prev.filter(o => o.id !== id));
+            }
+            const ocorrenciasOrdenadas = useMemo(() =>
+                [...ocorrencias].sort((a, b) => (b.data || '').localeCompare(a.data || '') || (b.criadoEm || '').localeCompare(a.criadoEm || ''))
+            , [ocorrencias]);
 
             return (
                 <div className="space-y-6">
+                    <input ref={fotoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onFotoSelecionada} />
+
                     <div className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-2xl shadow-xl p-6 text-white">
                         <div className="flex items-center justify-between flex-wrap gap-2">
                             <h2 className="text-2xl font-bold flex items-center gap-2"><span className="icon-pulse inline-block">🔄</span> Rotatividade 5S</h2>
@@ -12705,14 +12855,26 @@
                         </div>
                     </div>
 
-                    {/* Configuração: Colaboradores */}
+                    {/* Cadastro de colaboradores (com foto) */}
                     <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
-                        <h3 className="text-lg font-bold text-gray-800 mb-3">👥 Colaboradores no rodízio</h3>
+                        <h3 className="text-lg font-bold text-gray-800 mb-1">👥 Cadastro de colaboradores</h3>
+                        <p className="text-xs text-gray-400 mb-3">Cadastre a foto de cada colaborador para identificação rápida na escala, na animação e no relatório do dia.</p>
                         <div className="space-y-2 mb-4">
                             {colaboradores.map((c, idx) => (
-                                <div key={c.id} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                                <div key={c.id} className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
                                     <span className="text-xs font-bold text-gray-400 w-6">{idx + 1}º</span>
+                                    <button onClick={() => abrirSeletorFoto(c.id)} title="Alterar foto" className="relative shrink-0" style={{ width: 44, height: 44 }}>
+                                        {c.foto ? (
+                                            <img src={c.foto} alt={c.nome} style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', border: '2px solid #c4b5fd' }} />
+                                        ) : (
+                                            <span style={{ width: 44, height: 44, borderRadius: '50%', background: coresColab[idx % coresColab.length], color: '#fff', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                {iniciais(c.nome)}
+                                            </span>
+                                        )}
+                                        <span style={{ position: 'absolute', bottom: -2, right: -2, background: '#7c3aed', color: '#fff', borderRadius: '50%', width: 16, height: 16, fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #fff' }}>📷</span>
+                                    </button>
                                     <span className="flex-1 text-sm font-bold text-gray-800">{c.nome}</span>
+                                    {c.foto && <button onClick={() => removerFoto(c.id)} className="text-[11px] text-gray-400 hover:text-red-600 font-bold">remover foto</button>}
                                     <button onClick={() => moverColaborador(idx, -1)} disabled={idx === 0} className="text-gray-400 hover:text-purple-600 disabled:opacity-20 font-bold px-1">↑</button>
                                     <button onClick={() => moverColaborador(idx, 1)} disabled={idx === colaboradores.length - 1} className="text-gray-400 hover:text-purple-600 disabled:opacity-20 font-bold px-1">↓</button>
                                     <button onClick={() => removerColaborador(c.id)} className="text-gray-400 hover:text-red-600 font-bold px-1" title="Remover colaborador">✕</button>
@@ -12731,9 +12893,17 @@
                     <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
                         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                             <h3 className="text-lg font-bold text-gray-800">📅 Escala do dia</h3>
-                            <input type="date" value={dataEscolhida} min={DATA_INICIO} max={DATA_FIM}
-                                onChange={e => setDataEscolhida(e.target.value)}
-                                className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                            <div className="flex flex-wrap items-center gap-2">
+                                <input type="date" value={dataEscolhida} min={DATA_INICIO} max={DATA_FIM}
+                                    onChange={e => setDataEscolhida(e.target.value)}
+                                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                                {!ehFimDeSemana && (
+                                    <button onClick={() => setEditandoEscala(v => !v)}
+                                        className={`text-sm font-bold px-3 py-2 rounded-lg border ${editandoEscala ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-purple-700 border-purple-300 hover:bg-purple-50'}`}>
+                                        {editandoEscala ? '✓ Concluir edição' : '✏️ Atribuir manualmente'}
+                                    </button>
+                                )}
+                            </div>
                         </div>
                         {ehFimDeSemana ? (
                             <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">⚠️ {fmtBR(dataEscolhida)} cai num fim de semana — não há rodízio 5S nesse dia (time reduzido aos domingos).</p>
@@ -12741,17 +12911,43 @@
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <thead className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
-                                        <tr><th className="text-left px-4 py-2 rounded-l-lg">Colaborador</th><th className="text-left px-4 py-2 rounded-r-lg">Área</th></tr>
+                                        <tr><th className="text-left px-4 py-2 rounded-l-lg">Colaborador</th><th className="text-left px-4 py-2">Área responsável</th>{editandoEscala && <th className="text-left px-4 py-2 rounded-r-lg">Reatribuir</th>}</tr>
                                     </thead>
                                     <tbody>
                                         {(escalaSelecionada || []).map((e, i) => (
                                             <tr key={i} className="border-b border-gray-100">
-                                                <td className="px-4 py-2 font-bold text-gray-700">{e.colaborador}</td>
-                                                <td className="px-4 py-2 text-gray-600">{e.area}</td>
+                                                <td className="px-4 py-2">
+                                                    <div className="flex items-center gap-2">
+                                                        {e.foto ? (
+                                                            <img src={e.foto} alt={e.colaborador} style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover' }} />
+                                                        ) : (
+                                                            <span style={{ width: 30, height: 30, borderRadius: '50%', background: coresColab[i % coresColab.length], color: '#fff', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{iniciais(e.colaborador)}</span>
+                                                        )}
+                                                        <span className="font-bold text-gray-700">{e.colaborador}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-2 text-gray-600">
+                                                    <span className={e.manual ? 'inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 px-2 py-1 rounded-lg font-bold text-xs' : ''}>
+                                                        {e.area}{e.manual && ' · manual'}
+                                                    </span>
+                                                </td>
+                                                {editandoEscala && (
+                                                    <td className="px-4 py-2">
+                                                        <select value={e.area} onChange={ev => definirAreaManual(e.colaboradorId, ev.target.value)} className="border border-gray-300 rounded-lg px-2 py-1 text-xs">
+                                                            {slots.map(s => <option key={s} value={s}>{s}</option>)}
+                                                        </select>
+                                                    </td>
+                                                )}
                                             </tr>
                                         ))}
                                     </tbody>
                                 </table>
+                                {editandoEscala && (
+                                    <div className="flex items-center justify-between mt-3">
+                                        <p className="text-xs text-gray-400">As atribuições manuais valem só para {fmtBR(dataEscolhida)} — os demais dias seguem o rodízio automático.</p>
+                                        {temOverrideNoDia && <button onClick={limparAtribuicoesManuaisDoDia} className="text-xs font-bold text-red-600 hover:underline">Restaurar rodízio automático deste dia</button>}
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -12792,35 +12988,70 @@
 
                     {/* Animação da rotatividade */}
                     <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
-                        <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                             <h3 className="text-lg font-bold text-gray-800">🎞️ Animação da rotatividade</h3>
-                            <button onClick={simularProximoDia} className="bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-bold px-4 py-2 rounded-lg hover:opacity-90">
+                            <button onClick={simularProximoDia} className="bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-bold px-4 py-2 rounded-lg hover:opacity-90 shadow-sm">
                                 ⏭️ Simular avanço de 1 dia
                             </button>
                         </div>
-                        <p className="text-xs text-gray-400 mb-3">Cada clique simula o giro automático de um dia útil: os colaboradores avançam uma posição entre as áreas, na ordem definida acima.</p>
+                        <p className="text-xs text-gray-400 mb-4">Cada avatar mostra exatamente onde aquele colaborador está responsável pela organização. Clique em "Simular avanço" para ver o giro de um dia útil.</p>
                         <div className="flex justify-center">
-                            <svg viewBox="0 0 320 320" width="320" height="320">
+                            <svg viewBox="0 0 340 340" width="340" height="340">
+                                <defs>
+                                    <filter id="sombraAvatar" x="-50%" y="-50%" width="200%" height="200%">
+                                        <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#4c1d95" floodOpacity="0.35" />
+                                    </filter>
+                                    <radialGradient id="fundoAnim" cx="50%" cy="50%" r="60%">
+                                        <stop offset="0%" stopColor="#faf5ff" />
+                                        <stop offset="100%" stopColor="#ffffff" />
+                                    </radialGradient>
+                                </defs>
+                                <circle cx={cxAnim} cy={cyAnim} r={raioAnim + 44} fill="url(#fundoAnim)" />
+                                <circle cx={cxAnim} cy={cyAnim} r={raioAnim} fill="none" stroke="#ede9fe" strokeWidth="2" strokeDasharray="4 6" />
+
+                                {/* Cartões das áreas */}
                                 {slots.map((nome, i) => {
                                     const p = posCirculo(i, numSlots, raioAnim, cxAnim, cyAnim);
                                     return (
                                         <g key={i}>
-                                            <circle cx={p.x} cy={p.y} r="34" fill="#f5f3ff" stroke="#c4b5fd" strokeWidth="2" />
-                                            <text x={p.x} y={p.y} textAnchor="middle" dominantBaseline="middle" fontSize="8.5" fontWeight="700" fill="#5b21b6">
-                                                {nome.length > 14 ? nome.slice(0, 13) + '…' : nome}
+                                            <circle cx={p.x} cy={p.y} r="38" fill="#ffffff" stroke="#c4b5fd" strokeWidth="2.5" filter="url(#sombraAvatar)" />
+                                            <text x={p.x} y={p.y} textAnchor="middle" dominantBaseline="middle" fontSize="8.5" fontWeight="800" fill="#5b21b6">
+                                                {(nome.length > 15 ? nome.slice(0, 14) + '…' : nome).split(' ').slice(0, 2).map((linha, li) => (
+                                                    <tspan key={li} x={p.x} dy={li === 0 ? -1 : 10}>{linha}</tspan>
+                                                ))}
                                             </text>
                                         </g>
                                     );
                                 })}
+
+                                {/* Centro: data em destaque */}
+                                <circle cx={cxAnim} cy={cyAnim} r="30" fill="#ffffff" stroke="#7c3aed" strokeWidth="2" />
+                                <text x={cxAnim} y={cyAnim - 5} textAnchor="middle" fontSize="8" fontWeight="700" fill="#7c3aed">HOJE</text>
+                                <text x={cxAnim} y={cyAnim + 9} textAnchor="middle" fontSize="9.5" fontWeight="800" fill="#312e81">{fmtBR(dataEscolhida)}</text>
+
+                                {/* Avatares dos colaboradores nas posições atuais */}
                                 {colaboradores.map((c, i) => {
                                     const slotAtual = (i + passoAnim) % numSlots;
                                     const p = posCirculo(slotAtual, numSlots, raioAnim, cxAnim, cyAnim);
                                     const cor = coresColab[i % coresColab.length];
+                                    const clip = 'r5sClip_' + c.id;
                                     return (
-                                        <circle key={c.id} cx={p.x} cy={p.y} r="10" fill={cor} stroke="#fff" strokeWidth="2"
-                                            style={{ transition: 'cx 0.8s ease, cy 0.8s ease', opacity: animando ? 0.6 : 1 }}>
-                                            <title>{c.nome}</title>
-                                        </circle>
+                                        <g key={c.id} style={{ transition: 'transform 0.9s cubic-bezier(.4,1.4,.6,1)' }} transform={`translate(${p.x},${p.y})`}>
+                                            <defs>
+                                                <clipPath id={clip}><circle cx="0" cy="0" r="13" /></clipPath>
+                                            </defs>
+                                            <circle cx="0" cy="0" r="15.5" fill="#fff" filter="url(#sombraAvatar)" style={{ opacity: animando ? 0.7 : 1 }} />
+                                            {c.foto ? (
+                                                <image href={c.foto} x="-13" y="-13" width="26" height="26" clipPath={`url(#${clip})`} style={{ opacity: animando ? 0.7 : 1 }} />
+                                            ) : (
+                                                <circle cx="0" cy="0" r="13" fill={cor} style={{ opacity: animando ? 0.7 : 1 }} />
+                                            )}
+                                            {!c.foto && (
+                                                <text x="0" y="0.5" textAnchor="middle" dominantBaseline="middle" fontSize="8" fontWeight="800" fill="#fff">{iniciais(c.nome)}</text>
+                                            )}
+                                            <circle cx="0" cy="0" r="15.5" fill="none" stroke={cor} strokeWidth="1.5" />
+                                            <title>{c.nome} — {slots[slotAtual]}</title>
+                                        </g>
                                     );
                                 })}
                             </svg>
@@ -12832,6 +13063,130 @@
                                     {c.nome}
                                 </span>
                             ))}
+                        </div>
+                    </div>
+
+                    {/* Gerar arquivo do dia vigente */}
+                    <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+                        <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+                            <h3 className="text-lg font-bold text-gray-800">📄 Relatório do dia</h3>
+                            <button onClick={gerarRelatorioPDF} disabled={gerandoPdf || ehFimDeSemana}
+                                className="bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-bold px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50 shadow-sm">
+                                {gerandoPdf ? '⏳ Gerando...' : '⬇️ Gerar arquivo (PDF) do dia vigente'}
+                            </button>
+                        </div>
+                        {ehFimDeSemana && <p className="text-xs text-amber-600 mb-3">Não há escala neste dia para gerar relatório — escolha um dia útil acima.</p>}
+                        <div ref={relatorioRef} style={{ background: '#ffffff', padding: 28, maxWidth: 640, margin: '0 auto', border: '1px solid #e5e7eb', borderRadius: 12 }}>
+                            <div style={{ borderBottom: '3px solid #7c3aed', paddingBottom: 12, marginBottom: 16 }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', letterSpacing: 1 }}>ROTATIVIDADE 5S — CONTROLE DIÁRIO</div>
+                                <div style={{ fontSize: 20, fontWeight: 800, color: '#1f2937' }}>{DIAS_SEMANA[parseISO(dataEscolhida).getUTCDay()]} · {fmtBR(dataEscolhida)}</div>
+                            </div>
+                            {!ehFimDeSemana ? (
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                                    <thead>
+                                        <tr style={{ background: '#f5f3ff', textAlign: 'left' }}>
+                                            <th style={{ padding: '8px 10px', color: '#5b21b6' }}>Colaborador</th>
+                                            <th style={{ padding: '8px 10px', color: '#5b21b6' }}>Área responsável</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(escalaSelecionada || []).map((e, i) => (
+                                            <tr key={i} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                                                <td style={{ padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                    {e.foto ? (
+                                                        <img src={e.foto} style={{ width: 26, height: 26, borderRadius: '50%', objectFit: 'cover' }} />
+                                                    ) : (
+                                                        <span style={{ width: 26, height: 26, borderRadius: '50%', background: coresColab[i % coresColab.length], color: '#fff', fontSize: 9, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{iniciais(e.colaborador)}</span>
+                                                    )}
+                                                    <span style={{ fontWeight: 700, color: '#1f2937' }}>{e.colaborador}</span>
+                                                </td>
+                                                <td style={{ padding: '8px 10px', color: '#374151', fontWeight: e.manual ? 700 : 400 }}>{e.area}{e.manual ? ' (manual)' : ''}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            ) : (
+                                <p style={{ fontSize: 13, color: '#b45309' }}>Fim de semana — sem escala de rodízio 5S.</p>
+                            )}
+                            <div style={{ marginTop: 18, fontSize: 10, color: '#9ca3af' }}>Gerado em {new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</div>
+                        </div>
+                    </div>
+
+                    {/* Ocorrências de organização */}
+                    <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+                        <h3 className="text-lg font-bold text-gray-800 mb-1">⚠️ Ocorrências de organização</h3>
+                        <p className="text-xs text-gray-400 mb-4">Registre ocorrências quando uma área não for encontrada organizada, e configure os tipos de ocorrência conforme sua necessidade.</p>
+
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                            <h4 className="text-xs font-bold text-gray-500 mb-2">Tipos de ocorrência cadastrados</h4>
+                            <div className="flex flex-wrap gap-2 mb-3">
+                                {tiposOcorrencia.map(t => (
+                                    <span key={t} className="inline-flex items-center gap-2 bg-white border border-gray-300 text-gray-700 text-xs font-bold px-3 py-1.5 rounded-lg">
+                                        {t}
+                                        <button onClick={() => removerTipoOcorrencia(t)} className="text-gray-400 hover:text-red-600 font-bold" title="Remover tipo">✕</button>
+                                    </span>
+                                ))}
+                                {!tiposOcorrencia.length && <span className="text-xs text-gray-400">Nenhum tipo cadastrado.</span>}
+                            </div>
+                            <div className="flex gap-2">
+                                <input value={novoTipoOcorrencia} onChange={e => setNovoTipoOcorrencia(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addTipoOcorrencia(); }} placeholder="Novo tipo de ocorrência" className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1" />
+                                <button onClick={addTipoOcorrencia} className="bg-gray-700 text-white text-sm font-bold px-4 py-2 rounded-lg hover:bg-gray-800">+ Adicionar tipo</button>
+                            </div>
+                        </div>
+
+                        <div className="border border-red-100 bg-red-50 rounded-lg p-4 mb-4">
+                            <h4 className="text-sm font-bold text-red-800 mb-3">Registrar nova ocorrência</h4>
+                            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">Data</label>
+                                    <input type="date" value={ocorrData} onChange={e => setOcorrData(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">Colaborador</label>
+                                    <select value={ocorrColabId} onChange={e => setOcorrColabId(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full">
+                                        <option value="">Selecione...</option>
+                                        {colaboradores.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">Área</label>
+                                    <select value={ocorrArea} onChange={e => setOcorrArea(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full">
+                                        <option value="">Selecione...</option>
+                                        {slots.map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 mb-1">Tipo de ocorrência</label>
+                                    <select value={ocorrTipo} onChange={e => setOcorrTipo(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full">
+                                        <option value="">Selecione...</option>
+                                        {tiposOcorrencia.map(t => <option key={t} value={t}>{t}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="mt-3">
+                                <label className="block text-xs font-bold text-gray-500 mb-1">Observação (opcional)</label>
+                                <textarea value={ocorrObs} onChange={e => setOcorrObs(e.target.value)} rows={2} placeholder="Detalhes da ocorrência..." className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full" />
+                            </div>
+                            <button onClick={registrarOcorrencia} className="mt-3 bg-red-600 text-white text-sm font-bold px-4 py-2 rounded-lg hover:bg-red-700">+ Registrar ocorrência</button>
+                        </div>
+
+                        <h4 className="text-sm font-bold text-gray-500 mb-2">Histórico de ocorrências ({ocorrenciasOrdenadas.length})</h4>
+                        <div className="space-y-2" style={{ maxHeight: 360, overflowY: 'auto' }}>
+                            {ocorrenciasOrdenadas.map(o => (
+                                <div key={o.id} className="flex items-start justify-between gap-3 border border-gray-200 rounded-lg px-3 py-2">
+                                    <div className="text-sm">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="font-bold text-gray-800">{o.colaborador}</span>
+                                            <span className="text-xs bg-red-100 text-red-700 font-bold px-2 py-0.5 rounded-lg">{o.tipo}</span>
+                                            <span className="text-xs text-gray-400">{fmtBR(o.data)}</span>
+                                            {o.area && <span className="text-xs text-purple-700 bg-purple-50 px-2 py-0.5 rounded-lg font-bold">{o.area}</span>}
+                                        </div>
+                                        {o.obs && <p className="text-xs text-gray-500 mt-1">{o.obs}</p>}
+                                    </div>
+                                    <button onClick={() => removerOcorrencia(o.id)} className="text-gray-400 hover:text-red-600 font-bold px-1 shrink-0" title="Remover ocorrência">✕</button>
+                                </div>
+                            ))}
+                            {!ocorrenciasOrdenadas.length && <p className="text-xs text-gray-400">Nenhuma ocorrência registrada.</p>}
                         </div>
                     </div>
                 </div>
