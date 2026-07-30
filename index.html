@@ -12466,7 +12466,7 @@
         // Estado próprio em localStorage — não usa Firestore nem mexe em
         // nenhum outro dado/aba da ferramenta.
         function Rotatividade5S() {
-            const { useState, useEffect, useMemo } = React;
+            const { useState, useEffect, useMemo, useRef } = React;
 
             const AREAS_PADRAO = [
                 { id: 'a1', nome: 'BLOCO 8' },
@@ -12493,6 +12493,11 @@
             const [novoColabNome, setNovoColabNome] = useState('');
             const [passoAnim, setPassoAnim] = useState(0);
             const [animando, setAnimando] = useState(false);
+            const [statusSalvamentoR5S, setStatusSalvamentoR5S] = useState(null); // null | 'saving' | 'saved' | 'error'
+            const [sincronizadoR5S, setSincronizadoR5S] = useState(false);
+            const carregouFirestoreR5S = useRef(false);
+            const pularProximoSalvamentoR5S = useRef(true); // evita reenviar ao Firestore o próprio dado que acabou de chegar dele
+            const saveTimerR5S = useRef(null);
 
             const hojeISO = useMemo(() => {
                 const n = new Date();
@@ -12503,8 +12508,50 @@
 
             const [dataEscolhida, setDataEscolhida] = useState(hojeISO);
 
-            useEffect(() => salvarLS('r5s_areas_v1', areas), [areas]);
-            useEffect(() => salvarLS('r5s_colaboradores_v1', colaboradores), [colaboradores]);
+            // Listener Firestore em tempo real — sincroniza áreas/colaboradores entre todos os usuários
+            useEffect(() => {
+                if (!window.__firebaseDb || !window.__firebaseFns) return;
+                const { doc, onSnapshot } = window.__firebaseFns;
+                const docRef = doc(window.__firebaseDb, 'rotatividade5s', 'config');
+                const unsub = onSnapshot(docRef, (snap) => {
+                    pularProximoSalvamentoR5S.current = true;
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        setAreas(Array.isArray(data.areas) && data.areas.length ? data.areas : AREAS_PADRAO);
+                        setColaboradores(Array.isArray(data.colaboradores) && data.colaboradores.length ? data.colaboradores : COLAB_PADRAO);
+                    }
+                    carregouFirestoreR5S.current = true;
+                    setSincronizadoR5S(true);
+                }, (err) => {
+                    console.warn('Firestore rotatividade5s indisponível, usando dados locais:', err);
+                    carregouFirestoreR5S.current = true;
+                    setSincronizadoR5S(false);
+                });
+                return () => unsub();
+            }, []);
+
+            // Salva no Firestore (com debounce) toda vez que áreas/colaboradores mudam por ação local,
+            // e sempre mantém uma cópia em localStorage como fallback offline.
+            useEffect(() => {
+                salvarLS('r5s_areas_v1', areas);
+                salvarLS('r5s_colaboradores_v1', colaboradores);
+                if (pularProximoSalvamentoR5S.current) { pularProximoSalvamentoR5S.current = false; return; }
+                if (!carregouFirestoreR5S.current || !window.__firebaseDb || !window.__firebaseFns) return;
+                if (saveTimerR5S.current) clearTimeout(saveTimerR5S.current);
+                setStatusSalvamentoR5S('saving');
+                saveTimerR5S.current = setTimeout(async () => {
+                    try {
+                        const { doc, setDoc } = window.__firebaseFns;
+                        await setDoc(doc(window.__firebaseDb, 'rotatividade5s', 'config'), { areas, colaboradores }, { merge: true });
+                        setStatusSalvamentoR5S('saved');
+                        setTimeout(() => setStatusSalvamentoR5S(null), 2000);
+                    } catch (e) {
+                        console.error('Erro ao salvar rotatividade5s no Firestore:', e);
+                        setStatusSalvamentoR5S('error');
+                        setTimeout(() => setStatusSalvamentoR5S(null), 3000);
+                    }
+                }, 600);
+            }, [areas, colaboradores]);
 
             function parseISO(iso) { const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); }
             function ehDiaUtil(dt) { const dow = dt.getUTCDay(); return dow >= 1 && dow <= 5; }
@@ -12542,6 +12589,20 @@
 
             const escalaSelecionada = useMemo(() => escalaDoDia(dataEscolhida, 0), [dataEscolhida, colaboradores, areas]);
             const ehFimDeSemana = !ehDiaUtil(parseISO(dataEscolhida));
+
+            // Extrai só a informação de ruas de uma área (ex.: "RUAS 3 E 4" -> "3, 4").
+            // Áreas que não são de rua (ex.: "BLOCO 8", slots de apoio/folga) retornam null.
+            function extrairRuas(nomeArea) {
+                if (!/\bRUAS?\b/i.test(nomeArea)) return null;
+                const nums = nomeArea.match(/\d+/g);
+                return nums && nums.length ? nums.join(', ') : null;
+            }
+            const agendaRuasHoje = useMemo(() => {
+                if (!escalaSelecionada) return [];
+                return escalaSelecionada
+                    .map(e => ({ colaborador: e.colaborador, ruas: extrairRuas(e.area) }))
+                    .filter(e => e.ruas);
+            }, [escalaSelecionada]);
 
             // Próximos 5 dias úteis a partir da data escolhida, para a prévia da tabela
             const proximosDiasUteis = useMemo(() => {
@@ -12606,7 +12667,16 @@
             return (
                 <div className="space-y-6">
                     <div className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-2xl shadow-xl p-6 text-white">
-                        <h2 className="text-2xl font-bold flex items-center gap-2"><span className="icon-pulse inline-block">🔄</span> Rotatividade 5S</h2>
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                            <h2 className="text-2xl font-bold flex items-center gap-2"><span className="icon-pulse inline-block">🔄</span> Rotatividade 5S</h2>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700, background: 'rgba(255,255,255,0.15)', padding: '4px 10px', borderRadius: '999px' }}>
+                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: sincronizadoR5S ? '#10b981' : '#f59e0b', display: 'inline-block', animation: 'pulse 2s infinite' }}></span>
+                                {sincronizadoR5S ? 'Tempo real (todos os usuários)' : 'Offline — salvando só neste dispositivo'}
+                                {statusSalvamentoR5S === 'saving' && ' · salvando...'}
+                                {statusSalvamentoR5S === 'saved' && ' · salvo ✓'}
+                                {statusSalvamentoR5S === 'error' && ' · erro ao salvar'}
+                            </span>
+                        </div>
                         <p className="text-sm opacity-90 mt-1">Rodízio dos colaboradores pelas áreas do estoque — avança automaticamente a cada dia útil (segunda a sexta), parametrizado até {fmtBR(DATA_FIM)}.</p>
                     </div>
 
@@ -12682,6 +12752,24 @@
                                         ))}
                                     </tbody>
                                 </table>
+                            </div>
+                        )}
+
+                        {!ehFimDeSemana && (
+                            <div className="mt-6 bg-purple-50 border border-purple-200 rounded-lg p-4">
+                                <h4 className="text-sm font-bold text-purple-800 mb-2">🗺️ Agenda do dia — ruas sob responsabilidade de cada colaborador</h4>
+                                {agendaRuasHoje.length ? (
+                                    <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+                                        {agendaRuasHoje.map((e, i) => (
+                                            <div key={i} className="bg-white border border-purple-100 rounded-lg px-3 py-2 flex items-center justify-between">
+                                                <span className="text-sm font-bold text-gray-700">{e.colaborador}</span>
+                                                <span className="text-xs font-bold text-purple-700 bg-purple-100 px-2 py-1 rounded-lg">Rua{e.ruas.includes(',') ? 's' : ''} {e.ruas}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-purple-600">Nenhum colaborador está em área de rua hoje (todos em bloco ou apoio/folga do rodízio).</p>
+                                )}
                             </div>
                         )}
 
