@@ -1006,6 +1006,7 @@
             const [loginSenha, setLoginSenha] = useState('');
             const [loginErro, setLoginErro] = useState('');
             const [loginCarregando, setLoginCarregando] = useState(false);
+            const [mostrarSenhaLogin, setMostrarSenhaLogin] = useState(false);
 
             // ========== ADMINISTRAÇÃO / APROVAÇÃO DE EXCLUSÕES ==========
             const isAdmin = !!(user && user.email === ADMIN_EMAIL);
@@ -1051,16 +1052,19 @@
                 setLoginCarregando(true);
                 try {
                     const { signInWithEmailAndPassword } = window.__firebaseFns;
-                    await signInWithEmailAndPassword(window.__firebaseAuth, loginEmail, loginSenha);
+                    const emailLimpo = loginEmail.trim().toLowerCase();
+                    const senhaLimpa = loginSenha.trim();
+                    await signInWithEmailAndPassword(window.__firebaseAuth, emailLimpo, senhaLimpa);
                 } catch(err) {
                     const msgs = {
-                        'auth/invalid-credential': 'Email ou senha incorretos.',
-                        'auth/user-not-found': 'Usuário não encontrado.',
+                        'auth/invalid-credential': 'Email ou senha incorretos. Se a conta foi excluída e recriada no Firebase, confirme que o e-mail está exatamente igual e que a senha tem no mínimo 6 caracteres.',
+                        'auth/user-not-found': 'Usuário não encontrado. Verifique se a conta foi realmente criada em Firebase > Authentication (e não apenas no Firestore).',
                         'auth/wrong-password': 'Senha incorreta.',
                         'auth/invalid-email': 'Email inválido.',
-                        'auth/too-many-requests': 'Muitas tentativas. Tente mais tarde.',
+                        'auth/too-many-requests': 'Muitas tentativas. Aguarde alguns minutos e tente novamente.',
+                        'auth/user-disabled': 'Esta conta está desativada no Firebase Authentication.',
                     };
-                    setLoginErro(msgs[err.code] || 'Erro ao entrar: ' + err.message);
+                    setLoginErro((msgs[err.code] || ('Erro ao entrar: ' + err.message)) + ' [' + (err.code || 'sem código') + ']');
                 } finally {
                     setLoginCarregando(false);
                 }
@@ -1416,19 +1420,34 @@
                                         onChange={e => setLoginEmail(e.target.value)}
                                         className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-400"
                                         placeholder="seu@email.com"
+                                        autoCapitalize="none"
+                                        autoCorrect="off"
+                                        spellCheck="false"
+                                        autoComplete="username"
                                         required
                                     />
                                 </div>
                                 <div className="mb-6">
                                     <label className="block text-sm font-semibold text-gray-700 mb-1">Senha</label>
-                                    <input
-                                        type="password"
-                                        value={loginSenha}
-                                        onChange={e => setLoginSenha(e.target.value)}
-                                        className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                                        placeholder="••••••••"
-                                        required
-                                    />
+                                    <div className="relative">
+                                        <input
+                                            type={mostrarSenhaLogin ? 'text' : 'password'}
+                                            value={loginSenha}
+                                            onChange={e => setLoginSenha(e.target.value)}
+                                            className="w-full border border-gray-300 rounded-xl px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                                            placeholder="••••••••"
+                                            autoComplete="current-password"
+                                            required
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setMostrarSenhaLogin(v => !v)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm"
+                                            tabIndex={-1}
+                                        >
+                                            {mostrarSenhaLogin ? '🙈' : '👁️'}
+                                        </button>
+                                    </div>
                                 </div>
                                 {loginErro && (
                                     <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm text-center">
