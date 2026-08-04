@@ -12512,6 +12512,7 @@
                 return salvos.map(c => ({ foto: null, ...c }));
             });
             const [overrides, setOverrides] = useState(() => carregarLS('r5s_overrides_v1', {}));
+            const [folgas, setFolgas] = useState(() => carregarLS('r5s_folgas_v1', {}));
             const [tiposOcorrencia, setTiposOcorrencia] = useState(() => carregarLS('r5s_tipos_ocorrencia_v1', TIPOS_OCORRENCIA_PADRAO));
             const [ocorrencias, setOcorrencias] = useState(() => carregarLS('r5s_ocorrencias_v1', []));
 
@@ -12560,6 +12561,7 @@
                         setAreas(Array.isArray(data.areas) && data.areas.length ? data.areas : AREAS_PADRAO);
                         setColaboradores(Array.isArray(data.colaboradores) && data.colaboradores.length ? data.colaboradores.map(c => ({ foto: null, ...c })) : COLAB_PADRAO);
                         setOverrides(data.overrides && typeof data.overrides === 'object' ? data.overrides : {});
+                        setFolgas(data.folgas && typeof data.folgas === 'object' ? data.folgas : {});
                         setTiposOcorrencia(Array.isArray(data.tiposOcorrencia) && data.tiposOcorrencia.length ? data.tiposOcorrencia : TIPOS_OCORRENCIA_PADRAO);
                         setOcorrencias(Array.isArray(data.ocorrencias) ? data.ocorrencias : []);
                     }
@@ -12579,6 +12581,7 @@
                 salvarLS('r5s_areas_v1', areas);
                 salvarLS('r5s_colaboradores_v1', colaboradores);
                 salvarLS('r5s_overrides_v1', overrides);
+                salvarLS('r5s_folgas_v1', folgas);
                 salvarLS('r5s_tipos_ocorrencia_v1', tiposOcorrencia);
                 salvarLS('r5s_ocorrencias_v1', ocorrencias);
                 if (pularProximoSalvamentoR5S.current) { pularProximoSalvamentoR5S.current = false; return; }
@@ -12588,7 +12591,7 @@
                 saveTimerR5S.current = setTimeout(async () => {
                     try {
                         const { doc, setDoc } = window.__firebaseFns;
-                        await setDoc(doc(window.__firebaseDb, 'rotatividade5s', 'config'), { areas, colaboradores, overrides, tiposOcorrencia, ocorrencias }, { merge: true });
+                        await setDoc(doc(window.__firebaseDb, 'rotatividade5s', 'config'), { areas, colaboradores, overrides, folgas, tiposOcorrencia, ocorrencias }, { merge: true });
                         setStatusSalvamentoR5S('saved');
                         setTimeout(() => setStatusSalvamentoR5S(null), 2000);
                     } catch (e) {
@@ -12597,7 +12600,7 @@
                         setTimeout(() => setStatusSalvamentoR5S(null), 3000);
                     }
                 }, 600);
-            }, [areas, colaboradores, overrides, tiposOcorrencia, ocorrencias]);
+            }, [areas, colaboradores, overrides, folgas, tiposOcorrencia, ocorrencias]);
 
             function parseISO(iso) { const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); }
             function ehDiaUtil(dt) { const dow = dt.getUTCDay(); return dow >= 1 && dow <= 5; }
@@ -12636,19 +12639,25 @@
 
             // Escala do dia: aplica a fórmula automática de rodízio, mas respeita
             // atribuições manuais (overrides) feitas para aquela data específica.
+            // Quando o colaborador está marcado de folga naquela data, ele não
+            // recebe área nenhuma nesse dia (fica "FOLGA") — como o offset do
+            // rodízio é calculado pelo calendário (dia útil), o dia da folga já
+            // conta normalmente na sequência, então no próximo dia útil ele volta
+            // exatamente na área que lhe cabe, como se o dia tivesse "virado" pra ele também.
             function escalaDoDia(iso, offsetExtra) {
                 const dt = parseISO(iso);
                 if (!ehDiaUtil(dt)) return null;
                 const offset = offsetDiasUteis(iso) + (offsetExtra || 0);
                 return colaboradores.map((c, i) => {
                     const chave = iso + '__' + c.id;
+                    const emFolga = !!folgas[chave];
                     const areaAuto = slots[(i + offset) % numSlots];
                     const areaManual = overrides[chave];
-                    return { colaboradorId: c.id, colaborador: c.nome, foto: c.foto, area: areaManual || areaAuto, manual: !!areaManual };
+                    return { colaboradorId: c.id, colaborador: c.nome, foto: c.foto, area: emFolga ? 'FOLGA' : (areaManual || areaAuto), manual: !emFolga && !!areaManual, folga: emFolga };
                 });
             }
 
-            const escalaSelecionada = useMemo(() => escalaDoDia(dataEscolhida, 0), [dataEscolhida, colaboradores, areas, overrides]);
+            const escalaSelecionada = useMemo(() => escalaDoDia(dataEscolhida, 0), [dataEscolhida, colaboradores, areas, overrides, folgas]);
             const ehFimDeSemana = !ehDiaUtil(parseISO(dataEscolhida));
 
             // Área real de cada colaborador no dia selecionado — a mesma fonte
@@ -12686,7 +12695,7 @@
                     tentativas++;
                 }
                 return out;
-            }, [dataEscolhida, colaboradores, areas, overrides]);
+            }, [dataEscolhida, colaboradores, areas, overrides, folgas]);
 
             function addArea() {
                 const label = novaAreaLabel.trim();
@@ -12756,6 +12765,19 @@
             function definirAreaManual(colaboradorId, areaNome) {
                 const chave = dataEscolhida + '__' + colaboradorId;
                 setOverrides(prev => ({ ...prev, [chave]: areaNome }));
+            }
+
+            // Folga: marca/desmarca o colaborador como de folga só na data selecionada.
+            // A área dele fica "FOLGA" nesse dia; o rodízio automático continua contando
+            // o dia normalmente, então no próximo dia útil ele reassume a posição
+            // certa da sequência — é como se o dia tivesse virado também pra ele.
+            function alternarFolga(colaboradorId, iso) {
+                const chave = iso + '__' + colaboradorId;
+                setFolgas(prev => {
+                    const next = { ...prev };
+                    if (next[chave]) { delete next[chave]; } else { next[chave] = true; }
+                    return next;
+                });
             }
             function limparAtribuicoesManuaisDoDia() {
                 setOverrides(prev => {
@@ -12949,11 +12971,11 @@
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <thead className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
-                                        <tr><th className="text-left px-4 py-2 rounded-l-lg">Colaborador</th><th className="text-left px-4 py-2">Área responsável</th>{editandoEscala && <th className="text-left px-4 py-2 rounded-r-lg">Reatribuir</th>}</tr>
+                                        <tr><th className="text-left px-4 py-2 rounded-l-lg">Colaborador</th><th className="text-left px-4 py-2">Área responsável</th><th className="text-left px-4 py-2">Folga</th>{editandoEscala && <th className="text-left px-4 py-2 rounded-r-lg">Reatribuir</th>}</tr>
                                     </thead>
                                     <tbody>
                                         {(escalaSelecionada || []).map((e, i) => (
-                                            <tr key={i} className="border-b border-gray-100">
+                                            <tr key={i} className={`border-b border-gray-100 ${e.folga ? 'opacity-60' : ''}`}>
                                                 <td className="px-4 py-2">
                                                     <div className="flex items-center gap-2">
                                                         {e.foto ? (
@@ -12965,13 +12987,23 @@
                                                     </div>
                                                 </td>
                                                 <td className="px-4 py-2 text-gray-600">
-                                                    <span className={e.manual ? 'inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 px-2 py-1 rounded-lg font-bold text-xs' : ''}>
-                                                        {e.area}{e.manual && ' · manual'}
-                                                    </span>
+                                                    {e.folga ? (
+                                                        <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-500 border border-gray-300 px-2 py-1 rounded-lg font-bold text-xs">😴 FOLGA</span>
+                                                    ) : (
+                                                        <span className={e.manual ? 'inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 px-2 py-1 rounded-lg font-bold text-xs' : ''}>
+                                                            {e.area}{e.manual && ' · manual'}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-2">
+                                                    <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                                                        <input type="checkbox" checked={!!e.folga} onChange={() => alternarFolga(e.colaboradorId, dataEscolhida)} className="w-4 h-4 accent-purple-600" />
+                                                        <span className="text-xs text-gray-500">de folga</span>
+                                                    </label>
                                                 </td>
                                                 {editandoEscala && (
                                                     <td className="px-4 py-2">
-                                                        <select value={e.area} onChange={ev => definirAreaManual(e.colaboradorId, ev.target.value)} className="border border-gray-300 rounded-lg px-2 py-1 text-xs">
+                                                        <select value={e.area} onChange={ev => definirAreaManual(e.colaboradorId, ev.target.value)} disabled={e.folga} className="border border-gray-300 rounded-lg px-2 py-1 text-xs disabled:opacity-40 disabled:cursor-not-allowed">
                                                             {slots.map(s => <option key={s} value={s}>{s}</option>)}
                                                         </select>
                                                     </td>
@@ -13075,6 +13107,7 @@
                                     aplicados), a mesma fonte usada no Relatório do dia. */}
                                 {colaboradores.map((c, i) => {
                                     const areaDoColab = areaPorColaboradorAnim[c.id];
+                                    if (areaDoColab === 'FOLGA') return null; // de folga: não ocupa posição no giro do dia
                                     const idxSlot = areaDoColab ? slots.indexOf(areaDoColab) : -1;
                                     const slotAtual = idxSlot >= 0 ? idxSlot : (i % numSlots);
                                     const p = posCirculo(slotAtual, numSlots, raioAnim, cxAnim, cyAnim);
@@ -13107,7 +13140,7 @@
                                     <span style={{ width: 10, height: 10, borderRadius: '50%', background: coresColab[i % coresColab.length], display: 'inline-block' }}></span>
                                     {c.nome}
                                     {areaPorColaboradorAnim[c.id] && (
-                                        <span className="text-gray-400 font-normal">· {areaPorColaboradorAnim[c.id]}</span>
+                                        <span className="text-gray-400 font-normal">· {areaPorColaboradorAnim[c.id] === 'FOLGA' ? '😴 folga' : areaPorColaboradorAnim[c.id]}</span>
                                     )}
                                 </span>
                             ))}
