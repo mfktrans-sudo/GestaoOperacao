@@ -13274,6 +13274,389 @@
             );
         }
 
+        // ========== RODÍZIO DE CONFERENTES — LINHA VERMELHA (TS São Paulo ⇄ Linha Vermelha) ==========
+        // Rodízio SEMANAL (segunda a sexta — não há TS São Paulo aos domingos), começando
+        // pelas cargas de TS São Paulo e seguindo direto para Linha Vermelha. Cadastro de
+        // conferentes com nome + foto (em alta resolução) e cálculo automático da escala
+        // de 17/08/2026 até 31/12/2026. Componente isolado, com sincronização em tempo
+        // real via Firestore (coleção própria, não interfere em nada da Linha Vermelha).
+        function RotatividadeConferentesLV() {
+            const { useState, useEffect, useMemo, useRef } = React;
+
+            const DATA_INICIO = '2026-08-17'; // segunda-feira desta semana
+            const DATA_FIM = '2026-12-31';
+            const SETORES = ['TS São Paulo', 'Linha Vermelha'];
+            const CORES_SETOR = {
+                'TS São Paulo': { grad: 'linear-gradient(135deg,#0ea5e9,#0369a1)', glow: 'rgba(14,165,233,0.65)', txt: '#0369a1', bg: '#f0f9ff', icon: '🚚' },
+                'Linha Vermelha': { grad: 'linear-gradient(135deg,#f43f5e,#b91c1c)', glow: 'rgba(244,63,94,0.65)', txt: '#b91c1c', bg: '#fff1f2', icon: '🚦' },
+            };
+
+            function carregarLS(key, def) { try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : def; } catch (e) { return def; } }
+            function salvarLS(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
+
+            const [conferentes, setConferentes] = useState(() => carregarLS('lv_rot_conferentes_v1', []));
+            const [novoNome, setNovoNome] = useState('');
+            const [novaFotoPreview, setNovaFotoPreview] = useState(null);
+            const [processandoFoto, setProcessandoFoto] = useState(false);
+            const novaFotoRef = useRef(null);
+            const [painelAberto, setPainelAberto] = useState(false);
+            const [statusSalvamento, setStatusSalvamento] = useState(null); // null | 'saving' | 'saved' | 'error'
+            const [sincronizado, setSincronizado] = useState(false);
+            const carregouFirestore = useRef(false);
+            const pularProximoSalvamento = useRef(true);
+            const saveTimer = useRef(null);
+            const [cicloAnim, setCicloAnim] = useState(0);
+
+            // Sincronização em tempo real entre todos os usuários (mesmo padrão da Rotatividade 5S)
+            useEffect(() => {
+                if (!window.__firebaseDb || !window.__firebaseFns) return;
+                const { doc, onSnapshot } = window.__firebaseFns;
+                const docRef = doc(window.__firebaseDb, 'rotatividadeLV', 'config');
+                const unsub = onSnapshot(docRef, (snap) => {
+                    pularProximoSalvamento.current = true;
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        setConferentes(Array.isArray(data.conferentes) ? data.conferentes : []);
+                    }
+                    carregouFirestore.current = true;
+                    setSincronizado(true);
+                }, (err) => {
+                    console.warn('Firestore rotatividadeLV indisponível, usando dados locais:', err);
+                    carregouFirestore.current = true;
+                    setSincronizado(false);
+                });
+                return () => unsub();
+            }, []);
+
+            useEffect(() => {
+                salvarLS('lv_rot_conferentes_v1', conferentes);
+                if (pularProximoSalvamento.current) { pularProximoSalvamento.current = false; return; }
+                if (!carregouFirestore.current || !window.__firebaseDb || !window.__firebaseFns) return;
+                if (saveTimer.current) clearTimeout(saveTimer.current);
+                setStatusSalvamento('saving');
+                saveTimer.current = setTimeout(async () => {
+                    try {
+                        const { doc, setDoc } = window.__firebaseFns;
+                        await setDoc(doc(window.__firebaseDb, 'rotatividadeLV', 'config'), { conferentes }, { merge: true });
+                        setStatusSalvamento('saved');
+                        setTimeout(() => setStatusSalvamento(null), 2000);
+                    } catch (e) {
+                        console.error('Erro ao salvar rotatividadeLV no Firestore:', e);
+                        setStatusSalvamento('error');
+                        setTimeout(() => setStatusSalvamento(null), 3000);
+                    }
+                }, 600);
+            }, [conferentes]);
+
+            // ── Datas / cálculo de semana ──
+            function parseISO(iso) { const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); }
+            function segundaDaSemana(iso) { const dt = parseISO(iso); const dow = dt.getUTCDay(); const seg = new Date(dt.getTime() - ((dow + 6) % 7) * 86400000); return seg.toISOString().slice(0, 10); }
+            function fmtBR(iso) { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; }
+            function addDias(iso, n) { return new Date(parseISO(iso).getTime() + n * 86400000).toISOString().slice(0, 10); }
+
+            const segundaInicio = segundaDaSemana(DATA_INICIO);
+
+            const hojeISO = useMemo(() => {
+                const n = new Date();
+                const b = new Date(n.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+                return `${b.getFullYear()}-${String(b.getMonth() + 1).padStart(2, '0')}-${String(b.getDate()).padStart(2, '0')}`;
+            }, []);
+
+            const semanaAtualInicio = useMemo(() => {
+                const base = hojeISO < DATA_INICIO ? DATA_INICIO : (hojeISO > DATA_FIM ? DATA_FIM : hojeISO);
+                return segundaDaSemana(base);
+            }, [hojeISO]);
+
+            function numeroSemana(segundaISO) {
+                return Math.round((parseISO(segundaISO).getTime() - parseISO(segundaInicio).getTime()) / (7 * 86400000));
+            }
+            function escalaDaSemana(segundaISO) {
+                const semanaIdx = numeroSemana(segundaISO);
+                return conferentes.map((c, i) => ({ ...c, setor: SETORES[((i + semanaIdx) % SETORES.length + SETORES.length) % SETORES.length] }));
+            }
+
+            const escalaAtual = useMemo(() => escalaDaSemana(semanaAtualInicio), [conferentes, semanaAtualInicio]);
+            const sextaAtual = addDias(semanaAtualInicio, 4);
+
+            const proximasSemanas = useMemo(() => {
+                const out = [];
+                let cursor = semanaAtualInicio;
+                for (let i = 1; i <= 4; i++) {
+                    cursor = addDias(cursor, 7);
+                    if (cursor > DATA_FIM) break;
+                    out.push({ inicio: cursor, fim: addDias(cursor, 4), escala: escalaDaSemana(cursor) });
+                }
+                return out;
+            }, [conferentes, semanaAtualInicio]);
+
+            // Reinicia a animação de entrada 3D sempre que o painel abre ou a escala muda
+            useEffect(() => { if (painelAberto) setCicloAnim(v => v + 1); }, [painelAberto, conferentes.length, semanaAtualInicio]);
+
+            function iniciais(nome) {
+                const partes = (nome || '').trim().split(/\s+/).filter(Boolean);
+                if (!partes.length) return '?';
+                if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+                return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
+            }
+
+            // Upload de foto — resolução bem maior que os avatares padrão das outras telas,
+            // pensada para o card 3D grande (420x420, JPEG de alta qualidade).
+            function onFotoSelecionada(e) {
+                const arquivo = e.target.files && e.target.files[0];
+                if (!arquivo) return;
+                if (!arquivo.type.startsWith('image/')) { alert('Selecione um arquivo de imagem.'); return; }
+                setProcessandoFoto(true);
+                const leitor = new FileReader();
+                leitor.onload = (ev) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const tam = 420;
+                        const canvas = document.createElement('canvas');
+                        canvas.width = tam; canvas.height = tam;
+                        const ctx = canvas.getContext('2d');
+                        const escala = Math.max(tam / img.width, tam / img.height);
+                        const w = img.width * escala, h = img.height * escala;
+                        ctx.drawImage(img, (tam - w) / 2, (tam - h) / 2, w, h);
+                        setNovaFotoPreview(canvas.toDataURL('image/jpeg', 0.9));
+                        setProcessandoFoto(false);
+                    };
+                    img.src = ev.target.result;
+                };
+                leitor.readAsDataURL(arquivo);
+            }
+
+            function adicionarConferente() {
+                const nome = novoNome.trim();
+                if (!nome) { alert('Digite o nome do conferente.'); return; }
+                setConferentes(prev => [...prev, { id: 'cf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), nome, foto: novaFotoPreview }]);
+                setNovoNome('');
+                setNovaFotoPreview(null);
+                if (novaFotoRef.current) novaFotoRef.current.value = '';
+            }
+            function removerConferente(id) {
+                if (!window.confirm('Remover este conferente do rodízio?')) return;
+                setConferentes(prev => prev.filter(c => c.id !== id));
+            }
+            function moverConferente(id, dir) {
+                setConferentes(prev => {
+                    const idx = prev.findIndex(c => c.id === id);
+                    const novoIdx = idx + dir;
+                    if (idx < 0 || novoIdx < 0 || novoIdx >= prev.length) return prev;
+                    const arr = [...prev];
+                    [arr[idx], arr[novoIdx]] = [arr[novoIdx], arr[idx]];
+                    return arr;
+                });
+            }
+
+            const avatarChip = (c, tamanho) => (
+                c.foto
+                    ? <img src={c.foto} alt={c.nome} style={{ width: tamanho, height: tamanho, borderRadius: '50%', objectFit: 'cover', display: 'block' }} />
+                    : <div style={{ width: tamanho, height: tamanho, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg,#94a3b8,#64748b)', color: '#fff', fontWeight: 800, fontSize: tamanho * 0.34 }}>{iniciais(c.nome)}</div>
+            );
+
+            return (
+                <div style={{ marginBottom: '22px' }}>
+                    <style>{`
+                        @keyframes lv3dPedestalPulse { 0%,100%{ opacity:.78; transform: rotateX(76deg) scale(1); } 50%{ opacity:1; transform: rotateX(76deg) scale(1.04); } }
+                        @keyframes lv3dRingSpin { from{ transform: translate(-50%,-50%) rotateX(76deg) rotateZ(0deg);} to{ transform: translate(-50%,-50%) rotateX(76deg) rotateZ(360deg);} }
+                        @keyframes lv3dEnter { 0%{ opacity:0; transform: translateY(70px) rotateX(-95deg) scale(.55); } 55%{ opacity:1; } 100%{ opacity:1; transform: translateY(0) rotateX(0deg) scale(1); } }
+                        @keyframes lv3dFloat { 0%,100%{ transform: translateY(0) rotateY(0deg) rotateZ(0deg); } 50%{ transform: translateY(-12px) rotateY(8deg) rotateZ(-1deg); } }
+                        @keyframes lv3dGlow { 0%,100%{ box-shadow: 0 18px 34px -8px var(--lvglow), 0 0 0 1px rgba(255,255,255,0.6) inset; } 50%{ box-shadow: 0 26px 46px -6px var(--lvglow), 0 0 0 1px rgba(255,255,255,0.85) inset; } }
+                        @keyframes lv3dArrowFlow { 0%{ opacity:0; transform: translateX(-14px) scaleX(.7); } 40%{ opacity:1; } 100%{ opacity:0; transform: translateX(14px) scaleX(1); } }
+                        @keyframes lv3dBadgeIn { 0%{ opacity:0; transform: translateY(-8px) scale(.7);} 100%{ opacity:1; transform: translateY(0) scale(1);} }
+                        @keyframes lv3dPanelOpen { from{ opacity:0; transform: translateY(-10px) scaleY(.97); transform-origin: top; } to{ opacity:1; transform: translateY(0) scaleY(1); } }
+                        .lv3d-toggle:hover { filter: brightness(1.08); transform: translateY(-1px); }
+                        .lv3d-remove-btn:hover { background:#fee2e2 !important; color:#b91c1c !important; }
+                        .lv3d-arrow-item { animation: lv3dArrowFlow 1.6s ease-in-out infinite; }
+                    `}</style>
+
+                    {/* CABEÇALHO DO RODÍZIO (colapsável) */}
+                    <div
+                        className="lv3d-toggle"
+                        onClick={() => setPainelAberto(v => !v)}
+                        style={{
+                            cursor: 'pointer', userSelect: 'none', transition: 'all 0.15s',
+                            background: 'linear-gradient(135deg,#eef2ff,#e0e7ff)', border: '2px solid #6366f1',
+                            borderRadius: '16px', padding: '16px 20px', display: 'flex', alignItems: 'center',
+                            justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap',
+                        }}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '22px' }}>🔀</span>
+                            <div>
+                                <div style={{ fontWeight: 800, fontSize: '15px', color: '#3730a3' }}>Rodízio de Conferentes — TS São Paulo ⇄ Linha Vermelha</div>
+                                <div style={{ fontSize: '12px', color: '#4f46e5', fontWeight: 600 }}>
+                                    Semanal (segunda a sexta) · desde {fmtBR(DATA_INICIO)} até {fmtBR(DATA_FIM)}
+                                    {sincronizado && <span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', display: 'inline-block', animation: 'pulse 2s infinite' }}></span>tempo real</span>}
+                                </div>
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            {statusSalvamento === 'saving' && <span style={{ fontSize: '11px', color: '#6366f1', fontWeight: 700 }}>Salvando...</span>}
+                            {statusSalvamento === 'saved' && <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 700 }}>✓ Salvo</span>}
+                            <span style={{ fontSize: '13px', fontWeight: 800, color: '#4338ca', background: '#c7d2fe', borderRadius: '999px', padding: '4px 12px' }}>{conferentes.length} conferente{conferentes.length !== 1 ? 's' : ''}</span>
+                            <span style={{ fontSize: '18px', color: '#4338ca', transform: painelAberto ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s', display: 'inline-block' }}>▾</span>
+                        </div>
+                    </div>
+
+                    {painelAberto && (
+                        <div style={{ animation: 'lv3dPanelOpen 0.25s ease-out both', background: '#fff', border: '2px solid #c7d2fe', borderTop: 'none', borderRadius: '0 0 16px 16px', padding: '22px', marginTop: '-2px' }}>
+
+                            {/* ── CADASTRO ── */}
+                            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'flex-end', background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: '14px', padding: '16px', marginBottom: '20px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                                    <div
+                                        onClick={() => novaFotoRef.current && novaFotoRef.current.click()}
+                                        style={{
+                                            width: 84, height: 84, borderRadius: '50%', cursor: 'pointer',
+                                            border: '2.5px dashed #6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            overflow: 'hidden', background: novaFotoPreview ? 'transparent' : '#eef2ff', position: 'relative',
+                                        }}
+                                        title="Clique para escolher a foto (em alta resolução)"
+                                    >
+                                        {processandoFoto
+                                            ? <span style={{ fontSize: 20, animation: 'rotate 1s linear infinite', display: 'inline-block' }}>⏳</span>
+                                            : novaFotoPreview
+                                                ? <img src={novaFotoPreview} alt="Prévia" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                : <span style={{ fontSize: 26 }}>📷</span>}
+                                    </div>
+                                    <input ref={novaFotoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onFotoSelecionada} />
+                                    <span style={{ fontSize: '10px', color: '#6366f1', fontWeight: 700 }}>Foto (opcional)</span>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 220px' }}>
+                                    <label style={{ fontSize: '12px', fontWeight: 700, color: '#374151' }}>Nome do conferente</label>
+                                    <input
+                                        type="text" value={novoNome} onChange={e => setNovoNome(e.target.value)}
+                                        onKeyDown={e => { if (e.key === 'Enter') adicionarConferente(); }}
+                                        placeholder="Ex: João da Silva"
+                                        style={{ border: '1.5px solid #cbd5e1', borderRadius: '9px', padding: '10px 12px', fontSize: '14px', fontWeight: 600 }}
+                                    />
+                                </div>
+                                <button
+                                    onClick={adicionarConferente}
+                                    style={{ background: 'linear-gradient(135deg,#6366f1,#4338ca)', color: '#fff', border: 'none', borderRadius: '10px', padding: '11px 22px', fontWeight: 800, fontSize: '13px', cursor: 'pointer', boxShadow: '0 3px 10px rgba(79,70,229,0.35)' }}
+                                >
+                                    ➕ Adicionar ao rodízio
+                                </button>
+                            </div>
+
+                            {/* ── LISTA DE CONFERENTES CADASTRADOS ── */}
+                            {conferentes.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '26px' }}>
+                                    {conferentes.map((c, i) => (
+                                        <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: '999px', padding: '5px 8px 5px 5px' }}>
+                                            {avatarChip(c, 34)}
+                                            <span style={{ fontSize: '13px', fontWeight: 700, color: '#1f2937' }}>{i + 1}. {c.nome}</span>
+                                            <button onClick={() => moverConferente(c.id, -1)} disabled={i === 0} style={{ border: 'none', background: 'transparent', cursor: i === 0 ? 'default' : 'pointer', opacity: i === 0 ? 0.3 : 1, fontSize: '13px' }} title="Mover para cima">⬆️</button>
+                                            <button onClick={() => moverConferente(c.id, 1)} disabled={i === conferentes.length - 1} style={{ border: 'none', background: 'transparent', cursor: i === conferentes.length - 1 ? 'default' : 'pointer', opacity: i === conferentes.length - 1 ? 0.3 : 1, fontSize: '13px' }} title="Mover para baixo">⬇️</button>
+                                            <button className="lv3d-remove-btn" onClick={() => removerConferente(c.id)} style={{ border: 'none', background: '#f3f4f6', color: '#6b7280', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer', fontSize: '12px', fontWeight: 800, transition: 'all 0.15s' }} title="Remover">✕</button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {conferentes.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '30px', color: '#9ca3af', fontWeight: 600, fontSize: '14px' }}>Cadastre os conferentes acima para gerar o rodízio.</div>
+                            ) : (
+                                <>
+                                    {/* ── PALCO 3D — ESCALA DA SEMANA ATUAL ── */}
+                                    <div style={{ textAlign: 'center', marginBottom: '4px' }}>
+                                        <span style={{ fontSize: '13px', fontWeight: 800, color: '#374151', background: '#f3f4f6', borderRadius: '999px', padding: '5px 16px' }}>
+                                            📅 Semana de {fmtBR(semanaAtualInicio)} a {fmtBR(sextaAtual)}
+                                        </span>
+                                    </div>
+                                    <div style={{ perspective: '1600px', padding: '30px 10px 10px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: '10px', flexWrap: 'wrap' }}>
+                                            {SETORES.map((setor, sIdx) => {
+                                                const cor = CORES_SETOR[setor];
+                                                const pessoas = escalaAtual.filter(c => c.setor === setor);
+                                                return (
+                                                    <React.Fragment key={setor}>
+                                                        <div style={{ position: 'relative', width: '260px', minHeight: '260px', transformStyle: 'preserve-3d' }}>
+                                                            {/* anel decorativo girando em 3D */}
+                                                            <div style={{
+                                                                position: 'absolute', left: '50%', bottom: '18px', width: '190px', height: '190px',
+                                                                border: `2px dashed ${cor.txt}55`, borderRadius: '50%',
+                                                                animation: 'lv3dRingSpin 14s linear infinite', transformStyle: 'preserve-3d',
+                                                            }}></div>
+                                                            {/* pedestal elíptico 3D */}
+                                                            <div style={{
+                                                                position: 'absolute', left: '50%', bottom: '18px', width: '210px', height: '210px', marginLeft: '-105px',
+                                                                background: cor.grad, borderRadius: '50%', transform: 'rotateX(76deg)',
+                                                                animation: 'lv3dPedestalPulse 3.4s ease-in-out infinite', opacity: 0.85,
+                                                            }}></div>
+                                                            {/* cards dos conferentes flutuando sobre o pedestal */}
+                                                            <div style={{ position: 'relative', zIndex: 2, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '10px', padding: '0 8px 60px', minHeight: '180px', alignItems: 'flex-end' }}>
+                                                                {pessoas.length === 0 && <div style={{ color: '#9ca3af', fontSize: '12px', fontWeight: 600, marginBottom: '70px' }}>Ninguém alocado</div>}
+                                                                {pessoas.map((c, i) => (
+                                                                    <div key={c.id + '_' + cicloAnim} style={{
+                                                                        '--lvglow': cor.glow,
+                                                                        animation: `lv3dEnter 0.8s cubic-bezier(.2,.9,.25,1.2) both ${i * 0.14}s, lv3dFloat 4.6s ease-in-out ${0.9 + i * 0.14}s infinite`,
+                                                                        transformStyle: 'preserve-3d', background: '#fff', borderRadius: '16px', padding: '10px 12px 12px',
+                                                                        width: '112px', textAlign: 'center', border: `2px solid ${cor.txt}33`,
+                                                                    }} className="lv3d-card-glow">
+                                                                        <div style={{ animation: 'lv3dGlow 2.6s ease-in-out infinite', borderRadius: '50%', display: 'inline-block', marginBottom: '6px' }}>
+                                                                            {avatarChip(c, 68)}
+                                                                        </div>
+                                                                        <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#1f2937', lineHeight: 1.2 }}>{c.nome}</div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                            {/* rótulo do setor */}
+                                                            <div style={{
+                                                                textAlign: 'center', fontWeight: 900, fontSize: '13px', color: '#fff', background: cor.grad,
+                                                                borderRadius: '10px', padding: '7px 10px', boxShadow: `0 6px 16px ${cor.glow}`,
+                                                                animation: 'lv3dBadgeIn 0.5s ease-out both',
+                                                            }}>
+                                                                {cor.icon} {setor}
+                                                            </div>
+                                                        </div>
+                                                        {sIdx === 0 && (
+                                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', padding: '0 4px 70px', color: '#6366f1' }}>
+                                                                <span className="lv3d-arrow-item" style={{ fontSize: '26px' }}>➡️</span>
+                                                                <span style={{ fontSize: '10px', fontWeight: 800, color: '#6366f1', textAlign: 'center' }}>rodízio<br />semanal</span>
+                                                            </div>
+                                                        )}
+                                                    </React.Fragment>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* ── PRÓXIMAS SEMANAS ── */}
+                                    {proximasSemanas.length > 0 && (
+                                        <div style={{ marginTop: '18px', overflowX: 'auto' }}>
+                                            <div style={{ fontSize: '12px', fontWeight: 800, color: '#6b7280', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Próximas semanas</div>
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                                                <thead>
+                                                    <tr style={{ background: '#f8fafc' }}>
+                                                        <th style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 800, color: '#374151' }}>Semana</th>
+                                                        {SETORES.map(s => <th key={s} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 800, color: CORES_SETOR[s].txt }}>{CORES_SETOR[s].icon} {s}</th>)}
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {proximasSemanas.map(sem => (
+                                                        <tr key={sem.inicio} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                            <td style={{ padding: '7px 10px', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap' }}>{fmtBR(sem.inicio)} a {fmtBR(sem.fim)}</td>
+                                                            {SETORES.map(s => (
+                                                                <td key={s} style={{ padding: '7px 10px', color: '#4b5563' }}>
+                                                                    {sem.escala.filter(c => c.setor === s).map(c => c.nome).join(', ') || '—'}
+                                                                </td>
+                                                            ))}
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
         // ========== LINHA VERMELHA ==========
         // Dados das lojas cadastradas no dia para identificacao do caveirao.
         // Historico = registros das lojas (nao impressoes).
@@ -14336,6 +14719,9 @@ ${folhas.join('\n')}
                             )}
                         </div>
                     </div>
+
+                    {/* ══ RODÍZIO DE CONFERENTES (TS São Paulo ⇄ Linha Vermelha) ══ */}
+                    <RotatividadeConferentesLV />
 
                     {/* ══ ÁREA DE UPLOAD DE PLANILHA ══ */}
                     <div style={{background:'linear-gradient(135deg,#fff1f2,#fef2f2)',border:'2px solid #dc2626',borderRadius:'16px',padding:'18px 20px',marginBottom:'22px'}}>
