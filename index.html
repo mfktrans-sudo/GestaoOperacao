@@ -13295,6 +13295,7 @@
             function salvarLS(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
 
             const [conferentes, setConferentes] = useState(() => carregarLS('lv_rot_conferentes_v1', []));
+            const [overridesSemana, setOverridesSemana] = useState(() => carregarLS('lv_rot_overrides_v1', {}));
             const [novoNome, setNovoNome] = useState('');
             const [novaFotoPreview, setNovaFotoPreview] = useState(null);
             const [processandoFoto, setProcessandoFoto] = useState(false);
@@ -13306,6 +13307,9 @@
             const pularProximoSalvamento = useRef(true);
             const saveTimer = useRef(null);
             const [cicloAnim, setCicloAnim] = useState(0);
+            const [editandoSemana, setEditandoSemana] = useState(false);
+            const [edicaoTS, setEdicaoTS] = useState('');
+            const [edicaoLV, setEdicaoLV] = useState('');
 
             // Sincronização em tempo real entre todos os usuários (mesmo padrão da Rotatividade 5S)
             useEffect(() => {
@@ -13317,6 +13321,7 @@
                     if (snap.exists()) {
                         const data = snap.data();
                         setConferentes(Array.isArray(data.conferentes) ? data.conferentes : []);
+                        setOverridesSemana(data.overridesSemana && typeof data.overridesSemana === 'object' ? data.overridesSemana : {});
                     }
                     carregouFirestore.current = true;
                     setSincronizado(true);
@@ -13330,6 +13335,7 @@
 
             useEffect(() => {
                 salvarLS('lv_rot_conferentes_v1', conferentes);
+                salvarLS('lv_rot_overrides_v1', overridesSemana);
                 if (pularProximoSalvamento.current) { pularProximoSalvamento.current = false; return; }
                 if (!carregouFirestore.current || !window.__firebaseDb || !window.__firebaseFns) return;
                 if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -13337,7 +13343,7 @@
                 saveTimer.current = setTimeout(async () => {
                     try {
                         const { doc, setDoc } = window.__firebaseFns;
-                        await setDoc(doc(window.__firebaseDb, 'rotatividadeLV', 'config'), { conferentes }, { merge: true });
+                        await setDoc(doc(window.__firebaseDb, 'rotatividadeLV', 'config'), { conferentes, overridesSemana }, { merge: true });
                         setStatusSalvamento('saved');
                         setTimeout(() => setStatusSalvamento(null), 2000);
                     } catch (e) {
@@ -13346,7 +13352,8 @@
                         setTimeout(() => setStatusSalvamento(null), 3000);
                     }
                 }, 600);
-            }, [conferentes]);
+            }, [conferentes, overridesSemana]);
+
 
             // ── Datas / cálculo de semana ──
             function parseISO(iso) { const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); }
@@ -13371,11 +13378,19 @@
                 return Math.round((parseISO(segundaISO).getTime() - parseISO(segundaInicio).getTime()) / (7 * 86400000));
             }
             // Sempre 1 conferente em cada setor por semana (TS São Paulo e Linha Vermelha);
-            // os demais ficam nas outras cargas do dia (setor = null) e entram no rodízio
-            // nas semanas seguintes, avançando 2 posições por semana pela lista ordenada.
+            // os demais ficam nas outras cargas do dia (setor = null). Se houver um ajuste
+            // manual salvo para aquela semana (overridesSemana), ele tem prioridade sobre
+            // o cálculo automático — permite corrigir a escala quando necessário.
             function escalaDaSemana(segundaISO) {
                 const N = conferentes.length;
                 if (N === 0) return [];
+                const ajuste = overridesSemana[segundaISO];
+                if (ajuste && (ajuste.ts || ajuste.lv)) {
+                    return conferentes.map(c => ({
+                        ...c,
+                        setor: c.id === ajuste.ts ? SETORES[0] : (c.id === ajuste.lv ? SETORES[1] : null),
+                    }));
+                }
                 const semanaIdx = numeroSemana(segundaISO);
                 const pTS = ((2 * semanaIdx) % N + N) % N;
                 const pLV = (pTS + 1) % N;
@@ -13385,7 +13400,7 @@
                 }));
             }
 
-            const escalaAtual = useMemo(() => escalaDaSemana(semanaAtualInicio), [conferentes, semanaAtualInicio]);
+            const escalaAtual = useMemo(() => escalaDaSemana(semanaAtualInicio), [conferentes, overridesSemana, semanaAtualInicio]);
             const sextaAtual = addDias(semanaAtualInicio, 4);
 
             const proximasSemanas = useMemo(() => {
@@ -13397,10 +13412,10 @@
                     out.push({ inicio: cursor, fim: addDias(cursor, 4), escala: escalaDaSemana(cursor) });
                 }
                 return out;
-            }, [conferentes, semanaAtualInicio]);
+            }, [conferentes, overridesSemana, semanaAtualInicio]);
 
             // Reinicia a animação de entrada 3D sempre que o painel abre ou a escala muda
-            useEffect(() => { if (painelAberto) setCicloAnim(v => v + 1); }, [painelAberto, conferentes.length, semanaAtualInicio]);
+            useEffect(() => { if (painelAberto) setCicloAnim(v => v + 1); }, [painelAberto, conferentes.length, overridesSemana, semanaAtualInicio]);
 
             function iniciais(nome) {
                 const partes = (nome || '').trim().split(/\s+/).filter(Boolean);
@@ -13457,6 +13472,26 @@
                     return arr;
                 });
             }
+
+            // ── Ajuste manual da escala da semana ──
+            function abrirEdicaoSemana() {
+                const ajusteAtual = overridesSemana[semanaAtualInicio];
+                const atualTS = escalaAtual.find(c => c.setor === SETORES[0]);
+                const atualLV = escalaAtual.find(c => c.setor === SETORES[1]);
+                setEdicaoTS((ajusteAtual && ajusteAtual.ts) || (atualTS ? atualTS.id : ''));
+                setEdicaoLV((ajusteAtual && ajusteAtual.lv) || (atualLV ? atualLV.id : ''));
+                setEditandoSemana(true);
+            }
+            function salvarEdicaoSemana() {
+                if (edicaoTS && edicaoLV && edicaoTS === edicaoLV) { alert('Escolha conferentes diferentes para cada setor.'); return; }
+                setOverridesSemana(prev => ({ ...prev, [semanaAtualInicio]: { ts: edicaoTS || null, lv: edicaoLV || null } }));
+                setEditandoSemana(false);
+            }
+            function restaurarAutomatico() {
+                setOverridesSemana(prev => { const cp = { ...prev }; delete cp[semanaAtualInicio]; return cp; });
+                setEditandoSemana(false);
+            }
+            const ajusteManualAtivo = !!overridesSemana[semanaAtualInicio];
 
             const avatarChip = (c, tamanho) => (
                 c.foto
@@ -13570,11 +13605,54 @@
                             ) : (
                                 <>
                                     {/* ── PALCO 3D — ESCALA DA SEMANA ATUAL ── */}
-                                    <div style={{ textAlign: 'center', marginBottom: '4px' }}>
+                                    <div style={{ textAlign: 'center', marginBottom: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                         <span style={{ fontSize: '13px', fontWeight: 800, color: '#374151', background: '#f3f4f6', borderRadius: '999px', padding: '5px 16px' }}>
                                             📅 Semana de {fmtBR(semanaAtualInicio)} a {fmtBR(sextaAtual)}
                                         </span>
+                                        {ajusteManualAtivo && !editandoSemana && (
+                                            <span style={{ fontSize: '11px', fontWeight: 800, color: '#92400e', background: '#fef3c7', borderRadius: '999px', padding: '5px 12px' }}>✋ ajustado manualmente</span>
+                                        )}
+                                        {!editandoSemana ? (
+                                            <button
+                                                onClick={abrirEdicaoSemana}
+                                                style={{ fontSize: '12px', fontWeight: 700, color: '#4338ca', background: '#e0e7ff', border: 'none', borderRadius: '999px', padding: '5px 14px', cursor: 'pointer' }}
+                                            >
+                                                ✏️ Ajustar manualmente
+                                            </button>
+                                        ) : null}
+                                        {ajusteManualAtivo && !editandoSemana && (
+                                            <button
+                                                onClick={restaurarAutomatico}
+                                                style={{ fontSize: '12px', fontWeight: 700, color: '#374151', background: '#e5e7eb', border: 'none', borderRadius: '999px', padding: '5px 14px', cursor: 'pointer' }}
+                                            >
+                                                ↺ Restaurar automático
+                                            </button>
+                                        )}
                                     </div>
+
+                                    {editandoSemana && (
+                                        <div style={{ background: '#fffbeb', border: '1.5px solid #f59e0b', borderRadius: '12px', padding: '14px 16px', margin: '10px auto 4px', maxWidth: '520px', display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'center' }}>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                <label style={{ fontSize: '11px', fontWeight: 800, color: CORES_SETOR[SETORES[0]].txt }}>{CORES_SETOR[SETORES[0]].icon} {SETORES[0]}</label>
+                                                <select value={edicaoTS} onChange={e => setEdicaoTS(e.target.value)} style={{ border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '8px 10px', fontSize: '13px', fontWeight: 600, minWidth: '170px' }}>
+                                                    <option value="">— ninguém —</option>
+                                                    {conferentes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                                                </select>
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                <label style={{ fontSize: '11px', fontWeight: 800, color: CORES_SETOR[SETORES[1]].txt }}>{CORES_SETOR[SETORES[1]].icon} {SETORES[1]}</label>
+                                                <select value={edicaoLV} onChange={e => setEdicaoLV(e.target.value)} style={{ border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '8px 10px', fontSize: '13px', fontWeight: 600, minWidth: '170px' }}>
+                                                    <option value="">— ninguém —</option>
+                                                    {conferentes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                                                </select>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <button onClick={salvarEdicaoSemana} style={{ background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', border: 'none', borderRadius: '8px', padding: '9px 16px', fontWeight: 800, fontSize: '12.5px', cursor: 'pointer' }}>✓ Salvar</button>
+                                                <button onClick={() => setEditandoSemana(false)} style={{ background: '#e5e7eb', color: '#374151', border: 'none', borderRadius: '8px', padding: '9px 16px', fontWeight: 700, fontSize: '12.5px', cursor: 'pointer' }}>Cancelar</button>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     <div style={{ perspective: '1600px', padding: '30px 10px 10px' }}>
                                         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: '10px', flexWrap: 'wrap' }}>
                                             {SETORES.map((setor, sIdx) => {
