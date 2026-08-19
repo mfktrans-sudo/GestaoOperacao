@@ -6618,7 +6618,7 @@
                 termino: '',
                 conferentes: '',
                 doca: '',
-                mesaLV: (() => { try { return localStorage.getItem('ultimaMesaLV') || ''; } catch(e) { return ''; } })(),
+                mesaLV: '',
                 obs: '',
                 otimizada: false,
                 destinos: [ { nome: '', nf: '', vol: '', cubagem: '' }, { nome: '', nf: '', vol: '', cubagem: '' } ]
@@ -6653,14 +6653,10 @@
             const handleChange = (e) => {
                 const { name, value } = e.target;
                 setFormData(prev => ({ ...prev, [name]: value }));
-                if (name === 'mesaLV') {
-                    try { localStorage.setItem('ultimaMesaLV', value); } catch(e) {}
-                }
             };
 
             const handleMesaLVChange = (valor) => {
                 setFormData(prev => ({ ...prev, mesaLV: valor }));
-                try { localStorage.setItem('ultimaMesaLV', valor); } catch(e) {}
             };
 
             const handleSubmit = async (e) => {
