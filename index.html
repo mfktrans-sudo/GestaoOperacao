@@ -4256,6 +4256,17 @@
             });
             return melhorIdx === -1 ? Infinity : melhorIdx;
         };
+        // Combina a ordem manual (campo "ordem" cadastrado em Gerenciar Operações) com a
+        // sequência fixa acima. Se a operação não tiver "ordem" definida, o comportamento
+        // é idêntico ao original (usa apenas prioridadeDestaqueDashboard).
+        const prioridadeComOrdemCustom = (nomeOp, listaOperacoes) => {
+            const config = (listaOperacoes || []).find(lo => normalizarNomeDestaque(lo.nome) === normalizarNomeDestaque(nomeOp));
+            const temOrdemCustom = config && config.ordem !== null && config.ordem !== undefined && config.ordem !== '' && !isNaN(parseFloat(config.ordem));
+            if (temOrdemCustom) {
+                return { custom: true, val: parseFloat(config.ordem) };
+            }
+            return { custom: false, val: prioridadeDestaqueDashboard(nomeOp) };
+        };
 
         function Dashboard({ operacoes, dataSelecionada, setDataSelecionada, listaOperacoes, isAdmin, solicitacoesPendentes, onAprovarExclusao, onRejeitarExclusao }) {
             const chartRefs = {
@@ -4425,9 +4436,17 @@
                     const statusOk = statusSelecionados.includes(op.status);
                     return dataOk && operacaoOk && statusOk;
                 });
-                // Cargas em destaque: aplica a sequência de meta fixa (ver ORDEM_DESTAQUE_DASHBOARD).
-                return [...filtradas].sort((a, b) => prioridadeDestaqueDashboard(a.operacao) - prioridadeDestaqueDashboard(b.operacao));
-            }, [operacoes, tipoFiltroData, dataSelecionada, dataInicio, dataFim, operacoesSelecionadas, statusSelecionados, calcMediaIntervalo]);
+                // Cargas em destaque: aplica a sequência de meta fixa (ver ORDEM_DESTAQUE_DASHBOARD),
+                // respeitando a ordem manual definida em "Gerenciar Operações" quando existir.
+                return [...filtradas].sort((a, b) => {
+                    const pa = prioridadeComOrdemCustom(a.operacao, listaOperacoes);
+                    const pb = prioridadeComOrdemCustom(b.operacao, listaOperacoes);
+                    if (pa.custom && pb.custom) return pa.val - pb.val;
+                    if (pa.custom && !pb.custom) return -1;
+                    if (!pa.custom && pb.custom) return 1;
+                    return pa.val - pb.val;
+                });
+            }, [operacoes, tipoFiltroData, dataSelecionada, dataInicio, dataFim, operacoesSelecionadas, statusSelecionados, calcMediaIntervalo, listaOperacoes]);
 
             // Calcular médias por operação para os modos de média
             const mediasPeriodo = useMemo(() => {
@@ -7347,7 +7366,7 @@
         // ========== GERENCIAR OPERAÇÕES ==========
         function GerenciarOperacoes({ listaOperacoes, onSalvar, setPendingChanges }) {
             const [lista, setLista] = useState([...listaOperacoes]);
-            const [novaOperacao, setNovaOperacao] = useState({ nome: '', meta: '12:00', cubMax: '' });
+            const [novaOperacao, setNovaOperacao] = useState({ nome: '', meta: '12:00', cubMax: '', ordem: '' });
             const [mensagem, setMensagem] = useState('');
             const [editandoIdx, setEditandoIdx] = useState(null);
             const [editForm, setEditForm] = useState({});
@@ -7357,10 +7376,10 @@
                     setMensagem('warn|⚠️ Preencha todos os campos!');
                     return;
                 }
-                const nova = { ...novaOperacao, cubMax: novaOperacao.cubMax !== '' ? parseFloat(novaOperacao.cubMax) : null };
+                const nova = { ...novaOperacao, cubMax: novaOperacao.cubMax !== '' ? parseFloat(novaOperacao.cubMax) : null, ordem: novaOperacao.ordem !== '' ? parseFloat(novaOperacao.ordem) : null };
                 const novaLista = [...lista, nova];
                 setLista(novaLista);
-                setNovaOperacao({ nome: '', meta: '12:00', cubMax: '' });
+                setNovaOperacao({ nome: '', meta: '12:00', cubMax: '', ordem: '' });
                 // Auto-salvar imediatamente
                 await onSalvar(novaLista);
                 setPendingChanges(false);
@@ -7414,6 +7433,13 @@
                 setPendingChanges(true);
             };
 
+            const handleEditarOrdem = (index, valor) => {
+                const novaLista = [...lista];
+                novaLista[index].ordem = valor !== '' ? parseFloat(valor) : null;
+                setLista(novaLista);
+                setPendingChanges(true);
+            };
+
             const handleSalvar = async () => {
                 await onSalvar(lista);
                 setPendingChanges(false);
@@ -7447,7 +7473,7 @@
 
                     <div className="bg-blue-50 p-6 rounded-lg mb-6">
                         <h3 className="text-xl font-bold mb-4"><span className="icon-bounce inline-block">➕</span> Adicionar Nova Operação</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                             <input 
                                 type="text"
                                 placeholder="Nome da Operação"
@@ -7470,6 +7496,16 @@
                                 onChange={(e) => setNovaOperacao({ ...novaOperacao, cubMax: e.target.value })}
                                 className="p-3 border-2 border-orange-300 rounded-lg focus:border-orange-500 focus:outline-none"
                                 style={{background:'#fff7ed'}}
+                            />
+                            <input
+                                type="number"
+                                step="1"
+                                placeholder="Ordem na relação"
+                                title="Define a posição desta operação na tabela Dados Detalhados do Dashboard (menor número aparece primeiro). Deixe em branco para manter a ordem padrão atual."
+                                value={novaOperacao.ordem}
+                                onChange={(e) => setNovaOperacao({ ...novaOperacao, ordem: e.target.value })}
+                                className="p-3 border-2 border-indigo-300 rounded-lg focus:border-indigo-500 focus:outline-none"
+                                style={{background:'#eef2ff'}}
                             />
                             <button 
                                 onClick={handleAdicionar}
@@ -7514,6 +7550,15 @@
                                                         onChange={e=>setEditForm({...editForm,cubMax:e.target.value!==''?parseFloat(e.target.value):null})}
                                                         style={{width:'130px',padding:'8px 10px',border:'2px solid #f59e0b',borderRadius:'8px',fontSize:'14px',fontWeight:'700',color:'#92400e',background:'#fffbeb',outline:'none'}}
                                                     />
+                                                    <input
+                                                        type="number"
+                                                        step="1"
+                                                        placeholder="Ordem"
+                                                        title="Posição na tabela Dados Detalhados do Dashboard"
+                                                        value={editForm.ordem !== null && editForm.ordem !== undefined ? editForm.ordem : ''}
+                                                        onChange={e=>setEditForm({...editForm,ordem:e.target.value!==''?parseFloat(e.target.value):null})}
+                                                        style={{width:'110px',padding:'8px 10px',border:'2px solid #6366f1',borderRadius:'8px',fontSize:'14px',fontWeight:'700',color:'#3730a3',background:'#eef2ff',outline:'none'}}
+                                                    />
                                                     <button onClick={handleSalvarEdicao} style={{background:'linear-gradient(135deg,#059669,#10b981)',color:'white',border:'none',borderRadius:'8px',padding:'8px 16px',fontWeight:'700',fontSize:'13px',cursor:'pointer',boxShadow:'0 2px 8px rgba(5,150,105,0.4)',transition:'all 0.2s'}}>💾 Salvar</button>
                                                     <button onClick={handleCancelarEdicao} style={{background:'#6b7280',color:'white',border:'none',borderRadius:'8px',padding:'8px 12px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>✕</button>
                                                 </>
@@ -7539,6 +7584,18 @@
                                                             value={op.cubMax !== null && op.cubMax !== undefined ? op.cubMax : ''}
                                                             onChange={(e) => handleEditarCubMax(index, e.target.value)}
                                                             style={{width:'130px',padding:'8px 10px',border:'2px solid #f59e0b',borderRadius:'8px',fontSize:'14px',fontWeight:'700',color:'#92400e',background:'#fffbeb',outline:'none'}}
+                                                        />
+                                                    </div>
+                                                    <div style={{display:'flex',flexDirection:'column',gap:'2px'}}>
+                                                        <label style={{fontSize:'10px',fontWeight:'700',color:'#3730a3',textTransform:'uppercase',letterSpacing:'0.4px'}}>🔢 Ordem na relação</label>
+                                                        <input
+                                                            type="number"
+                                                            step="1"
+                                                            placeholder="Padrão"
+                                                            title="Define a posição desta operação na tabela Dados Detalhados do Dashboard (menor número aparece primeiro). Vazio = mantém a ordem padrão atual."
+                                                            value={op.ordem !== null && op.ordem !== undefined ? op.ordem : ''}
+                                                            onChange={(e) => handleEditarOrdem(index, e.target.value)}
+                                                            style={{width:'110px',padding:'8px 10px',border:'2px solid #6366f1',borderRadius:'8px',fontSize:'14px',fontWeight:'700',color:'#3730a3',background:'#eef2ff',outline:'none'}}
                                                         />
                                                     </div>
                                                     <div style={{display:'flex',gap:'6px'}}>
