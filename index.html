@@ -729,6 +729,57 @@
         .cub-ok-pulse {
             animation: pulseGreen 2s infinite;
         }
+
+        /* ===== FAROL OPERACIONAL TP — animações 3D por área ===== */
+        .farol3d-cena { perspective: 340px; perspective-origin: 50% 40%; display:flex; align-items:center; justify-content:center; }
+        .farol3d-palco { transform-style: preserve-3d; position:relative; }
+
+        /* Expedição — separação e conferência da carga (caixa girando + check) */
+        @keyframes farolCaixaGira { 0%{ transform: rotateY(0deg) rotateX(-18deg); } 100%{ transform: rotateY(360deg) rotateX(-18deg); } }
+        @keyframes farolCheckPop { 0%,60%{ opacity:0; transform: scale(0.4) translateZ(24px); } 80%{ opacity:1; transform: scale(1.15) translateZ(24px); } 100%{ opacity:1; transform: scale(1) translateZ(24px); } }
+        .farol3d-caixa { width:34px; height:34px; position:relative; transform-style:preserve-3d; animation: farolCaixaGira 3.2s linear infinite; }
+        .farol3d-caixa .face { position:absolute; width:34px; height:34px; border:1.5px solid rgba(0,0,0,0.15); }
+        .farol3d-caixa .f-frente  { background:#f59e0b; transform: translateZ(17px); border-radius:3px; }
+        .farol3d-caixa .f-tras    { background:#d97706; transform: rotateY(180deg) translateZ(17px); border-radius:3px; }
+        .farol3d-caixa .f-direita { background:#fbbf24; width:34px; transform: rotateY(90deg) translateZ(17px); border-radius:3px; }
+        .farol3d-caixa .f-esquerda{ background:#fbbf24; width:34px; transform: rotateY(-90deg) translateZ(17px); border-radius:3px; }
+        .farol3d-caixa .f-topo    { background:#fde68a; height:34px; transform: rotateX(90deg) translateZ(17px); border-radius:3px; }
+        .farol3d-caixa .fita { position:absolute; top:0; left:14px; width:6px; height:34px; background:rgba(120,53,15,0.55); transform: translateZ(17.5px); }
+        .farol3d-check { position:absolute; top:-10px; right:-10px; width:20px; height:20px; border-radius:50%; background:#10b981; color:#fff; font-size:12px; font-weight:900; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(16,185,129,0.55); animation: farolCheckPop 1.8s ease-in-out infinite; }
+
+        /* ADM Operacional — romaneio de documentos (prancheta + folha carimbando) */
+        @keyframes farolPranchetaBalanca { 0%,100%{ transform: rotateY(-14deg) rotateX(6deg) rotateZ(-2deg); } 50%{ transform: rotateY(-14deg) rotateX(6deg) rotateZ(2deg); } }
+        @keyframes farolFolhaCarimbo { 0%{ transform: translate3d(0,-14px,10px) rotate(-6deg); opacity:0; } 35%{ transform: translate3d(0,0,10px) rotate(0deg); opacity:1; } 55%{ transform: translate3d(0,0,10px) rotate(0deg); opacity:1; } 100%{ transform: translate3d(0,-14px,10px) rotate(-6deg); opacity:0; } }
+        @keyframes farolCarimboBate { 0%,30%{ transform: translate3d(-6px,-16px,26px) rotate(-18deg); opacity:0; } 45%{ transform: translate3d(-2px,-2px,26px) rotate(-8deg); opacity:1; } 55%{ transform: translate3d(-2px,0px,26px) rotate(-8deg); opacity:1; } 75%,100%{ transform: translate3d(-6px,-16px,26px) rotate(-18deg); opacity:0; } }
+        .farol3d-prancheta { width:34px; height:40px; position:relative; transform-style:preserve-3d; animation: farolPranchetaBalanca 2.6s ease-in-out infinite; }
+        .farol3d-prancheta .base { position:absolute; inset:0; background:#a16207; border-radius:4px; box-shadow: inset 0 0 0 2px rgba(0,0,0,0.15); }
+        .farol3d-prancheta .clip { position:absolute; top:-4px; left:11px; width:12px; height:8px; background:#78350f; border-radius:2px; transform: translateZ(2px); }
+        .farol3d-prancheta .folha { position:absolute; top:5px; left:4px; width:26px; height:30px; background:#fff; border-radius:2px; transform: translateZ(3px); animation: farolFolhaCarimbo 2.6s ease-in-out infinite; }
+        .farol3d-prancheta .linha { position:absolute; left:6px; width:16px; height:2px; background:#cbd5e1; }
+        .farol3d-carimbo { position:absolute; top:2px; left:8px; width:16px; height:16px; border-radius:3px; background:#dc2626; color:#fff; font-size:8px; font-weight:900; display:flex; align-items:center; justify-content:center; box-shadow:0 3px 8px rgba(220,38,38,0.5); animation: farolCarimboBate 2.6s ease-in-out infinite; }
+
+        /* Carregamento — caixas entrando na carroceria do caminhão */
+        @keyframes farolCaixaEntra { 0%{ transform: translate3d(-26px,-10px,0) scale(0.7); opacity:0; } 45%{ opacity:1; } 100%{ transform: translate3d(0,0,0) scale(1); opacity:1; } }
+        .farol3d-carregamento { width:52px; height:36px; position:relative; transform-style:preserve-3d; }
+        .farol3d-carregamento .carroceria { position:absolute; right:0; bottom:0; width:30px; height:26px; background:#e5e7eb; border:1.5px solid #9ca3af; border-radius:3px; }
+        .farol3d-carregamento .cabine { position:absolute; right:-14px; bottom:0; width:16px; height:18px; background:#818cf8; border:1.5px solid #6366f1; border-radius:3px; }
+        .farol3d-carregamento .roda { position:absolute; bottom:-4px; width:8px; height:8px; border-radius:50%; background:#374151; }
+        .farol3d-carregamento .roda1 { right:4px; } .farol3d-carregamento .roda2 { right:-10px; }
+        .farol3d-carregamento .caixinha { position:absolute; width:10px; height:10px; background:#f59e0b; border-radius:2px; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.2); }
+        .farol3d-carregamento .cx1 { bottom:2px; right:4px; animation: farolCaixaEntra 1.6s ease-in-out infinite; }
+        .farol3d-carregamento .cx2 { bottom:2px; right:14px; animation: farolCaixaEntra 1.6s ease-in-out infinite 0.5s; }
+        .farol3d-carregamento .cx3 { bottom:12px; right:9px; animation: farolCaixaEntra 1.6s ease-in-out infinite 1s; }
+
+        /* Transporte — lacre fechando na porta do caminhão */
+        @keyframes farolLacreDesce { 0%,20%{ transform: translateY(-14px) rotate(-12deg); opacity:0; } 45%{ transform: translateY(0) rotate(0deg); opacity:1; } 70%,100%{ transform: translateY(0) rotate(0deg); opacity:1; } }
+        @keyframes farolPortaTranca { 0%,40%{ transform: rotateY(0deg); } 55%,100%{ transform: rotateY(0deg); } }
+        @keyframes farolBrilhoLacre { 0%,45%{ opacity:0; } 55%{ opacity:1; } 100%{ opacity:0.35; } }
+        .farol3d-lacre-cena { width:46px; height:40px; position:relative; transform-style:preserve-3d; }
+        .farol3d-lacre-cena .porta { position:absolute; left:6px; top:2px; width:28px; height:34px; background:#cbd5e1; border:1.5px solid #64748b; border-radius:3px; }
+        .farol3d-lacre-cena .friso { position:absolute; left:6px; width:28px; height:2px; background:#94a3b8; }
+        .farol3d-lacre-cena .cadeado { position:absolute; left:14px; top:12px; width:13px; height:12px; background:#f59e0b; border-radius:2px; animation: farolLacreDesce 2.2s ease-in-out infinite; box-shadow:0 2px 6px rgba(245,158,11,0.5); }
+        .farol3d-lacre-cena .cadeado::before { content:''; position:absolute; top:-6px; left:2px; width:8px; height:8px; border:2px solid #b45309; border-bottom:none; border-radius:8px 8px 0 0; }
+        .farol3d-lacre-cena .brilho { position:absolute; left:11px; top:10px; width:20px; height:16px; border-radius:50%; background:radial-gradient(circle, rgba(16,185,129,0.55), transparent 70%); animation: farolBrilhoLacre 2.2s ease-in-out infinite; }
     </style>
 </head>
 <body>
@@ -942,6 +993,22 @@
                 const { doc, updateDoc } = this.fns;
                 await updateDoc(doc(this.db, 'solicitacoesExclusao', String(solicitacaoId)), { status: 'rejeitado', resolvidoEm: Date.now() });
             }
+
+            // ===== FAROL OPERACIONAL TP (acompanhamento de fluxo — não duplica o cadastro do Dashboard) =====
+            async upsertFarolTP(operacaoId, patch) {
+                const { doc, setDoc } = this.fns;
+                await setDoc(doc(this.db, 'farolTP', String(operacaoId)), patch, { merge: true });
+            }
+
+            async setPerfilFarolTP(emailNormalizado, perfil) {
+                const { doc, setDoc } = this.fns;
+                await setDoc(doc(this.db, 'perfisFarolTP', emailNormalizado), { perfil, atualizadoEm: Date.now() }, { merge: true });
+            }
+
+            async removerPerfilFarolTP(emailNormalizado) {
+                const { doc, deleteDoc } = this.fns;
+                await deleteDoc(doc(this.db, 'perfisFarolTP', emailNormalizado));
+            }
         }
 
         // ========== FUNÇÕES AUXILIARES ==========
@@ -968,6 +1035,53 @@
             if (terminoNum <= metaNum) return 'verde';
             if (terminoNum > metaNum) return 'vermelho';
             return 'amarelo';
+        };
+
+        // ========== FAROL OPERACIONAL TP — lógica de status do fluxo ==========
+        // Estados possíveis do farolItem.status:
+        // 'aguardando_conferencia' -> 'aguardando_romaneio' -> 'romaneado' -> 'carregamento_andamento'
+        // -> 'carregamento_finalizado' -> 'aguardando_transporte' -> 'finalizada'
+        const FAROL_ETAPA_INFO = {
+            aguardando_conferencia: { etapa: 'EXPEDIÇÃO', responsavel: 'EXPEDIÇÃO', acao: 'Finalizar conferência' },
+            aguardando_romaneio:    { etapa: 'ADM OPERACIONAL', responsavel: 'ADM OPERACIONAL', acao: 'Finalizar romaneio' },
+            romaneado:              { etapa: 'CARREGAMENTO', responsavel: 'EXPEDIÇÃO', acao: 'Iniciar carregamento' },
+            carregamento_andamento: { etapa: 'CARREGAMENTO', responsavel: 'EXPEDIÇÃO', acao: 'Finalizar carregamento' },
+            carregamento_finalizado:{ etapa: 'ASSINATURA', responsavel: 'EXPEDIÇÃO', acao: 'Confirmar assinatura do motorista' },
+            aguardando_transporte:  { etapa: 'TRANSPORTE', responsavel: 'TRANSPORTE', acao: 'Finalizar operação (lacre/malote)' },
+            finalizada:             { etapa: 'FINALIZADA', responsavel: '—', acao: '—' }
+        };
+
+        const farolCriarHistoricoVazio = () => ([]);
+
+        const farolNovoItem = () => ({
+            status: 'aguardando_conferencia',
+            historico: [],
+            divergencias: [],
+            criadoEm: Date.now()
+        });
+
+        const farolAdicionarHistorico = (item, texto, usuario) => {
+            const hist = Array.isArray(item.historico) ? item.historico : [];
+            return [...hist, { texto, usuario: usuario || '—', em: Date.now() }];
+        };
+
+        // Calcula, para um item do farol, se está atrasado com base na config de minutos
+        const farolEstaAtrasado = (item, config) => {
+            if (!item) return false;
+            const agora = Date.now();
+            if (item.status === 'aguardando_romaneio' && item.conferenciaFinalizadaEm) {
+                const min = (agora - item.conferenciaFinalizadaEm) / 60000;
+                return min > (config.minRomaneioMin || 30);
+            }
+            if (item.status === 'aguardando_transporte' && item.assinaturaEm) {
+                const min = (agora - item.assinaturaEm) / 60000;
+                return min > (config.minTransporteMin || 30);
+            }
+            return false;
+        };
+
+        const farolTemDivergenciaAberta = (item) => {
+            return Array.isArray(item && item.divergencias) && item.divergencias.some(d => d.status !== 'resolvida');
         };
 
         // ========== APP PRINCIPAL ==========
@@ -1081,6 +1195,10 @@
             };
 
             const trocarAba = (novaAba) => {
+                if (restritoAoFarolTP && novaAba !== 'faroltp') {
+                    alert('🚫 Acesso não autorizado.');
+                    return;
+                }
                 if (pendingChanges && novaAba !== abaSelecionada) {
                     const confirmar = window.confirm('⚠️ Você tem alterações não salvas em "Gerenciar Operações"!\n\nClique em OK para sair sem salvar, ou Cancelar para voltar e salvar.');
                     if (!confirmar) return;
@@ -1222,6 +1340,115 @@
             }, [user]);
 
             const solicitacoesPendentes = solicitacoesExclusao.filter(s => s.status === 'pendente');
+
+            // ========== FAROL OPERACIONAL TP — estado, listeners e permissões ==========
+            const [farolTP, setFarolTP] = useState([]);
+            const [perfisFarolTP, setPerfisFarolTP] = useState({});
+            const [farolConfig, setFarolConfig] = useState({ minRomaneioMin: 30, minTransporteMin: 30 });
+
+            useEffect(() => {
+                if (!user) return;
+                const { collection, onSnapshot } = window.__firebaseFns;
+                const fsDb = window.__firebaseDb;
+                const unsubscribe = onSnapshot(
+                    collection(fsDb, 'farolTP'),
+                    (snapshot) => {
+                        const itens = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+                        setFarolTP(itens);
+                    },
+                    (err) => { console.error('Erro no listener em tempo real (farolTP):', err); }
+                );
+                return () => unsubscribe();
+            }, [user]);
+
+            useEffect(() => {
+                if (!user) return;
+                const { collection, onSnapshot } = window.__firebaseFns;
+                const fsDb = window.__firebaseDb;
+                const unsubscribe = onSnapshot(
+                    collection(fsDb, 'perfisFarolTP'),
+                    (snapshot) => {
+                        const mapa = {};
+                        snapshot.docs.forEach(d => { mapa[d.id] = d.data().perfil; });
+                        setPerfisFarolTP(mapa);
+                    },
+                    (err) => { console.error('Erro no listener em tempo real (perfisFarolTP):', err); }
+                );
+                return () => unsubscribe();
+            }, [user]);
+
+            useEffect(() => {
+                if (!user) return;
+                const { doc, onSnapshot } = window.__firebaseFns;
+                const fsDb = window.__firebaseDb;
+                const unsubscribe = onSnapshot(
+                    doc(fsDb, 'configuracoes', 'farolTPConfig'),
+                    (snap) => {
+                        if (snap.exists()) {
+                            const d = snap.data();
+                            setFarolConfig({
+                                minRomaneioMin: Number(d.minRomaneioMin) || 30,
+                                minTransporteMin: Number(d.minTransporteMin) || 30
+                            });
+                        }
+                    },
+                    (err) => { console.error('Erro no listener de configuração do Farol TP:', err); }
+                );
+                return () => unsubscribe();
+            }, [user]);
+
+            // Perfil do usuário atual no Farol TP. Administrador (ADMIN_EMAIL) sempre tem acesso total.
+            const meuPerfilFarolTP = user ? (perfisFarolTP[(user.email || '').toLowerCase()] || null) : null;
+            const PERFIS_RESTRITOS_TP = ['EXPEDICAO_TP', 'ADM_OPERACIONAL_TP', 'TRANSPORTE_TP'];
+            const restritoAoFarolTP = !isAdmin && PERFIS_RESTRITOS_TP.includes(meuPerfilFarolTP);
+
+            // Se o usuário é restrito ao Farol TP, ele só pode estar nessa aba — trava também no client
+            // (a trava real deve ser reforçada nas Firebase Security Rules, ver bloco de comentário abaixo).
+            useEffect(() => {
+                if (restritoAoFarolTP && abaSelecionada !== 'faroltp') {
+                    setAbaSelecionada('faroltp');
+                }
+            }, [restritoAoFarolTP, abaSelecionada]);
+
+            const handleAtualizarFarolTP = async (operacaoId, patch) => {
+                const currentDb = dbRef.current || db;
+                if (!currentDb) { alert('❌ Banco de dados não inicializado. Aguarde e tente novamente.'); return; }
+                await currentDb.upsertFarolTP(operacaoId, patch);
+            };
+
+            const handleSetPerfilFarolTP = async (email, perfil) => {
+                const currentDb = dbRef.current || db;
+                if (!currentDb || !isAdmin) return;
+                await currentDb.setPerfilFarolTP(email.trim().toLowerCase(), perfil);
+            };
+
+            const handleRemoverPerfilFarolTP = async (email) => {
+                const currentDb = dbRef.current || db;
+                if (!currentDb || !isAdmin) return;
+                await currentDb.removerPerfilFarolTP(email.trim().toLowerCase());
+            };
+
+            const handleSalvarFarolConfig = async (novaConfig) => {
+                const currentDb = dbRef.current || db;
+                if (!currentDb || !isAdmin) return;
+                await currentDb.setConfig('farolTPConfig', novaConfig);
+            };
+
+            const farolTPMapa = useMemo(() => {
+                const mapa = {};
+                farolTP.forEach(f => { mapa[f.id] = f; });
+                return mapa;
+            }, [farolTP]);
+
+            const farolAtrasos = useMemo(() => {
+                return operacoes.reduce((total, op) => {
+                    const item = farolTPMapa[op.id];
+                    if (item && item.status !== 'finalizada' && (farolEstaAtrasado(item, farolConfig) || farolTemDivergenciaAberta(item))) {
+                        return total + 1;
+                    }
+                    return total;
+                }, 0);
+            }, [operacoes, farolTPMapa, farolConfig]);
 
             // ========== REAL-TIME LISTENER PARA LINHA VERMELHA ==========
             useEffect(() => {
@@ -1499,11 +1726,14 @@
                         </header>
 
                         <nav className="flex gap-2 mb-6 flex-wrap">
-                            {['torre', 'dashboard', 'performance', 'graficos', 'capacidade', 'cadastrar', 'linhavermelha', 'comunicacoes', 'planejamento', 'rotatividade5s', 'editar', 'gerenciar', 'relatorios', 'upload', 'configuracoes'].map(aba => (
+                            {(restritoAoFarolTP
+                                ? ['faroltp']
+                                : ['torre', 'dashboard', 'performance', 'graficos', 'capacidade', 'cadastrar', 'linhavermelha', 'faroltp', 'comunicacoes', 'planejamento', 'rotatividade5s', 'editar', 'gerenciar', 'relatorios', 'upload', 'configuracoes']
+                            ).map(aba => (
                                 <button
                                     key={aba}
                                     onClick={() => trocarAba(aba)}
-                                    style={(aba === 'comunicacoes' && chatNaoLidas > 0) || (aba === 'dashboard' && isAdmin && solicitacoesPendentes.length > 0) ? {position:'relative'} : undefined}
+                                    style={(aba === 'comunicacoes' && chatNaoLidas > 0) || (aba === 'dashboard' && isAdmin && solicitacoesPendentes.length > 0) || (aba === 'faroltp' && farolAtrasos > 0) ? {position:'relative'} : undefined}
                                     className={`px-6 py-3 rounded-xl font-bold transition-all ${
                                         abaSelecionada === aba ? 'tab-active' : 'tab-inactive'
                                     }`}
@@ -1527,6 +1757,15 @@
                                     {aba === 'capacidade' && <><span className="icon-bounce inline-block">👥</span> Capacidade</>}
                                     {aba === 'cadastrar' && <><span className="icon-bounce inline-block">➕</span> Cadastrar</>}
                                     {aba === 'linhavermelha' && <><span className="icon-pulse inline-block">🚦</span> Linha Vermelha</>}
+                                    {aba === 'faroltp' && <><span className="icon-pulse inline-block">🚦</span> Farol Operacional TP</>}
+                                    {aba === 'faroltp' && farolAtrasos > 0 && (
+                                        <span style={{
+                                            position:'absolute', top:-8, right:-8, minWidth:22, height:22, padding:'0 5px',
+                                            borderRadius:'99px', background:'#ef4444', color:'#fff', fontSize:11, fontWeight:800,
+                                            display:'flex', alignItems:'center', justifyContent:'center',
+                                            boxShadow:'0 0 0 2px #fff', animation:'pulse 1.4s infinite'
+                                        }}>{farolAtrasos > 99 ? '99+' : farolAtrasos}</span>
+                                    )}
                                     {aba === 'comunicacoes' && <><span className="icon-pulse inline-block">💬</span> Comunicações</>}
                                     {aba === 'comunicacoes' && chatNaoLidas > 0 && (
                                         <span style={{
@@ -1588,6 +1827,21 @@
                                     onDeletar={handleDeletarLinhaVermelha}
                                 />
                             )}
+                            {abaSelecionada === 'faroltp' && (
+                                <FarolOperacionalTP
+                                    operacoes={operacoes}
+                                    farolTP={farolTP}
+                                    farolConfig={farolConfig}
+                                    user={user}
+                                    isAdmin={isAdmin}
+                                    meuPerfilFarolTP={meuPerfilFarolTP}
+                                    perfisFarolTP={perfisFarolTP}
+                                    onAtualizar={handleAtualizarFarolTP}
+                                    onSetPerfil={handleSetPerfilFarolTP}
+                                    onRemoverPerfil={handleRemoverPerfilFarolTP}
+                                    onSalvarConfig={handleSalvarFarolConfig}
+                                />
+                            )}
                             {abaSelecionada === 'comunicacoes' && (
                                 <Comunicacoes
                                     user={user}
@@ -1635,6 +1889,622 @@
                                 />
                             )}
                         </main>
+                    </div>
+                </div>
+            );
+        }
+
+        // ========== FAROL OPERACIONAL TP ==========
+        // Acompanhamento visual do fluxo EXPEDIÇÃO → ADM OPERACIONAL → TRANSPORTE.
+        // Fonte dos dados: coleção 'operacoes' (a mesma do Dashboard — não duplica cadastro).
+        // Estado do fluxo: coleção separada 'farolTP' (1 doc por operação, docId = id da operação).
+        const FAROL_DIVERGENCIA_TIPOS = ['Nota fiscal duplicada','Divergência de volumes','Pré-romaneio incorreto','Romaneio pendente','Problema documental','Veículo','Motorista','Lacre','Outros'];
+
+        const farolFormatarDataHora = (ts) => {
+            if (!ts) return '—';
+            const d = new Date(ts);
+            return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        };
+
+        const farolTempoDecorrido = (ts) => {
+            if (!ts) return '—';
+            let min = Math.floor((Date.now() - ts) / 60000);
+            if (min < 0) min = 0;
+            const h = Math.floor(min / 60);
+            const m = min % 60;
+            return (h > 0 ? h + 'h ' : '') + m + 'min';
+        };
+
+        // Marco de tempo (para calcular "tempo na etapa") de acordo com o status atual
+        const farolInicioEtapaAtual = (item) => {
+            const st = item.status || 'aguardando_conferencia';
+            const mapa = {
+                aguardando_conferencia: item.criadoEm,
+                aguardando_romaneio: item.conferenciaFinalizadaEm,
+                romaneado: item.romaneioFinalizadoEm,
+                carregamento_andamento: item.carregamentoIniciadoEm,
+                carregamento_finalizado: item.carregamentoFinalizadoEm,
+                aguardando_transporte: item.assinaturaEm,
+                finalizada: item.finalizadoEm
+            };
+            return mapa[st] || item.criadoEm;
+        };
+
+        const farolStages = (item, config) => {
+            const st = item.status || 'aguardando_conferencia';
+            const ordem = ['aguardando_conferencia','aguardando_romaneio','romaneado','carregamento_andamento','carregamento_finalizado','aguardando_transporte','finalizada'];
+            const idx = ordem.indexOf(st);
+            const cor = (concluido, ativo) => concluido ? 'verde' : (ativo ? 'amarelo' : 'cinza');
+            const stages = [
+                { label: 'Expedição', color: cor(idx >= 1, idx === 0) },
+                { label: 'Romaneio', color: cor(idx >= 2, idx === 1) },
+                { label: 'Carregamento', color: cor(idx >= 4, idx === 2 || idx === 3) },
+                { label: 'Transporte', color: cor(idx === 6, idx === 4 || idx === 5) }
+            ];
+            const atrasado = farolEstaAtrasado(item, config);
+            const divergente = farolTemDivergenciaAberta(item);
+            if (atrasado || divergente) {
+                const ativoIdx = stages.findIndex(s => s.color === 'amarelo');
+                if (ativoIdx >= 0) stages[ativoIdx].color = 'vermelho';
+            }
+            return stages;
+        };
+
+        const FAROL_COR_HEX = { verde: '#10b981', amarelo: '#f59e0b', vermelho: '#ef4444', cinza: '#d1d5db' };
+
+        function FarolStatusDot({ color, label }) {
+            return (
+                <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,minWidth:64}}>
+                    <div style={{width:16,height:16,borderRadius:'50%',background:FAROL_COR_HEX[color],boxShadow: color==='amarelo' || color==='vermelho' ? `0 0 0 3px ${FAROL_COR_HEX[color]}33` : 'none'}}></div>
+                    <span style={{fontSize:10,fontWeight:700,color:'#6b7280',textAlign:'center'}}>{label}</span>
+                </div>
+            );
+        }
+
+        // ===== Animações 3D por área — dão vida à etapa em andamento de cada operação =====
+        function Farol3DExpedicao() {
+            return (
+                <div className="farol3d-caixa">
+                    <div className="face f-topo"></div>
+                    <div className="face f-frente"></div>
+                    <div className="face f-direita"></div>
+                    <div className="face f-esquerda"></div>
+                    <div className="face f-tras"></div>
+                    <div className="fita"></div>
+                    <div className="farol3d-check">✓</div>
+                </div>
+            );
+        }
+
+        function Farol3DRomaneio() {
+            return (
+                <div className="farol3d-prancheta">
+                    <div className="base"></div>
+                    <div className="folha">
+                        <div className="linha" style={{top:8}}></div>
+                        <div className="linha" style={{top:13, width:12}}></div>
+                        <div className="linha" style={{top:18}}></div>
+                    </div>
+                    <div className="clip"></div>
+                    <div className="farol3d-carimbo">OK</div>
+                </div>
+            );
+        }
+
+        function Farol3DCarregamento() {
+            return (
+                <div className="farol3d-carregamento">
+                    <div className="carroceria"></div>
+                    <div className="cabine"></div>
+                    <div className="roda roda1"></div>
+                    <div className="roda roda2"></div>
+                    <div className="caixinha cx1"></div>
+                    <div className="caixinha cx2"></div>
+                    <div className="caixinha cx3"></div>
+                </div>
+            );
+        }
+
+        function Farol3DLacre() {
+            return (
+                <div className="farol3d-lacre-cena">
+                    <div className="porta"></div>
+                    <div className="friso" style={{top:12}}></div>
+                    <div className="friso" style={{top:24}}></div>
+                    <div className="brilho"></div>
+                    <div className="cadeado"></div>
+                </div>
+            );
+        }
+
+        // Escolhe a animação 3D e o texto de acordo com a etapa em que a operação está agora
+        const farolAnimacaoDaEtapa = (status) => {
+            if (status === 'aguardando_conferencia') return { Comp: Farol3DExpedicao, texto: 'Em separação e conferência' };
+            if (status === 'aguardando_romaneio') return { Comp: Farol3DRomaneio, texto: 'Romaneando documentos' };
+            if (status === 'romaneado' || status === 'carregamento_andamento') return { Comp: Farol3DCarregamento, texto: 'Carregando o veículo' };
+            if (status === 'carregamento_finalizado' || status === 'aguardando_transporte') return { Comp: Farol3DLacre, texto: 'Lacrando o caminhão' };
+            return null;
+        };
+
+        function Farol3DAnimacao({ status, tamanho }) {
+            const info = farolAnimacaoDaEtapa(status);
+            if (!info) return null;
+            const { Comp, texto } = info;
+            return (
+                <div className="farol3d-cena" style={{width: tamanho || 56, height: tamanho || 56}} title={texto}>
+                    <div className="farol3d-palco">
+                        <Comp />
+                    </div>
+                </div>
+            );
+        }
+
+        function FarolOperacionalTP({ operacoes, farolTP, farolConfig, user, isAdmin, meuPerfilFarolTP, perfisFarolTP, onAtualizar, onSetPerfil, onRemoverPerfil, onSalvarConfig }) {
+            const podeExpedicao = isAdmin || meuPerfilFarolTP === 'EXPEDICAO_TP';
+            const podeAdm = isAdmin || meuPerfilFarolTP === 'ADM_OPERACIONAL_TP';
+            const podeTransporte = isAdmin || meuPerfilFarolTP === 'TRANSPORTE_TP';
+            const podeRegistrarDivergencia = podeExpedicao || podeAdm || podeTransporte;
+
+            const [busca, setBusca] = useState('');
+            const [filtroData, setFiltroData] = useState(() => getHojeStr());
+            const [filtroStatus, setFiltroStatus] = useState('todos');
+            const [filtroResponsavel, setFiltroResponsavel] = useState('todos');
+            const [somenteAtraso, setSomenteAtraso] = useState(false);
+            const [operacaoAberta, setOperacaoAberta] = useState(null);
+            const [mostrarConfig, setMostrarConfig] = useState(false);
+            const [salvando, setSalvando] = useState(false);
+
+            const farolMapa = useMemo(() => {
+                const mapa = {};
+                farolTP.forEach(f => { mapa[f.id] = f; });
+                return mapa;
+            }, [farolTP]);
+
+            const linhas = useMemo(() => {
+                return operacoes.map(op => {
+                    const item = farolMapa[op.id] || farolNovoItem();
+                    const info = FAROL_ETAPA_INFO[item.status || 'aguardando_conferencia'];
+                    const destinos = Array.isArray(op.destinos) && op.destinos.length ? op.destinos.map(d => d.nome).join(', ') : '';
+                    return { op, item, info, destinos, atraso: farolEstaAtrasado(item, farolConfig), divergente: farolTemDivergenciaAberta(item) };
+                }).sort((a, b) => (b.op.data || '').localeCompare(a.op.data || ''));
+            }, [operacoes, farolMapa, farolConfig]);
+
+            const linhasFiltradas = useMemo(() => {
+                const buscaLower = busca.trim().toLowerCase();
+                return linhas.filter(l => {
+                    if (filtroData && l.op.data !== filtroData) return false;
+                    if (filtroStatus !== 'todos' && (l.item.status || 'aguardando_conferencia') !== filtroStatus) return false;
+                    if (filtroResponsavel !== 'todos' && l.info.responsavel !== filtroResponsavel) return false;
+                    if (somenteAtraso && !(l.atraso || l.divergente)) return false;
+                    if (buscaLower) {
+                        const alvo = `${l.op.operacao || ''} ${l.destinos} ${l.op.doca || ''}`.toLowerCase();
+                        if (!alvo.includes(buscaLower)) return false;
+                    }
+                    return true;
+                });
+            }, [linhas, busca, filtroData, filtroStatus, filtroResponsavel, somenteAtraso]);
+
+            const contadores = useMemo(() => {
+                const c = { total: linhas.length, conferencia: 0, romaneio: 0, carregamento: 0, transporte: 0, finalizadas: 0, atraso: 0 };
+                linhas.forEach(l => {
+                    const st = l.item.status || 'aguardando_conferencia';
+                    if (st === 'aguardando_conferencia') c.conferencia++;
+                    else if (st === 'aguardando_romaneio') c.romaneio++;
+                    else if (['romaneado','carregamento_andamento','carregamento_finalizado'].includes(st)) c.carregamento++;
+                    else if (st === 'aguardando_transporte') c.transporte++;
+                    else if (st === 'finalizada') c.finalizadas++;
+                    if (l.atraso || l.divergente) c.atraso++;
+                });
+                return c;
+            }, [linhas]);
+
+            const executarAcao = async (op, item, patchExtra, textoHistorico) => {
+                setSalvando(true);
+                try {
+                    const patch = {
+                        ...patchExtra,
+                        historico: farolAdicionarHistorico(item, textoHistorico, user && user.email)
+                    };
+                    await onAtualizar(op.id, patch);
+                } catch (e) {
+                    alert('❌ Erro ao atualizar: ' + e.message);
+                } finally {
+                    setSalvando(false);
+                }
+            };
+
+            const cardSelecionado = operacaoAberta ? linhas.find(l => l.op.id === operacaoAberta) : null;
+
+            return (
+                <div>
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+                        <div>
+                            <h2 className="text-2xl font-bold text-gray-800">
+                                <span className="icon-pulse inline-block">🚦</span> Farol Operacional TP
+                            </h2>
+                            <div className="text-xs font-semibold mt-1" style={{color: filtroData ? '#6366f1' : '#9ca3af'}}>
+                                {filtroData === getHojeStr()
+                                    ? `📅 Mostrando a agenda de hoje (${formatarData(getHojeStr())}) — use os filtros para ver outras datas`
+                                    : filtroData
+                                        ? `📅 Mostrando operações de ${formatarData(filtroData)}`
+                                        : '📅 Mostrando operações de todas as datas'}
+                            </div>
+                        </div>
+                        {isAdmin && (
+                            <button onClick={() => setMostrarConfig(true)} className="px-4 py-2 rounded-xl font-bold text-sm bg-gray-100 hover:bg-gray-200 text-gray-700">
+                                ⚙️ Configurar Farol TP
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Indicadores */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-5">
+                        {[
+                            ['Total', contadores.total, '#6366f1'],
+                            ['Em Conferência', contadores.conferencia, '#0ea5e9'],
+                            ['Aguard. Romaneio', contadores.romaneio, '#f59e0b'],
+                            ['Em Carregamento', contadores.carregamento, '#8b5cf6'],
+                            ['Aguard. Transporte', contadores.transporte, '#f97316'],
+                            ['Finalizadas', contadores.finalizadas, '#10b981'],
+                            ['Com Atraso', contadores.atraso, '#ef4444']
+                        ].map(([label, valor, cor]) => (
+                            <div key={label} style={{background:'#fff',border:`2px solid ${cor}22`,borderRadius:14,padding:'12px 10px',textAlign:'center'}}>
+                                <div style={{fontSize:22,fontWeight:900,color:cor}}>{valor}</div>
+                                <div style={{fontSize:10,fontWeight:700,color:'#6b7280',textTransform:'uppercase'}}>{label}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Filtros */}
+                    <div className="bg-gray-50 rounded-xl p-4 mb-5 grid grid-cols-1 md:grid-cols-5 gap-3">
+                        <input type="text" placeholder="🔎 Pesquisar operação, destino, doca..." value={busca} onChange={e => setBusca(e.target.value)}
+                            className="border border-gray-300 rounded-lg px-3 py-2 text-sm md:col-span-2" />
+                        <div className="flex items-center gap-2">
+                            <input type="date" value={filtroData} onChange={e => setFiltroData(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1" />
+                            {filtroData && (
+                                <button type="button" onClick={() => setFiltroData('')} title="Ver operações de todas as datas"
+                                    className="text-xs font-bold text-indigo-600 hover:underline whitespace-nowrap">
+                                    Ver todas
+                                </button>
+                            )}
+                        </div>
+                        <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                            <option value="todos">Etapa: Todas</option>
+                            <option value="aguardando_conferencia">Em conferência</option>
+                            <option value="aguardando_romaneio">Aguardando romaneio</option>
+                            <option value="romaneado">Romaneado / aguard. carregamento</option>
+                            <option value="carregamento_andamento">Carregamento em andamento</option>
+                            <option value="carregamento_finalizado">Carregamento finalizado</option>
+                            <option value="aguardando_transporte">Aguardando transporte</option>
+                            <option value="finalizada">Finalizada</option>
+                        </select>
+                        <select value={filtroResponsavel} onChange={e => setFiltroResponsavel(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                            <option value="todos">Responsável: Todos</option>
+                            <option value="EXPEDIÇÃO">Expedição</option>
+                            <option value="ADM OPERACIONAL">ADM Operacional</option>
+                            <option value="TRANSPORTE">Transporte</option>
+                        </select>
+                        <label className="flex items-center gap-2 text-sm font-semibold text-gray-600">
+                            <input type="checkbox" checked={somenteAtraso} onChange={e => setSomenteAtraso(e.target.checked)} />
+                            Somente atrasadas / com divergência
+                        </label>
+                    </div>
+
+                    {/* Lista de operações */}
+                    {linhasFiltradas.length === 0 ? (
+                        <div className="text-center text-gray-400 py-10">Nenhuma operação encontrada para os filtros selecionados.</div>
+                    ) : (
+                        <div className="space-y-3">
+                            {linhasFiltradas.map(l => {
+                                const stages = farolStages(l.item, farolConfig);
+                                return (
+                                    <div key={l.op.id} onClick={() => setOperacaoAberta(l.op.id)}
+                                        style={{border: (l.atraso || l.divergente) ? '2px solid #ef4444' : '2px solid #e5e7eb', borderRadius:16, padding:'14px 18px', cursor:'pointer', transition:'all .15s'}}
+                                        className="hover:shadow-md bg-white">
+                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <div>
+                                                <div className="font-bold text-gray-800 text-base">
+                                                    {op_nome(l.op)} {l.destinos && <span className="text-gray-400 font-normal text-sm">· {l.destinos}</span>}
+                                                </div>
+                                                <div className="text-xs text-gray-400">{formatarData(l.op.data)} {l.op.doca ? ('· Doca ' + l.op.doca) : ''}</div>
+                                            </div>
+                                            <div className="flex items-center gap-4">
+                                                <Farol3DAnimacao status={l.item.status || 'aguardando_conferencia'} tamanho={44} />
+                                                {stages.map(s => <FarolStatusDot key={s.label} color={s.color} label={s.label} />)}
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-wrap items-center justify-between gap-2 mt-3 pt-3" style={{borderTop:'1px dashed #e5e7eb'}}>
+                                            <div className="text-xs text-gray-600">
+                                                <strong>Etapa atual:</strong> {l.info.etapa} · <strong>Responsável:</strong> {l.info.responsavel} · <strong>Próxima ação:</strong> {l.info.acao}
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                {l.divergente && <span style={{background:'#fee2e2',color:'#dc2626',fontSize:11,fontWeight:800,padding:'3px 8px',borderRadius:99}}>🔴 DIVERGÊNCIA</span>}
+                                                {l.atraso && <span style={{background:'#fee2e2',color:'#dc2626',fontSize:11,fontWeight:800,padding:'3px 8px',borderRadius:99}}>🔴 ATRASO</span>}
+                                                <span style={{fontSize:11,fontWeight:700,color:'#9ca3af'}}>⏱ {farolTempoDecorrido(farolInicioEtapaAtual(l.item))} na etapa</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {cardSelecionado && (
+                        <FarolDetalheModal
+                            linha={cardSelecionado}
+                            config={farolConfig}
+                            user={user}
+                            podeExpedicao={podeExpedicao}
+                            podeAdm={podeAdm}
+                            podeTransporte={podeTransporte}
+                            podeRegistrarDivergencia={podeRegistrarDivergencia}
+                            salvando={salvando}
+                            onExecutarAcao={executarAcao}
+                            onAtualizar={onAtualizar}
+                            onFechar={() => setOperacaoAberta(null)}
+                        />
+                    )}
+
+                    {mostrarConfig && isAdmin && (
+                        <FarolConfigModal
+                            config={farolConfig}
+                            perfisFarolTP={perfisFarolTP}
+                            onSalvarConfig={onSalvarConfig}
+                            onSetPerfil={onSetPerfil}
+                            onRemoverPerfil={onRemoverPerfil}
+                            onFechar={() => setMostrarConfig(false)}
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        // Nome de exibição da operação: usa o campo 'operacao' cadastrado no Dashboard
+        const op_nome = (op) => op.operacao || '(sem nome)';
+
+        function FarolDetalheModal({ linha, config, user, podeExpedicao, podeAdm, podeTransporte, podeRegistrarDivergencia, salvando, onExecutarAcao, onAtualizar, onFechar }) {
+            const { op, item, info } = linha;
+            const st = item.status || 'aguardando_conferencia';
+            const [veiculo, setVeiculo] = useState(item.veiculo || '');
+            const [obsCarregamento, setObsCarregamento] = useState('');
+            const [lacre, setLacre] = useState('');
+            const [obsTransporte, setObsTransporte] = useState('');
+            const [mostrarDivergencia, setMostrarDivergencia] = useState(false);
+            const [divTipo, setDivTipo] = useState(FAROL_DIVERGENCIA_TIPOS[0]);
+            const [divDescricao, setDivDescricao] = useState('');
+
+            const registrarDivergencia = async () => {
+                if (!divDescricao.trim()) { alert('⚠️ Descreva a divergência.'); return; }
+                const nova = { tipo: divTipo, descricao: divDescricao.trim(), usuario: user && user.email, em: Date.now(), etapa: info.etapa, status: 'aberta' };
+                const divergencias = [...(item.divergencias || []), nova];
+                await onAtualizar(op.id, { divergencias, historico: farolAdicionarHistorico(item, `Divergência registrada (${divTipo}): ${divDescricao.trim()}`, user && user.email) });
+                setDivDescricao(''); setMostrarDivergencia(false);
+            };
+
+            const resolverDivergencia = async (idx) => {
+                const divergencias = (item.divergencias || []).map((d, i) => i === idx ? { ...d, status: 'resolvida' } : d);
+                await onAtualizar(op.id, { divergencias, historico: farolAdicionarHistorico(item, `Divergência resolvida: ${(item.divergencias[idx]||{}).tipo || ''}`, user && user.email) });
+            };
+
+            return (
+                <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.6)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px'}} onClick={onFechar}>
+                    <div style={{background:'#fff',borderRadius:20,maxWidth:640,width:'100%',maxHeight:'88vh',overflowY:'auto',padding:24}} onClick={e => e.stopPropagation()}>
+                        <div className="flex items-start justify-between mb-4">
+                            <div>
+                                <div className="text-xl font-bold text-gray-800">{op_nome(op)}</div>
+                                <div className="text-xs text-gray-400">{formatarData(op.data)} {op.doca ? ('· Doca ' + op.doca) : ''} {linha.destinos ? ('· ' + linha.destinos) : ''}</div>
+                            </div>
+                            <button onClick={onFechar} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-2 mb-4">
+                            {farolStages(item, config).map(s => <FarolStatusDot key={s.label} color={s.color} label={s.label} />)}
+                        </div>
+
+                        <div className="flex items-center justify-center mb-4">
+                            <Farol3DAnimacao status={st} tamanho={84} />
+                        </div>
+
+                        <div className="bg-gray-50 rounded-xl p-3 mb-4 text-sm text-gray-700">
+                            <div><strong>Etapa atual:</strong> {info.etapa}</div>
+                            <div><strong>Responsável:</strong> {info.responsavel}</div>
+                            <div><strong>Próxima ação:</strong> {info.acao}</div>
+                            <div><strong>Tempo na etapa:</strong> {farolTempoDecorrido(farolInicioEtapaAtual(item))}</div>
+                        </div>
+
+                        {/* ===== Ações por etapa (visíveis a todos, habilitadas conforme perfil) ===== */}
+                        <div className="mb-4">
+                            {st === 'aguardando_conferencia' && (
+                                <button disabled={!podeExpedicao || salvando}
+                                    onClick={() => onExecutarAcao(op, item, { status: 'aguardando_romaneio', conferenciaFinalizadaEm: Date.now(), conferenciaPor: user && user.email }, 'Expedição finalizou a conferência')}
+                                    className="w-full py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                                    ✅ Finalizar Conferência
+                                </button>
+                            )}
+                            {st === 'aguardando_romaneio' && (
+                                <button disabled={!podeAdm || salvando}
+                                    onClick={() => onExecutarAcao(op, item, { status: 'romaneado', romaneioFinalizadoEm: Date.now(), romaneioPor: user && user.email }, 'ADM Operacional finalizou o romaneio')}
+                                    className="w-full py-3 rounded-xl font-bold text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed">
+                                    ✅ Finalizar Romaneio
+                                </button>
+                            )}
+                            {st === 'romaneado' && (
+                                <button disabled={!podeExpedicao || salvando}
+                                    onClick={() => onExecutarAcao(op, item, { status: 'carregamento_andamento', carregamentoIniciadoEm: Date.now(), carregamentoIniciadoPor: user && user.email }, 'Carregamento iniciado')}
+                                    className="w-full py-3 rounded-xl font-bold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                                    🚚 Iniciar Carregamento
+                                </button>
+                            )}
+                            {st === 'carregamento_andamento' && (
+                                <div className="space-y-2">
+                                    <input type="text" placeholder="Veículo (opcional)" value={veiculo} onChange={e => setVeiculo(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                                    <input type="text" placeholder="Observações (opcional)" value={obsCarregamento} onChange={e => setObsCarregamento(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                                    <button disabled={!podeExpedicao || salvando}
+                                        onClick={() => onExecutarAcao(op, item, { status: 'carregamento_finalizado', carregamentoFinalizadoEm: Date.now(), carregamentoFinalizadoPor: user && user.email, veiculo: veiculo || null, observacoesCarregamento: obsCarregamento || null }, 'Carregamento finalizado')}
+                                        className="w-full py-3 rounded-xl font-bold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                                        ✅ Finalizar Carregamento
+                                    </button>
+                                </div>
+                            )}
+                            {st === 'carregamento_finalizado' && (
+                                <button disabled={!podeExpedicao || salvando}
+                                    onClick={() => onExecutarAcao(op, item, { status: 'aguardando_transporte', assinaturaEm: Date.now(), assinaturaPor: user && user.email }, 'Motorista assinou o romaneio')}
+                                    className="w-full py-3 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                                    ✍️ Romaneio Assinado
+                                </button>
+                            )}
+                            {st === 'aguardando_transporte' && (
+                                <div className="space-y-2">
+                                    <input type="text" placeholder="Número do lacre (opcional)" value={lacre} onChange={e => setLacre(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                                    <input type="text" placeholder="Observações (opcional)" value={obsTransporte} onChange={e => setObsTransporte(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                                    <button disabled={!podeTransporte || salvando}
+                                        onClick={() => onExecutarAcao(op, item, { status: 'finalizada', lacre: lacre || null, observacoesTransporte: obsTransporte || null, finalizadoEm: Date.now(), finalizadoPor: user && user.email }, 'Transporte finalizou a operação (lacre/malote)')}
+                                        className="w-full py-3 rounded-xl font-bold text-white bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                                        🏁 Finalizar Operação
+                                    </button>
+                                </div>
+                            )}
+                            {st === 'finalizada' && (
+                                <div className="text-center py-3 rounded-xl font-bold text-green-700 bg-green-50">🟢 OPERAÇÃO FINALIZADA</div>
+                            )}
+                            {!(podeExpedicao || podeAdm || podeTransporte) && st !== 'finalizada' && (
+                                <div className="text-center text-xs text-gray-400 mt-1">Você não tem permissão para executar a ação desta etapa.</div>
+                            )}
+                        </div>
+
+                        {/* ===== Divergências ===== */}
+                        <div className="mb-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="font-bold text-sm text-gray-700">Divergências</div>
+                                {podeRegistrarDivergencia && (
+                                    <button onClick={() => setMostrarDivergencia(v => !v)} className="text-xs font-bold text-red-600 hover:underline">
+                                        {mostrarDivergencia ? 'Cancelar' : '+ Registrar Divergência'}
+                                    </button>
+                                )}
+                            </div>
+                            {mostrarDivergencia && (
+                                <div className="bg-red-50 rounded-xl p-3 mb-2 space-y-2">
+                                    <select value={divTipo} onChange={e => setDivTipo(e.target.value)} className="w-full border border-red-200 rounded-lg px-3 py-2 text-sm">
+                                        {FAROL_DIVERGENCIA_TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
+                                    </select>
+                                    <textarea value={divDescricao} onChange={e => setDivDescricao(e.target.value)} placeholder="Descreva a divergência..." className="w-full border border-red-200 rounded-lg px-3 py-2 text-sm" rows={2}></textarea>
+                                    <button onClick={registrarDivergencia} className="w-full py-2 rounded-lg font-bold text-white bg-red-600 hover:bg-red-700 text-sm">Registrar</button>
+                                </div>
+                            )}
+                            {(item.divergencias || []).length === 0 ? (
+                                <div className="text-xs text-gray-400">Nenhuma divergência registrada.</div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {item.divergencias.map((d, idx) => (
+                                        <div key={idx} style={{border:'1px solid #fca5a5',borderRadius:10,padding:'8px 10px',background: d.status === 'resolvida' ? '#f9fafb' : '#fef2f2'}}>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs font-bold text-red-700">{d.status === 'resolvida' ? '✅' : '🔴'} {d.tipo}</span>
+                                                {d.status !== 'resolvida' && (podeExpedicao || podeAdm || podeTransporte) && (
+                                                    <button onClick={() => resolverDivergencia(idx)} className="text-[11px] font-bold text-green-600 hover:underline">Marcar como resolvida</button>
+                                                )}
+                                            </div>
+                                            <div className="text-xs text-gray-600 mt-1">{d.descricao}</div>
+                                            <div className="text-[10px] text-gray-400 mt-1">{d.usuario} · {farolFormatarDataHora(d.em)} · Etapa: {d.etapa}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* ===== Histórico ===== */}
+                        <div>
+                            <div className="font-bold text-sm text-gray-700 mb-2">Histórico</div>
+                            {(item.historico || []).length === 0 ? (
+                                <div className="text-xs text-gray-400">Sem eventos registrados ainda.</div>
+                            ) : (
+                                <div className="space-y-1.5">
+                                    {[...item.historico].sort((a,b) => a.em - b.em).map((h, idx) => (
+                                        <div key={idx} className="text-xs text-gray-600 flex gap-2">
+                                            <span className="text-gray-400 font-mono">{farolFormatarDataHora(h.em)}</span>
+                                            <span>— {h.texto} <span className="text-gray-400">({h.usuario})</span></span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function FarolConfigModal({ config, perfisFarolTP, onSalvarConfig, onSetPerfil, onRemoverPerfil, onFechar }) {
+            const [minRomaneio, setMinRomaneio] = useState(config.minRomaneioMin);
+            const [minTransporte, setMinTransporte] = useState(config.minTransporteMin);
+            const [novoEmail, setNovoEmail] = useState('');
+            const [novoPerfil, setNovoPerfil] = useState('EXPEDICAO_TP');
+            const [salvandoCfg, setSalvandoCfg] = useState(false);
+
+            const salvar = async () => {
+                setSalvandoCfg(true);
+                try {
+                    await onSalvarConfig({ minRomaneioMin: Number(minRomaneio) || 30, minTransporteMin: Number(minTransporte) || 30 });
+                } finally { setSalvandoCfg(false); }
+            };
+
+            const adicionarPerfil = async () => {
+                if (!novoEmail.trim()) { alert('⚠️ Informe o e-mail do usuário.'); return; }
+                await onSetPerfil(novoEmail, novoPerfil);
+                setNovoEmail('');
+            };
+
+            return (
+                <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.6)',zIndex:2100,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px'}} onClick={onFechar}>
+                    <div style={{background:'#fff',borderRadius:20,maxWidth:560,width:'100%',maxHeight:'88vh',overflowY:'auto',padding:24}} onClick={e => e.stopPropagation()}>
+                        <div className="flex items-start justify-between mb-4">
+                            <div className="text-xl font-bold text-gray-800">⚙️ Configurar Farol Operacional TP</div>
+                            <button onClick={onFechar} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
+                        </div>
+
+                        <div className="mb-6">
+                            <div className="font-bold text-sm text-gray-700 mb-2">Tempo limite para alerta de atraso (minutos)</div>
+                            <div className="grid grid-cols-2 gap-3 mb-2">
+                                <div>
+                                    <label className="text-xs text-gray-500">Aguardando Romaneio</label>
+                                    <input type="number" min="1" value={minRomaneio} onChange={e => setMinRomaneio(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-gray-500">Aguardando Transporte</label>
+                                    <input type="number" min="1" value={minTransporte} onChange={e => setMinTransporte(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                                </div>
+                            </div>
+                            <button disabled={salvandoCfg} onClick={salvar} className="px-4 py-2 rounded-lg font-bold text-white bg-indigo-600 hover:bg-indigo-700 text-sm disabled:opacity-50">
+                                {salvandoCfg ? 'Salvando...' : 'Salvar tempos'}
+                            </button>
+                        </div>
+
+                        <div>
+                            <div className="font-bold text-sm text-gray-700 mb-2">Perfis de acesso ao Farol TP</div>
+                            <div className="text-xs text-gray-400 mb-3">
+                                Usuários com um destes perfis passam a ter acesso <strong>somente</strong> à aba Farol Operacional TP, com permissão apenas para as ações da sua área.
+                                A senha/login continua sendo o mesmo do Firebase Authentication já existente — aqui você só define o perfil do e-mail.
+                            </div>
+                            <div className="flex flex-wrap gap-2 mb-3">
+                                <input type="email" placeholder="email@empresa.com" value={novoEmail} onChange={e => setNovoEmail(e.target.value)} className="flex-1 min-w-[180px] border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                                <select value={novoPerfil} onChange={e => setNovoPerfil(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                                    <option value="EXPEDICAO_TP">EXPEDIÇÃO_TP</option>
+                                    <option value="ADM_OPERACIONAL_TP">ADM_OPERACIONAL_TP</option>
+                                    <option value="TRANSPORTE_TP">TRANSPORTE_TP</option>
+                                </select>
+                                <button onClick={adicionarPerfil} className="px-4 py-2 rounded-lg font-bold text-white bg-emerald-600 hover:bg-emerald-700 text-sm">+ Adicionar</button>
+                            </div>
+                            {Object.keys(perfisFarolTP).length === 0 ? (
+                                <div className="text-xs text-gray-400">Nenhum usuário restrito cadastrado ainda. Sem cadastro aqui, o acesso ao app continua como está hoje.</div>
+                            ) : (
+                                <div className="space-y-1.5">
+                                    {Object.entries(perfisFarolTP).map(([email, perfil]) => (
+                                        <div key={email} className="flex items-center justify-between text-sm bg-gray-50 rounded-lg px-3 py-2">
+                                            <span>{email} <span className="text-xs font-bold text-indigo-600 ml-2">{perfil}</span></span>
+                                            <button onClick={() => onRemoverPerfil(email)} className="text-xs font-bold text-red-500 hover:underline">Remover</button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             );
