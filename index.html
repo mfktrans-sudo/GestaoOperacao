@@ -1059,7 +1059,7 @@
         const FAROL_ETAPA_INFO = {
             aguardando_conferencia: { etapa: 'EXPEDIÇÃO', responsavel: 'EXPEDIÇÃO', acao: 'Finalizar conferência' },
             aguardando_romaneio:    { etapa: 'ADM OPERACIONAL', responsavel: 'ADM OPERACIONAL', acao: 'Finalizar romaneio' },
-            romaneado:              { etapa: 'CARREGAMENTO', responsavel: 'EXPEDIÇÃO', acao: 'Iniciar carregamento' },
+            romaneado:              { etapa: 'CARREGAMENTO', responsavel: 'EXPEDIÇÃO', acao: 'Finalizar carregamento' },
             carregamento_andamento: { etapa: 'CARREGAMENTO', responsavel: 'EXPEDIÇÃO', acao: 'Finalizar carregamento' },
             carregamento_finalizado:{ etapa: 'TRANSPORTE', responsavel: 'TRANSPORTE', acao: 'Finalizar operação (lacre/malote)' },
             aguardando_transporte:  { etapa: 'TRANSPORTE', responsavel: 'TRANSPORTE', acao: 'Finalizar operação (lacre/malote)' },
@@ -2539,6 +2539,7 @@
             const st = item.status || 'aguardando_conferencia';
             const [veiculo, setVeiculo] = useState(item.veiculo || '');
             const [obsCarregamento, setObsCarregamento] = useState('');
+            const [horaCarregamentoManual, setHoraCarregamentoManual] = useState('');
             const [lacre, setLacre] = useState('');
             const [obsTransporte, setObsTransporte] = useState('');
             const [mostrarDivergencia, setMostrarDivergencia] = useState(false);
@@ -2601,11 +2602,22 @@
                                 </button>
                             )}
                             {st === 'romaneado' && (
-                                <button disabled={!podeExpedicao || salvando}
-                                    onClick={() => onExecutarAcao(op, item, { status: 'carregamento_andamento', carregamentoIniciadoEm: Date.now(), carregamentoIniciadoPor: user && user.email }, 'Carregamento iniciado')}
-                                    className="w-full py-3 rounded-xl font-bold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed">
-                                    🚚 Iniciar Carregamento
-                                </button>
+                                <div className="space-y-2">
+                                    <input type="text" placeholder="Veículo (opcional)" value={veiculo} onChange={e => setVeiculo(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                                    <input type="text" placeholder="Observações (opcional)" value={obsCarregamento} onChange={e => setObsCarregamento(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                                    <div>
+                                        <label className="text-xs font-semibold text-gray-500 block mb-1">Horário do carregamento (opcional — deixe em branco para usar o horário atual)</label>
+                                        <input type="datetime-local" value={horaCarregamentoManual} onChange={e => setHoraCarregamentoManual(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                                    </div>
+                                    <button disabled={!podeExpedicao || salvando}
+                                        onClick={() => {
+                                            const fimCarregamento = horaCarregamentoManual ? new Date(horaCarregamentoManual).getTime() : Date.now();
+                                            onExecutarAcao(op, item, { status: 'carregamento_finalizado', carregamentoFinalizadoEm: fimCarregamento, carregamentoFinalizadoPor: user && user.email, veiculo: veiculo || null, observacoesCarregamento: obsCarregamento || null }, 'Carregamento finalizado' + (horaCarregamentoManual ? ' (horário informado manualmente)' : ''));
+                                        }}
+                                        className="w-full py-3 rounded-xl font-bold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                                        ✅ Finalizar Carregamento
+                                    </button>
+                                </div>
                             )}
                             {st === 'carregamento_andamento' && (
                                 <div className="space-y-2">
