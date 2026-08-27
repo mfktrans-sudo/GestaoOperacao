@@ -1013,6 +1013,15 @@
                 await setDoc(doc(this.db, 'farolTP', String(operacaoId)), patch, { merge: true });
             }
 
+            // Remove o acompanhamento do Farol TP de uma operação (ela volta ao estado
+            // inicial "Aguardando Conferência" caso apareça novamente no painel). Não
+            // afeta o cadastro da operação em si (coleção 'operacoes'), usado pelo
+            // Dashboard e demais relatórios.
+            async deleteFarolTP(operacaoId) {
+                const { doc, deleteDoc } = this.fns;
+                await deleteDoc(doc(this.db, 'farolTP', String(operacaoId)));
+            }
+
             async setPerfilFarolTP(emailNormalizado, perfil) {
                 const { doc, setDoc } = this.fns;
                 await setDoc(doc(this.db, 'perfisFarolTP', emailNormalizado), { perfil, atualizadoEm: Date.now() }, { merge: true });
@@ -1101,6 +1110,21 @@
 
         const farolTemDivergenciaAberta = (item) => {
             return Array.isArray(item && item.divergencias) && item.divergencias.some(d => d.status !== 'resolvida');
+        };
+
+        // ── Operações que não devem aparecer no Farol Operacional TP ──────────────
+        // A operação "TS São Paulo" não é carregada por nós, então é ignorada
+        // apenas dentro do Farol TP (continua normalmente no Dashboard e nas
+        // demais abas do sistema).
+        const normalizarNomeOperacaoFarolTP = (nome) => (nome || '')
+            .toUpperCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^A-Z0-9]+/g, ' ')
+            .trim();
+        const ehOperacaoExcluidaDoFarolTP = (nomeOperacao) => {
+            const normalizado = normalizarNomeOperacaoFarolTP(nomeOperacao);
+            if (!normalizado) return false;
+            return normalizado === 'TS' || normalizado.includes('TS SAO PAULO');
         };
 
         // ========== APP PRINCIPAL ==========
@@ -1435,6 +1459,16 @@
                 await currentDb.upsertFarolTP(operacaoId, patch);
             };
 
+            // Admin: limpa (reseta) o acompanhamento do Farol TP das operações já
+            // finalizadas — útil para limpar testes feitos manualmente nos três
+            // processos (Expedição, ADM Operacional e Transporte). A operação em si
+            // não é excluída e continua normalmente no Dashboard/relatórios.
+            const handleLimparFarolTPFinalizadas = async (operacaoIds) => {
+                const currentDb = dbRef.current || db;
+                if (!currentDb || !isAdmin) return;
+                await Promise.all(operacaoIds.map(id => currentDb.deleteFarolTP(id)));
+            };
+
             const handleSetPerfilFarolTP = async (email, perfil) => {
                 const currentDb = dbRef.current || db;
                 if (!currentDb || !isAdmin) return;
@@ -1460,7 +1494,7 @@
             }, [farolTP]);
 
             const farolAtrasos = useMemo(() => {
-                return operacoes.reduce((total, op) => {
+                return operacoes.filter(op => !ehOperacaoExcluidaDoFarolTP(op.operacao)).reduce((total, op) => {
                     const item = farolTPMapa[op.id];
                     if (item && item.status !== 'finalizada' && (farolEstaAtrasado(item, farolConfig) || farolTemDivergenciaAberta(item))) {
                         return total + 1;
@@ -1848,7 +1882,7 @@
                             )}
                             {abaSelecionada === 'faroltp' && (
                                 <FarolOperacionalTP
-                                    operacoes={operacoes}
+                                    operacoes={operacoes.filter(op => !ehOperacaoExcluidaDoFarolTP(op.operacao))}
                                     farolTP={farolTP}
                                     farolConfig={farolConfig}
                                     user={user}
@@ -1859,6 +1893,7 @@
                                     onSetPerfil={handleSetPerfilFarolTP}
                                     onRemoverPerfil={handleRemoverPerfilFarolTP}
                                     onSalvarConfig={handleSalvarFarolConfig}
+                                    onLimparFinalizadas={handleLimparFarolTPFinalizadas}
                                 />
                             )}
                             {abaSelecionada === 'comunicacoes' && (
@@ -2292,7 +2327,7 @@
             );
         }
 
-        function FarolOperacionalTP({ operacoes, farolTP, farolConfig, user, isAdmin, meuPerfilFarolTP, perfisFarolTP, onAtualizar, onSetPerfil, onRemoverPerfil, onSalvarConfig }) {
+        function FarolOperacionalTP({ operacoes, farolTP, farolConfig, user, isAdmin, meuPerfilFarolTP, perfisFarolTP, onAtualizar, onSetPerfil, onRemoverPerfil, onSalvarConfig, onLimparFinalizadas }) {
             const podeExpedicao = isAdmin || meuPerfilFarolTP === 'EXPEDICAO_TP';
             const podeAdm = isAdmin || meuPerfilFarolTP === 'ADM_OPERACIONAL_TP';
             const podeTransporte = isAdmin || meuPerfilFarolTP === 'TRANSPORTE_TP';
@@ -2306,6 +2341,7 @@
             const [operacaoAberta, setOperacaoAberta] = useState(null);
             const [mostrarConfig, setMostrarConfig] = useState(false);
             const [salvando, setSalvando] = useState(false);
+            const [limpandoFinalizadas, setLimpandoFinalizadas] = useState(false);
             const [subAbaFarol, setSubAbaFarol] = useState('painel'); // 'painel' | 'indicadores'
 
             const farolMapa = useMemo(() => {
@@ -2352,6 +2388,37 @@
                 return c;
             }, [linhas]);
 
+            // IDs de operações já finalizadas no Farol TP (considerando todas as datas,
+            // não só o filtro de data selecionado) — usado pela limpeza de testes do admin.
+            const idsFinalizadasFarolTP = useMemo(() => {
+                return linhas
+                    .filter(l => (l.item.status || 'aguardando_conferencia') === 'finalizada')
+                    .map(l => l.op.id);
+            }, [linhas]);
+
+            const handleLimparFinalizadas = async () => {
+                if (!onLimparFinalizadas) return;
+                if (idsFinalizadasFarolTP.length === 0) {
+                    alert('Não há operações finalizadas no Farol TP para limpar.');
+                    return;
+                }
+                const confirmar = window.confirm(
+                    `Isso vai resetar ${idsFinalizadasFarolTP.length} operação(ões) finalizada(s) do Farol Operacional TP ` +
+                    `(elas voltam para a etapa inicial "Aguardando Conferência" caso apareçam de novo no fluxo).\n\n` +
+                    `A operação em si NÃO é excluída e continua normalmente no Dashboard e nos relatórios.\n\n` +
+                    `Deseja continuar?`
+                );
+                if (!confirmar) return;
+                setLimpandoFinalizadas(true);
+                try {
+                    await onLimparFinalizadas(idsFinalizadasFarolTP);
+                } catch (e) {
+                    alert('❌ Erro ao limpar operações finalizadas: ' + e.message);
+                } finally {
+                    setLimpandoFinalizadas(false);
+                }
+            };
+
             const executarAcao = async (op, item, patchExtra, textoHistorico) => {
                 setSalvando(true);
                 try {
@@ -2385,9 +2452,16 @@
                             </div>
                         </div>
                         {isAdmin && (
-                            <button onClick={() => setMostrarConfig(true)} className="px-4 py-2 rounded-xl font-bold text-sm bg-gray-100 hover:bg-gray-200 text-gray-700">
-                                ⚙️ Configurar Farol TP
-                            </button>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <button onClick={handleLimparFinalizadas} disabled={limpandoFinalizadas}
+                                    title="Reseta as operações finalizadas no Farol TP (útil para limpar testes). A operação continua no Dashboard."
+                                    className="px-4 py-2 rounded-xl font-bold text-sm bg-red-50 hover:bg-red-100 text-red-600 disabled:opacity-50">
+                                    🧹 {limpandoFinalizadas ? 'Limpando...' : `Limpar finalizadas (${idsFinalizadasFarolTP.length})`}
+                                </button>
+                                <button onClick={() => setMostrarConfig(true)} className="px-4 py-2 rounded-xl font-bold text-sm bg-gray-100 hover:bg-gray-200 text-gray-700">
+                                    ⚙️ Configurar Farol TP
+                                </button>
+                            </div>
                         )}
                     </div>
 
