@@ -1053,13 +1053,15 @@
         // ========== FAROL OPERACIONAL TP — lógica de status do fluxo ==========
         // Estados possíveis do farolItem.status:
         // 'aguardando_conferencia' -> 'aguardando_romaneio' -> 'romaneado' -> 'carregamento_andamento'
-        // -> 'carregamento_finalizado' -> 'aguardando_transporte' -> 'finalizada'
+        // -> 'carregamento_finalizado' -> 'finalizada'
+        // (a etapa 'aguardando_transporte' — assinatura do motorista — foi removida do fluxo novo;
+        //  o status ainda existe aqui apenas para não quebrar operações antigas que já estejam nele)
         const FAROL_ETAPA_INFO = {
             aguardando_conferencia: { etapa: 'EXPEDIÇÃO', responsavel: 'EXPEDIÇÃO', acao: 'Finalizar conferência' },
             aguardando_romaneio:    { etapa: 'ADM OPERACIONAL', responsavel: 'ADM OPERACIONAL', acao: 'Finalizar romaneio' },
             romaneado:              { etapa: 'CARREGAMENTO', responsavel: 'EXPEDIÇÃO', acao: 'Iniciar carregamento' },
             carregamento_andamento: { etapa: 'CARREGAMENTO', responsavel: 'EXPEDIÇÃO', acao: 'Finalizar carregamento' },
-            carregamento_finalizado:{ etapa: 'ASSINATURA', responsavel: 'EXPEDIÇÃO', acao: 'Confirmar assinatura do motorista' },
+            carregamento_finalizado:{ etapa: 'TRANSPORTE', responsavel: 'TRANSPORTE', acao: 'Finalizar operação (lacre/malote)' },
             aguardando_transporte:  { etapa: 'TRANSPORTE', responsavel: 'TRANSPORTE', acao: 'Finalizar operação (lacre/malote)' },
             finalizada:             { etapa: 'FINALIZADA', responsavel: '—', acao: '—' }
         };
@@ -1088,6 +1090,10 @@
             }
             if (item.status === 'aguardando_transporte' && item.assinaturaEm) {
                 const min = (agora - item.assinaturaEm) / 60000;
+                return min > (config.minTransporteMin || 30);
+            }
+            if (item.status === 'carregamento_finalizado' && item.carregamentoFinalizadoEm) {
+                const min = (agora - item.carregamentoFinalizadoEm) / 60000;
                 return min > (config.minTransporteMin || 30);
             }
             return false;
@@ -1973,8 +1979,7 @@
             { chave: 'romaneio', label: 'Romaneio (ADM Operacional)', de: 'conferenciaFinalizadaEm', ate: 'romaneioFinalizadoEm' },
             { chave: 'esperaCarregamento', label: 'Espera para carregamento', de: 'romaneioFinalizadoEm', ate: 'carregamentoIniciadoEm' },
             { chave: 'carregamento', label: 'Carregamento', de: 'carregamentoIniciadoEm', ate: 'carregamentoFinalizadoEm' },
-            { chave: 'esperaAssinatura', label: 'Espera para assinatura', de: 'carregamentoFinalizadoEm', ate: 'assinaturaEm' },
-            { chave: 'transporte', label: 'Lacre / liberação transporte', de: 'assinaturaEm', ate: 'finalizadoEm' }
+            { chave: 'transporte', label: 'Aguardando lacre / transporte', de: 'carregamentoFinalizadoEm', ate: 'finalizadoEm' }
         ];
 
         // Retorna { [chave]: minutos ou null, total: minutos ou null } para um item do farol
@@ -2339,8 +2344,8 @@
                     const st = l.item.status || 'aguardando_conferencia';
                     if (st === 'aguardando_conferencia') c.conferencia++;
                     else if (st === 'aguardando_romaneio') c.romaneio++;
-                    else if (['romaneado','carregamento_andamento','carregamento_finalizado'].includes(st)) c.carregamento++;
-                    else if (st === 'aguardando_transporte') c.transporte++;
+                    else if (['romaneado','carregamento_andamento'].includes(st)) c.carregamento++;
+                    else if (st === 'carregamento_finalizado' || st === 'aguardando_transporte') c.transporte++;
                     else if (st === 'finalizada') c.finalizadas++;
                     if (l.atraso || l.divergente) c.atraso++;
                 });
@@ -2613,14 +2618,7 @@
                                     </button>
                                 </div>
                             )}
-                            {st === 'carregamento_finalizado' && (
-                                <button disabled={!podeExpedicao || salvando}
-                                    onClick={() => onExecutarAcao(op, item, { status: 'aguardando_transporte', assinaturaEm: Date.now(), assinaturaPor: user && user.email }, 'Motorista assinou o romaneio')}
-                                    className="w-full py-3 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed">
-                                    ✍️ Romaneio Assinado
-                                </button>
-                            )}
-                            {st === 'aguardando_transporte' && (
+                            {(st === 'carregamento_finalizado' || st === 'aguardando_transporte') && (
                                 <div className="space-y-2">
                                     <input type="text" placeholder="Número do lacre (opcional)" value={lacre} onChange={e => setLacre(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                                     <input type="text" placeholder="Observações (opcional)" value={obsTransporte} onChange={e => setObsTransporte(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
