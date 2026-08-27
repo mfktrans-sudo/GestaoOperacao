@@ -2448,7 +2448,49 @@
                 return Object.entries(grupos).sort((a, b) => (b[0] || '').localeCompare(a[0] || ''));
             }, [itensFinalizadosFarolTP]);
 
+            // Operações travadas/atrasadas no Farol TP (NÃO finalizadas), agrupadas por
+            // data — mesma lógica de "atraso" usada nos indicadores (farolEstaAtrasado),
+            // mas aqui olhando a coleção 'farolTP' inteira (todas as datas) para permitir
+            // localizar e resetar itens antigos que ficaram presos em alguma etapa (ex.:
+            // testes anteriores), mesmo que a operação de origem já não exista mais.
+            const itensAtrasadosFarolTP = useMemo(() => {
+                return farolTP
+                    .filter(f => f.status !== 'finalizada' && farolEstaAtrasado(f, farolConfig))
+                    .map(f => {
+                        const op = mapaOperacoesPorId[String(f.id)];
+                        return { f, op };
+                    })
+                    .filter(({ op }) => !op || !ehOperacaoExcluidaDoFarolTP(op.operacao))
+                    .map(({ f, op }) => {
+                        const tsEtapa = f.carregamentoFinalizadoEm || f.assinaturaEm || f.conferenciaFinalizadaEm || f.criadoEm;
+                        const dataChave = (op && op.data) ? op.data : (timestampParaDataStr(tsEtapa) || 'Sem data');
+                        const infoEtapa = FAROL_ETAPA_INFO[f.status || 'aguardando_conferencia'];
+                        return {
+                            id: f.id,
+                            op,
+                            dataChave,
+                            nome: op ? op_nome(op) : `Operação removida (ID ${f.id})`,
+                            destinos: (op && Array.isArray(op.destinos) && op.destinos.length) ? op.destinos.map(d => d.nome).join(', ') : '',
+                            doca: op ? op.doca : null,
+                            etapaAtual: infoEtapa ? infoEtapa.etapa : (f.status || ''),
+                        };
+                    })
+                    .sort((a, b) => (b.dataChave || '').localeCompare(a.dataChave || ''));
+            }, [farolTP, mapaOperacoesPorId, farolConfig]);
+
+            const gruposAtrasadosPorData = useMemo(() => {
+                const grupos = {};
+                itensAtrasadosFarolTP.forEach(it => {
+                    const chave = it.dataChave;
+                    if (!grupos[chave]) grupos[chave] = [];
+                    grupos[chave].push(it);
+                });
+                return Object.entries(grupos).sort((a, b) => (b[0] || '').localeCompare(a[0] || ''));
+            }, [itensAtrasadosFarolTP]);
+
             const [mostrarLimparFinalizadas, setMostrarLimparFinalizadas] = useState(false);
+            const [mostrarLimparAtrasadas, setMostrarLimparAtrasadas] = useState(false);
+            const [limpandoAtrasadas, setLimpandoAtrasadas] = useState(false);
 
             const handleConfirmarLimparFinalizadas = async (idsSelecionados) => {
                 if (!onLimparFinalizadas || !isAdmin) return;
@@ -2462,6 +2504,24 @@
                     alert('❌ Erro ao limpar operações finalizadas: ' + e.message);
                 } finally {
                     setLimpandoFinalizadas(false);
+                }
+            };
+
+            // Reaproveita o mesmo mecanismo de limpeza (deleteFarolTP por id) usado nas
+            // finalizadas: remove o registro do Farol TP e a operação volta para a etapa
+            // inicial "Aguardando Conferência" caso apareça de novo no fluxo.
+            const handleConfirmarLimparAtrasadas = async (idsSelecionados) => {
+                if (!onLimparFinalizadas || !isAdmin) return;
+                const ids = Array.isArray(idsSelecionados) ? idsSelecionados : itensAtrasadosFarolTP.map(it => it.id);
+                if (ids.length === 0) return;
+                setLimpandoAtrasadas(true);
+                try {
+                    await onLimparFinalizadas(ids);
+                    setMostrarLimparAtrasadas(false);
+                } catch (e) {
+                    alert('❌ Erro ao limpar operações travadas/atrasadas: ' + e.message);
+                } finally {
+                    setLimpandoAtrasadas(false);
                 }
             };
 
@@ -2503,6 +2563,11 @@
                                     title="Somente o administrador pode limpar operações finalizadas (mesma regra da aba Configurações)."
                                     className="px-4 py-2 rounded-xl font-bold text-sm bg-red-50 hover:bg-red-100 text-red-600 disabled:opacity-50">
                                     🧹 Limpar finalizadas ({itensFinalizadosFarolTP.length})
+                                </button>
+                                <button onClick={() => setMostrarLimparAtrasadas(true)} disabled={limpandoAtrasadas}
+                                    title="Reseta operações que ficaram travadas/atrasadas em alguma etapa (romaneio, carregamento ou transporte), sem excluir a operação em si."
+                                    className="px-4 py-2 rounded-xl font-bold text-sm bg-amber-50 hover:bg-amber-100 text-amber-700 disabled:opacity-50">
+                                    🧹 Limpar travadas/atrasadas ({itensAtrasadosFarolTP.length})
                                 </button>
                                 <button onClick={() => setMostrarConfig(true)} className="px-4 py-2 rounded-xl font-bold text-sm bg-gray-100 hover:bg-gray-200 text-gray-700">
                                     ⚙️ Configurar Farol TP
@@ -2655,6 +2720,38 @@
                             salvando={limpandoFinalizadas}
                             onConfirmar={handleConfirmarLimparFinalizadas}
                             onFechar={() => setMostrarLimparFinalizadas(false)}
+                            titulo="🧹 Limpar operações finalizadas"
+                            descricao={<>
+                                Ação restrita ao administrador (mesma regra usada em Configurações → Limpar Dados).
+                                Existem {itensFinalizadosFarolTP.length} operação(ões) finalizada(s) registradas, agrupadas abaixo por data.
+                                Marque as datas ou operações específicas que deseja limpar — as demais permanecem exatamente como estão.
+                                Resetará o acompanhamento no Farol TP das operações selecionadas, voltando cada uma para a etapa
+                                inicial "Aguardando Conferência" caso apareça de novo no fluxo.
+                                A operação em si não é excluída e continua normalmente no Dashboard e nos relatórios.
+                            </>}
+                            textoVazio="Não há operações finalizadas no Farol TP no momento."
+                        />
+                    )}
+
+                    {mostrarLimparAtrasadas && isAdmin && (
+                        <FarolLimparFinalizadasModal
+                            gruposPorData={gruposAtrasadosPorData}
+                            total={itensAtrasadosFarolTP.length}
+                            salvando={limpandoAtrasadas}
+                            onConfirmar={handleConfirmarLimparAtrasadas}
+                            onFechar={() => setMostrarLimparAtrasadas(false)}
+                            titulo="🧹 Limpar operações travadas/atrasadas"
+                            descricao={<>
+                                Ação restrita ao administrador. Estas são operações <strong>ainda não finalizadas</strong> que
+                                ficaram paradas em alguma etapa (romaneio, carregamento ou transporte) além do tempo configurado
+                                em "Configurar Farol TP" — geralmente registros antigos ou de testes que nunca avançaram.
+                                Marque as datas ou operações que deseja resetar — as demais permanecem exatamente como estão.
+                                Resetará o acompanhamento no Farol TP das operações selecionadas, voltando cada uma para a etapa
+                                inicial "Aguardando Conferência" caso apareça de novo no fluxo.
+                                A operação em si não é excluída e continua normalmente no Dashboard e nos relatórios.
+                            </>}
+                            textoVazio="Não há operações travadas/atrasadas no Farol TP no momento."
+                            mostrarEtapa
                         />
                     )}
                 </div>
@@ -2664,7 +2761,7 @@
         // Modal (somente administrador) que mostra, agrupadas por data, TODAS as
         // operações finalizadas no Farol TP — de qualquer dia, não só o filtro do
         // painel — para que o admin veja exatamente o que será limpo antes de confirmar.
-        function FarolLimparFinalizadasModal({ gruposPorData, total, salvando, onConfirmar, onFechar }) {
+        function FarolLimparFinalizadasModal({ gruposPorData, total, salvando, onConfirmar, onFechar, titulo, descricao, textoVazio, mostrarEtapa }) {
             // Por padrão todas as operações finalizadas (de todas as datas) começam
             // selecionadas — preserva o comportamento original de "limpar tudo" com 1 clique.
             // O admin pode desmarcar datas ou operações específicas para limpar só parte.
@@ -2699,19 +2796,21 @@
             return (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onFechar}>
                     <div className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                        <h3 className="text-xl font-bold text-gray-800 mb-1">🧹 Limpar operações finalizadas</h3>
+                        <h3 className="text-xl font-bold text-gray-800 mb-1">{titulo || '🧹 Limpar operações finalizadas'}</h3>
                         <p className="text-xs text-gray-500 mb-4">
-                            Ação restrita ao administrador (mesma regra usada em Configurações → Limpar Dados).
-                            Existem {total} operação(ões) finalizada(s) registradas, agrupadas abaixo por data.
-                            Marque as datas ou operações específicas que deseja limpar — as demais permanecem exatamente como estão.
-                            Resetará o acompanhamento no Farol TP das operações selecionadas, voltando cada uma para a etapa
-                            inicial "Aguardando Conferência" caso apareça de novo no fluxo.
-                            A operação em si não é excluída e continua normalmente no Dashboard e nos relatórios.
+                            {descricao || (<>
+                                Ação restrita ao administrador (mesma regra usada em Configurações → Limpar Dados).
+                                Existem {total} operação(ões) finalizada(s) registradas, agrupadas abaixo por data.
+                                Marque as datas ou operações específicas que deseja limpar — as demais permanecem exatamente como estão.
+                                Resetará o acompanhamento no Farol TP das operações selecionadas, voltando cada uma para a etapa
+                                inicial "Aguardando Conferência" caso apareça de novo no fluxo.
+                                A operação em si não é excluída e continua normalmente no Dashboard e nos relatórios.
+                            </>)}
                         </p>
 
                         <div className="overflow-y-auto flex-1 border border-gray-200 rounded-xl">
                             {total === 0 ? (
-                                <div className="text-center text-gray-400 py-8 text-sm">Não há operações finalizadas no Farol TP no momento.</div>
+                                <div className="text-center text-gray-400 py-8 text-sm">{textoVazio || 'Não há operações finalizadas no Farol TP no momento.'}</div>
                             ) : (
                                 gruposPorData.map(([data, itens]) => {
                                     const marcado = grupoTotalmenteSelecionado(itens);
@@ -2730,6 +2829,9 @@
                                                     <span className="font-semibold flex items-center gap-2">
                                                         <input type="checkbox" checked={selecionados.has(it.id)} onChange={() => alternarItem(it.id)} />
                                                         {it.nome}
+                                                        {mostrarEtapa && it.etapaAtual && (
+                                                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">{it.etapaAtual}</span>
+                                                        )}
                                                     </span>
                                                     <span className="text-xs text-gray-400">{it.destinos || ''} {it.doca ? ('· Doca ' + it.doca) : ''}</span>
                                                 </div>
