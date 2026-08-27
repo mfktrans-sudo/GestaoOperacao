@@ -730,6 +730,19 @@
             animation: pulseGreen 2s infinite;
         }
 
+        /* ===== FAROL OPERACIONAL TP — animação das bolinhas de etapa ===== */
+        @keyframes farolDotPulseScale { 0%,100%{ transform: scale(1); } 50%{ transform: scale(1.22); } }
+        @keyframes farolDotRing { 0%{ transform: scale(1); opacity:0.6; } 100%{ transform: scale(2.4); opacity:0; } }
+        @keyframes farolDotPop { 0%{ transform: scale(0.3); opacity:0; } 55%{ transform: scale(1.35); opacity:1; } 100%{ transform: scale(1); opacity:1; } }
+        .farol-dot-wrap { position: relative; }
+        .farol-dot-wrap .farol-dot { position:absolute; inset:0; border-radius:50%; z-index:2; transition: transform .2s ease; }
+        .farol-dot-wrap .farol-dot-ring { position:absolute; inset:0; border-radius:50%; z-index:1; background: rgb(var(--farol-rgb)); }
+        .farol-dot-ativo .farol-dot { animation: farolDotPulseScale 1.6s ease-in-out infinite; box-shadow: 0 0 0 3px rgba(var(--farol-rgb),0.28); }
+        .farol-dot-ativo .farol-dot-ring { animation: farolDotRing 1.6s ease-out infinite; }
+        .farol-dot-atrasado .farol-dot { animation: farolDotPulseScale 0.85s ease-in-out infinite; box-shadow: 0 0 0 3px rgba(var(--farol-rgb),0.32); }
+        .farol-dot-atrasado .farol-dot-ring { animation: farolDotRing 0.85s ease-out infinite; }
+        .farol-dot-concluido .farol-dot { animation: farolDotPop 0.45s ease-out; }
+
         /* ===== FAROL OPERACIONAL TP — animações 3D por área ===== */
         .farol3d-cena { perspective: 340px; perspective-origin: 50% 40%; display:flex; align-items:center; justify-content:center; }
         .farol3d-palco { transform-style: preserve-3d; position:relative; }
@@ -1939,7 +1952,7 @@
                 { label: 'Expedição', color: cor(idx >= 1, idx === 0) },
                 { label: 'Romaneio', color: cor(idx >= 2, idx === 1) },
                 { label: 'Carregamento', color: cor(idx >= 4, idx === 2 || idx === 3) },
-                { label: 'Transporte', color: cor(idx === 6, idx === 4 || idx === 5) }
+                { label: 'Largada', color: cor(idx === 6, idx === 4 || idx === 5) }
             ];
             const atrasado = farolEstaAtrasado(item, config);
             const divergente = farolTemDivergenciaAberta(item);
@@ -1952,10 +1965,24 @@
 
         const FAROL_COR_HEX = { verde: '#10b981', amarelo: '#f59e0b', vermelho: '#ef4444', cinza: '#d1d5db' };
 
+        const farolHexToRgb = (hex) => {
+            const h = hex.replace('#','');
+            const n = parseInt(h, 16);
+            return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
+        };
+
         function FarolStatusDot({ color, label }) {
+            const hex = FAROL_COR_HEX[color];
+            const ativo = color === 'amarelo';
+            const atrasado = color === 'vermelho';
+            const concluido = color === 'verde';
+            const wrapClass = 'farol-dot-wrap' + (ativo ? ' farol-dot-ativo' : '') + (atrasado ? ' farol-dot-atrasado' : '') + (concluido ? ' farol-dot-concluido' : '');
             return (
                 <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,minWidth:64}}>
-                    <div style={{width:16,height:16,borderRadius:'50%',background:FAROL_COR_HEX[color],boxShadow: color==='amarelo' || color==='vermelho' ? `0 0 0 3px ${FAROL_COR_HEX[color]}33` : 'none'}}></div>
+                    <div className={wrapClass} style={{width:16, height:16, '--farol-rgb': farolHexToRgb(hex)}}>
+                        {(ativo || atrasado) && <span className="farol-dot-ring"></span>}
+                        <span className="farol-dot" style={{background:hex}}></span>
+                    </div>
                     <span style={{fontSize:10,fontWeight:700,color:'#6b7280',textAlign:'center'}}>{label}</span>
                 </div>
             );
