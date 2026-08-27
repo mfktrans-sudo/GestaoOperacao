@@ -2450,9 +2450,9 @@
 
             const [mostrarLimparFinalizadas, setMostrarLimparFinalizadas] = useState(false);
 
-            const handleConfirmarLimparFinalizadas = async () => {
+            const handleConfirmarLimparFinalizadas = async (idsSelecionados) => {
                 if (!onLimparFinalizadas || !isAdmin) return;
-                const ids = itensFinalizadosFarolTP.map(it => it.id);
+                const ids = Array.isArray(idsSelecionados) ? idsSelecionados : itensFinalizadosFarolTP.map(it => it.id);
                 if (ids.length === 0) return;
                 setLimpandoFinalizadas(true);
                 try {
@@ -2665,14 +2665,47 @@
         // operações finalizadas no Farol TP — de qualquer dia, não só o filtro do
         // painel — para que o admin veja exatamente o que será limpo antes de confirmar.
         function FarolLimparFinalizadasModal({ gruposPorData, total, salvando, onConfirmar, onFechar }) {
+            // Por padrão todas as operações finalizadas (de todas as datas) começam
+            // selecionadas — preserva o comportamento original de "limpar tudo" com 1 clique.
+            // O admin pode desmarcar datas ou operações específicas para limpar só parte.
+            const [selecionados, setSelecionados] = useState(() => {
+                const s = new Set();
+                gruposPorData.forEach(([, itens]) => itens.forEach(it => s.add(it.id)));
+                return s;
+            });
+
+            const grupoTotalmenteSelecionado = (itens) => itens.every(it => selecionados.has(it.id));
+            const grupoParcialmenteSelecionado = (itens) => itens.some(it => selecionados.has(it.id)) && !grupoTotalmenteSelecionado(itens);
+
+            const alternarGrupo = (itens) => {
+                setSelecionados(prev => {
+                    const novo = new Set(prev);
+                    const todosSelecionados = itens.every(it => novo.has(it.id));
+                    itens.forEach(it => { if (todosSelecionados) novo.delete(it.id); else novo.add(it.id); });
+                    return novo;
+                });
+            };
+
+            const alternarItem = (id) => {
+                setSelecionados(prev => {
+                    const novo = new Set(prev);
+                    if (novo.has(id)) novo.delete(id); else novo.add(id);
+                    return novo;
+                });
+            };
+
+            const totalSelecionado = selecionados.size;
+
             return (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onFechar}>
                     <div className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
                         <h3 className="text-xl font-bold text-gray-800 mb-1">🧹 Limpar operações finalizadas</h3>
                         <p className="text-xs text-gray-500 mb-4">
                             Ação restrita ao administrador (mesma regra usada em Configurações → Limpar Dados).
-                            Resetará o acompanhamento no Farol TP de {total} operação(ões) finalizada(s), de todos os dias,
-                            voltando cada uma para a etapa inicial "Aguardando Conferência" caso apareça de novo no fluxo.
+                            Existem {total} operação(ões) finalizada(s) registradas, agrupadas abaixo por data.
+                            Marque as datas ou operações específicas que deseja limpar — as demais permanecem exatamente como estão.
+                            Resetará o acompanhamento no Farol TP das operações selecionadas, voltando cada uma para a etapa
+                            inicial "Aguardando Conferência" caso apareça de novo no fluxo.
                             A operação em si não é excluída e continua normalmente no Dashboard e nos relatórios.
                         </p>
 
@@ -2680,19 +2713,30 @@
                             {total === 0 ? (
                                 <div className="text-center text-gray-400 py-8 text-sm">Não há operações finalizadas no Farol TP no momento.</div>
                             ) : (
-                                gruposPorData.map(([data, itens]) => (
-                                    <div key={data} className="border-b border-gray-100 last:border-b-0">
-                                        <div className="bg-gray-50 px-4 py-2 text-xs font-bold text-gray-600 sticky top-0">
-                                            📅 {data === 'Sem data' ? 'Sem data' : formatarData(data)} · {itens.length} operação(ões)
-                                        </div>
-                                        {itens.map(it => (
-                                            <div key={it.id} className="px-4 py-2 text-sm text-gray-700 flex flex-wrap items-center justify-between gap-2 border-t border-gray-50">
-                                                <span className="font-semibold">{it.nome}</span>
-                                                <span className="text-xs text-gray-400">{it.destinos || ''} {it.doca ? ('· Doca ' + it.doca) : ''}</span>
+                                gruposPorData.map(([data, itens]) => {
+                                    const marcado = grupoTotalmenteSelecionado(itens);
+                                    const parcial = grupoParcialmenteSelecionado(itens);
+                                    return (
+                                        <div key={data} className="border-b border-gray-100 last:border-b-0">
+                                            <div className="bg-gray-50 px-4 py-2 text-xs font-bold text-gray-600 sticky top-0 flex items-center gap-2">
+                                                <input type="checkbox" checked={marcado}
+                                                    ref={el => { if (el) el.indeterminate = parcial; }}
+                                                    onChange={() => alternarGrupo(itens)}
+                                                    title="Marcar/desmarcar todas as operações desta data" />
+                                                📅 {data === 'Sem data' ? 'Sem data' : formatarData(data)} · {itens.length} operação(ões)
                                             </div>
-                                        ))}
-                                    </div>
-                                ))
+                                            {itens.map(it => (
+                                                <div key={it.id} className="px-4 py-2 text-sm text-gray-700 flex flex-wrap items-center justify-between gap-2 border-t border-gray-50">
+                                                    <span className="font-semibold flex items-center gap-2">
+                                                        <input type="checkbox" checked={selecionados.has(it.id)} onChange={() => alternarItem(it.id)} />
+                                                        {it.nome}
+                                                    </span>
+                                                    <span className="text-xs text-gray-400">{it.destinos || ''} {it.doca ? ('· Doca ' + it.doca) : ''}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    );
+                                })
                             )}
                         </div>
 
@@ -2700,9 +2744,9 @@
                             <button onClick={onFechar} className="px-5 py-2 rounded-xl font-bold text-sm bg-gray-100 hover:bg-gray-200 text-gray-700">
                                 Cancelar
                             </button>
-                            <button onClick={onConfirmar} disabled={salvando || total === 0}
+                            <button onClick={() => onConfirmar(Array.from(selecionados))} disabled={salvando || totalSelecionado === 0}
                                 className="px-5 py-2 rounded-xl font-bold text-sm bg-red-600 hover:bg-red-700 text-white disabled:opacity-50">
-                                {salvando ? 'Limpando...' : `Confirmar limpeza (${total})`}
+                                {salvando ? 'Limpando...' : `Confirmar limpeza (${totalSelecionado})`}
                             </button>
                         </div>
                     </div>
