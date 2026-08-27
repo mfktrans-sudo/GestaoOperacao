@@ -1045,6 +1045,19 @@
             return `${y}-${m}-${d}`;
         };
 
+        // Converte um timestamp (ms) em string 'YYYY-MM-DD' no fuso de São Paulo —
+        // usado para agrupar por data itens do Farol TP cuja operação original já
+        // não existe mais em 'operacoes' (por isso não têm o campo op.data).
+        const timestampParaDataStr = (ts) => {
+            if (!ts) return null;
+            const d = new Date(ts);
+            const brt = new Date(d.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+            const y = brt.getFullYear();
+            const m = String(brt.getMonth() + 1).padStart(2, '0');
+            const dia = String(brt.getDate()).padStart(2, '0');
+            return `${y}-${m}-${dia}`;
+        };
+
         const formatarData = (data) => {
             const d = new Date(data + 'T00:00:00');
             return d.toLocaleDateString('pt-BR');
@@ -1882,7 +1895,7 @@
                             )}
                             {abaSelecionada === 'faroltp' && (
                                 <FarolOperacionalTP
-                                    operacoes={operacoes.filter(op => !ehOperacaoExcluidaDoFarolTP(op.operacao))}
+                                    operacoes={operacoes}
                                     farolTP={farolTP}
                                     farolConfig={farolConfig}
                                     user={user}
@@ -2350,14 +2363,16 @@
                 return mapa;
             }, [farolTP]);
 
+            const operacoesFarolTP = useMemo(() => operacoes.filter(op => !ehOperacaoExcluidaDoFarolTP(op.operacao)), [operacoes]);
+
             const linhas = useMemo(() => {
-                return operacoes.map(op => {
+                return operacoesFarolTP.map(op => {
                     const item = farolMapa[op.id] || farolNovoItem();
                     const info = FAROL_ETAPA_INFO[item.status || 'aguardando_conferencia'];
                     const destinos = Array.isArray(op.destinos) && op.destinos.length ? op.destinos.map(d => d.nome).join(', ') : '';
                     return { op, item, info, destinos, atraso: farolEstaAtrasado(item, farolConfig), divergente: farolTemDivergenciaAberta(item) };
                 }).sort((a, b) => (b.op.data || '').localeCompare(a.op.data || ''));
-            }, [operacoes, farolMapa, farolConfig]);
+            }, [operacoesFarolTP, farolMapa, farolConfig]);
 
             const linhasFiltradas = useMemo(() => {
                 const buscaLower = busca.trim().toLowerCase();
@@ -2388,30 +2403,56 @@
                 return c;
             }, [linhas]);
 
-            // Operações já finalizadas no Farol TP, agrupadas por data — considerando
-            // TODAS as datas (não só o filtro de data selecionado no painel), para o
-            // administrador ter visão completa de tudo que será limpo.
-            const linhasFinalizadasFarolTP = useMemo(() => {
-                return linhas
-                    .filter(l => (l.item.status || 'aguardando_conferencia') === 'finalizada')
-                    .sort((a, b) => (b.op.data || '').localeCompare(a.op.data || ''));
-            }, [linhas]);
+            // Operações já finalizadas no Farol TP, agrupadas por data — busca direto na
+            // coleção 'farolTP' (não em 'linhas'/'operacoes'), pois inclui também itens
+            // cuja operação original já foi removida de 'operacoes' (órfãos deixados por
+            // testes), que antes não apareciam aqui. Considera TODAS as datas, não só o
+            // filtro de data selecionado no painel.
+            const mapaOperacoesPorId = useMemo(() => {
+                const m = {};
+                operacoes.forEach(op => { m[String(op.id)] = op; });
+                return m;
+            }, [operacoes]);
+
+            const itensFinalizadosFarolTP = useMemo(() => {
+                return farolTP
+                    .filter(f => f.status === 'finalizada')
+                    .map(f => {
+                        const op = mapaOperacoesPorId[String(f.id)];
+                        return { f, op };
+                    })
+                    // Ignora TS São Paulo aqui também (não é carregada por nós, então não
+                    // deve entrar nem na visualização, nem na limpeza do Farol TP).
+                    .filter(({ op }) => !op || !ehOperacaoExcluidaDoFarolTP(op.operacao))
+                    .map(({ f, op }) => {
+                        const dataChave = (op && op.data) ? op.data : (timestampParaDataStr(f.finalizadoEm) || 'Sem data');
+                        return {
+                            id: f.id,
+                            op,
+                            dataChave,
+                            nome: op ? op_nome(op) : `Operação removida (ID ${f.id})`,
+                            destinos: (op && Array.isArray(op.destinos) && op.destinos.length) ? op.destinos.map(d => d.nome).join(', ') : '',
+                            doca: op ? op.doca : null,
+                        };
+                    })
+                    .sort((a, b) => (b.dataChave || '').localeCompare(a.dataChave || ''));
+            }, [farolTP, mapaOperacoesPorId]);
 
             const gruposFinalizadasPorData = useMemo(() => {
                 const grupos = {};
-                linhasFinalizadasFarolTP.forEach(l => {
-                    const chave = l.op.data || 'Sem data';
+                itensFinalizadosFarolTP.forEach(it => {
+                    const chave = it.dataChave;
                     if (!grupos[chave]) grupos[chave] = [];
-                    grupos[chave].push(l);
+                    grupos[chave].push(it);
                 });
                 return Object.entries(grupos).sort((a, b) => (b[0] || '').localeCompare(a[0] || ''));
-            }, [linhasFinalizadasFarolTP]);
+            }, [itensFinalizadosFarolTP]);
 
             const [mostrarLimparFinalizadas, setMostrarLimparFinalizadas] = useState(false);
 
             const handleConfirmarLimparFinalizadas = async () => {
                 if (!onLimparFinalizadas || !isAdmin) return;
-                const ids = linhasFinalizadasFarolTP.map(l => l.op.id);
+                const ids = itensFinalizadosFarolTP.map(it => it.id);
                 if (ids.length === 0) return;
                 setLimpandoFinalizadas(true);
                 try {
@@ -2461,7 +2502,7 @@
                                 <button onClick={() => setMostrarLimparFinalizadas(true)} disabled={limpandoFinalizadas}
                                     title="Somente o administrador pode limpar operações finalizadas (mesma regra da aba Configurações)."
                                     className="px-4 py-2 rounded-xl font-bold text-sm bg-red-50 hover:bg-red-100 text-red-600 disabled:opacity-50">
-                                    🧹 Limpar finalizadas ({linhasFinalizadasFarolTP.length})
+                                    🧹 Limpar finalizadas ({itensFinalizadosFarolTP.length})
                                 </button>
                                 <button onClick={() => setMostrarConfig(true)} className="px-4 py-2 rounded-xl font-bold text-sm bg-gray-100 hover:bg-gray-200 text-gray-700">
                                     ⚙️ Configurar Farol TP
@@ -2610,7 +2651,7 @@
                     {mostrarLimparFinalizadas && isAdmin && (
                         <FarolLimparFinalizadasModal
                             gruposPorData={gruposFinalizadasPorData}
-                            total={linhasFinalizadasFarolTP.length}
+                            total={itensFinalizadosFarolTP.length}
                             salvando={limpandoFinalizadas}
                             onConfirmar={handleConfirmarLimparFinalizadas}
                             onFechar={() => setMostrarLimparFinalizadas(false)}
@@ -2644,10 +2685,10 @@
                                         <div className="bg-gray-50 px-4 py-2 text-xs font-bold text-gray-600 sticky top-0">
                                             📅 {data === 'Sem data' ? 'Sem data' : formatarData(data)} · {itens.length} operação(ões)
                                         </div>
-                                        {itens.map(l => (
-                                            <div key={l.op.id} className="px-4 py-2 text-sm text-gray-700 flex flex-wrap items-center justify-between gap-2 border-t border-gray-50">
-                                                <span className="font-semibold">{op_nome(l.op)}</span>
-                                                <span className="text-xs text-gray-400">{l.destinos || ''} {l.op.doca ? ('· Doca ' + l.op.doca) : ''}</span>
+                                        {itens.map(it => (
+                                            <div key={it.id} className="px-4 py-2 text-sm text-gray-700 flex flex-wrap items-center justify-between gap-2 border-t border-gray-50">
+                                                <span className="font-semibold">{it.nome}</span>
+                                                <span className="text-xs text-gray-400">{it.destinos || ''} {it.doca ? ('· Doca ' + it.doca) : ''}</span>
                                             </div>
                                         ))}
                                     </div>
