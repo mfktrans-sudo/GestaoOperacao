@@ -1399,7 +1399,7 @@
 
             // Perfil do usuário atual no Farol TP. Administrador (ADMIN_EMAIL) sempre tem acesso total.
             const meuPerfilFarolTP = user ? (perfisFarolTP[(user.email || '').toLowerCase()] || null) : null;
-            const PERFIS_RESTRITOS_TP = ['EXPEDICAO_TP', 'ADM_OPERACIONAL_TP', 'TRANSPORTE_TP'];
+            const PERFIS_RESTRITOS_TP = ['ADM_OPERACIONAL_TP', 'TRANSPORTE_TP'];
             const restritoAoFarolTP = !isAdmin && PERFIS_RESTRITOS_TP.includes(meuPerfilFarolTP);
 
             // Se o usuário é restrito ao Farol TP, ele só pode estar nessa aba — trava também no client
