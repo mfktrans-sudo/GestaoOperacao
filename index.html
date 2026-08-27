@@ -2388,30 +2388,35 @@
                 return c;
             }, [linhas]);
 
-            // IDs de operações já finalizadas no Farol TP (considerando todas as datas,
-            // não só o filtro de data selecionado) — usado pela limpeza de testes do admin.
-            const idsFinalizadasFarolTP = useMemo(() => {
+            // Operações já finalizadas no Farol TP, agrupadas por data — considerando
+            // TODAS as datas (não só o filtro de data selecionado no painel), para o
+            // administrador ter visão completa de tudo que será limpo.
+            const linhasFinalizadasFarolTP = useMemo(() => {
                 return linhas
                     .filter(l => (l.item.status || 'aguardando_conferencia') === 'finalizada')
-                    .map(l => l.op.id);
+                    .sort((a, b) => (b.op.data || '').localeCompare(a.op.data || ''));
             }, [linhas]);
 
-            const handleLimparFinalizadas = async () => {
-                if (!onLimparFinalizadas) return;
-                if (idsFinalizadasFarolTP.length === 0) {
-                    alert('Não há operações finalizadas no Farol TP para limpar.');
-                    return;
-                }
-                const confirmar = window.confirm(
-                    `Isso vai resetar ${idsFinalizadasFarolTP.length} operação(ões) finalizada(s) do Farol Operacional TP ` +
-                    `(elas voltam para a etapa inicial "Aguardando Conferência" caso apareçam de novo no fluxo).\n\n` +
-                    `A operação em si NÃO é excluída e continua normalmente no Dashboard e nos relatórios.\n\n` +
-                    `Deseja continuar?`
-                );
-                if (!confirmar) return;
+            const gruposFinalizadasPorData = useMemo(() => {
+                const grupos = {};
+                linhasFinalizadasFarolTP.forEach(l => {
+                    const chave = l.op.data || 'Sem data';
+                    if (!grupos[chave]) grupos[chave] = [];
+                    grupos[chave].push(l);
+                });
+                return Object.entries(grupos).sort((a, b) => (b[0] || '').localeCompare(a[0] || ''));
+            }, [linhasFinalizadasFarolTP]);
+
+            const [mostrarLimparFinalizadas, setMostrarLimparFinalizadas] = useState(false);
+
+            const handleConfirmarLimparFinalizadas = async () => {
+                if (!onLimparFinalizadas || !isAdmin) return;
+                const ids = linhasFinalizadasFarolTP.map(l => l.op.id);
+                if (ids.length === 0) return;
                 setLimpandoFinalizadas(true);
                 try {
-                    await onLimparFinalizadas(idsFinalizadasFarolTP);
+                    await onLimparFinalizadas(ids);
+                    setMostrarLimparFinalizadas(false);
                 } catch (e) {
                     alert('❌ Erro ao limpar operações finalizadas: ' + e.message);
                 } finally {
@@ -2453,10 +2458,10 @@
                         </div>
                         {isAdmin && (
                             <div className="flex flex-wrap items-center gap-2">
-                                <button onClick={handleLimparFinalizadas} disabled={limpandoFinalizadas}
-                                    title="Reseta as operações finalizadas no Farol TP (útil para limpar testes). A operação continua no Dashboard."
+                                <button onClick={() => setMostrarLimparFinalizadas(true)} disabled={limpandoFinalizadas}
+                                    title="Somente o administrador pode limpar operações finalizadas (mesma regra da aba Configurações)."
                                     className="px-4 py-2 rounded-xl font-bold text-sm bg-red-50 hover:bg-red-100 text-red-600 disabled:opacity-50">
-                                    🧹 {limpandoFinalizadas ? 'Limpando...' : `Limpar finalizadas (${idsFinalizadasFarolTP.length})`}
+                                    🧹 Limpar finalizadas ({linhasFinalizadasFarolTP.length})
                                 </button>
                                 <button onClick={() => setMostrarConfig(true)} className="px-4 py-2 rounded-xl font-bold text-sm bg-gray-100 hover:bg-gray-200 text-gray-700">
                                     ⚙️ Configurar Farol TP
@@ -2601,6 +2606,65 @@
                             onFechar={() => setMostrarConfig(false)}
                         />
                     )}
+
+                    {mostrarLimparFinalizadas && isAdmin && (
+                        <FarolLimparFinalizadasModal
+                            gruposPorData={gruposFinalizadasPorData}
+                            total={linhasFinalizadasFarolTP.length}
+                            salvando={limpandoFinalizadas}
+                            onConfirmar={handleConfirmarLimparFinalizadas}
+                            onFechar={() => setMostrarLimparFinalizadas(false)}
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        // Modal (somente administrador) que mostra, agrupadas por data, TODAS as
+        // operações finalizadas no Farol TP — de qualquer dia, não só o filtro do
+        // painel — para que o admin veja exatamente o que será limpo antes de confirmar.
+        function FarolLimparFinalizadasModal({ gruposPorData, total, salvando, onConfirmar, onFechar }) {
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onFechar}>
+                    <div className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-xl font-bold text-gray-800 mb-1">🧹 Limpar operações finalizadas</h3>
+                        <p className="text-xs text-gray-500 mb-4">
+                            Ação restrita ao administrador (mesma regra usada em Configurações → Limpar Dados).
+                            Resetará o acompanhamento no Farol TP de {total} operação(ões) finalizada(s), de todos os dias,
+                            voltando cada uma para a etapa inicial "Aguardando Conferência" caso apareça de novo no fluxo.
+                            A operação em si não é excluída e continua normalmente no Dashboard e nos relatórios.
+                        </p>
+
+                        <div className="overflow-y-auto flex-1 border border-gray-200 rounded-xl">
+                            {total === 0 ? (
+                                <div className="text-center text-gray-400 py-8 text-sm">Não há operações finalizadas no Farol TP no momento.</div>
+                            ) : (
+                                gruposPorData.map(([data, itens]) => (
+                                    <div key={data} className="border-b border-gray-100 last:border-b-0">
+                                        <div className="bg-gray-50 px-4 py-2 text-xs font-bold text-gray-600 sticky top-0">
+                                            📅 {data === 'Sem data' ? 'Sem data' : formatarData(data)} · {itens.length} operação(ões)
+                                        </div>
+                                        {itens.map(l => (
+                                            <div key={l.op.id} className="px-4 py-2 text-sm text-gray-700 flex flex-wrap items-center justify-between gap-2 border-t border-gray-50">
+                                                <span className="font-semibold">{op_nome(l.op)}</span>
+                                                <span className="text-xs text-gray-400">{l.destinos || ''} {l.op.doca ? ('· Doca ' + l.op.doca) : ''}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        <div className="flex justify-end gap-3 mt-5">
+                            <button onClick={onFechar} className="px-5 py-2 rounded-xl font-bold text-sm bg-gray-100 hover:bg-gray-200 text-gray-700">
+                                Cancelar
+                            </button>
+                            <button onClick={onConfirmar} disabled={salvando || total === 0}
+                                className="px-5 py-2 rounded-xl font-bold text-sm bg-red-600 hover:bg-red-700 text-white disabled:opacity-50">
+                                {salvando ? 'Limpando...' : `Confirmar limpeza (${total})`}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             );
         }
