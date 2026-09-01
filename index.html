@@ -14459,6 +14459,15 @@
                 if (!confirm('Remover esta área do rodízio? Isso muda a divisão de slots de todos os dias.')) return;
                 setAreas(prev => prev.filter(a => a.id !== id));
             }
+            function moverArea(idx, dir) {
+                setAreas(prev => {
+                    const arr = [...prev];
+                    const alvo = idx + dir;
+                    if (alvo < 0 || alvo >= arr.length) return arr;
+                    [arr[idx], arr[alvo]] = [arr[alvo], arr[idx]];
+                    return arr;
+                });
+            }
             function addColaborador() {
                 const nome = novoColabNome.trim();
                 if (!nome) return;
@@ -14563,6 +14572,15 @@
             }
             const raioAnim = 138, cxAnim = 170, cyAnim = 170;
             const coresColab = ['#7c3aed', '#2563eb', '#059669', '#d97706', '#dc2626', '#0891b2', '#db2777', '#4338ca', '#65a30d', '#9333ea'];
+            const CORES_AREA_ANIM = [
+                { grad: 'linear-gradient(135deg,#0ea5e9,#0369a1)', glow: 'rgba(14,165,233,0.65)', txt: '#0369a1', icon: '🛣️' },
+                { grad: 'linear-gradient(135deg,#f43f5e,#b91c1c)', glow: 'rgba(244,63,94,0.65)', txt: '#b91c1c', icon: '🚦' },
+                { grad: 'linear-gradient(135deg,#f59e0b,#b45309)', glow: 'rgba(245,158,11,0.65)', txt: '#b45309', icon: '📦' },
+                { grad: 'linear-gradient(135deg,#10b981,#047857)', glow: 'rgba(16,185,129,0.65)', txt: '#047857', icon: '🟢' },
+                { grad: 'linear-gradient(135deg,#8b5cf6,#5b21b6)', glow: 'rgba(139,92,246,0.65)', txt: '#5b21b6', icon: '🟣' },
+                { grad: 'linear-gradient(135deg,#ec4899,#9d174d)', glow: 'rgba(236,72,153,0.65)', txt: '#9d174d', icon: '🎯' },
+                { grad: 'linear-gradient(135deg,#14b8a6,#0f766e)', glow: 'rgba(20,184,166,0.65)', txt: '#0f766e', icon: '🧭' },
+            ];
 
             // ── Gerar arquivo (PDF) do dia vigente com quem estava responsável ──
             async function gerarRelatorioPDF() {
@@ -14644,14 +14662,18 @@
                     <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
                         <h3 className="text-lg font-bold text-gray-800 mb-3">🏭 Áreas para organização</h3>
                         <div className="flex flex-wrap gap-2 mb-4">
-                            {areas.map(a => (
+                            {areas.map((a, idx) => (
                                 <span key={a.id} className="inline-flex items-center gap-2 bg-purple-50 border border-purple-200 text-purple-800 text-xs font-bold px-3 py-2 rounded-lg">
+                                    <span className="text-purple-400 w-4 text-center">{idx + 1}º</span>
                                     {a.nome}
+                                    <button onClick={() => moverArea(idx, -1)} disabled={idx === 0} className="text-purple-400 hover:text-purple-700 disabled:opacity-20 font-bold px-1" title="Mover para cima">↑</button>
+                                    <button onClick={() => moverArea(idx, 1)} disabled={idx === areas.length - 1} className="text-purple-400 hover:text-purple-700 disabled:opacity-20 font-bold px-1" title="Mover para baixo">↓</button>
                                     <button onClick={() => removerArea(a.id)} className="text-purple-400 hover:text-red-600 font-bold" title="Remover área">✕</button>
                                 </span>
                             ))}
                             {!areas.length && <span className="text-xs text-gray-400">Nenhuma área cadastrada.</span>}
                         </div>
+                        <p className="text-xs text-gray-400 mb-4">A ordem acima (↑/↓) define a sequência do rodízio, na ordem que aparece aqui, ciclando de volta ao início após a última área.</p>
                         <div className="flex flex-wrap gap-2 items-end">
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 mb-1">Nome da área (ex: BLOCO 8)</label>
@@ -14810,7 +14832,7 @@
                     <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
                         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                             <h3 className="text-lg font-bold text-gray-800">🎞️ Animação da rotatividade</h3>
-                            <button onClick={simularProximoDia} className="bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-bold px-4 py-2 rounded-lg hover:opacity-90 shadow-sm">
+                            <button onClick={simularProximoDia} style={{ background: 'linear-gradient(135deg,#9333ea,#2563eb)', color: '#ffffff', border: 'none', borderRadius: '8px', padding: '8px 16px', fontWeight: 800, fontSize: '14px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(79,70,229,0.35)' }}>
                                 ⏭️ Simular avanço de 1 dia
                             </button>
                         </div>
@@ -14818,82 +14840,57 @@
                         {ehFimDeSemana && (
                             <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4">⚠️ {fmtBR(dataEscolhida)} cai num fim de semana — não há rodízio 5S nesse dia, então a posição abaixo é apenas ilustrativa.</p>
                         )}
-                        <div className="flex justify-center">
-                            <svg viewBox="0 0 340 340" width="340" height="340">
-                                <defs>
-                                    <filter id="sombraAvatar" x="-50%" y="-50%" width="200%" height="200%">
-                                        <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#4c1d95" floodOpacity="0.35" />
-                                    </filter>
-                                    <radialGradient id="fundoAnim" cx="50%" cy="50%" r="60%">
-                                        <stop offset="0%" stopColor="#faf5ff" />
-                                        <stop offset="100%" stopColor="#ffffff" />
-                                    </radialGradient>
-                                </defs>
-                                <circle cx={cxAnim} cy={cyAnim} r={raioAnim + 44} fill="url(#fundoAnim)" />
-                                <circle cx={cxAnim} cy={cyAnim} r={raioAnim} fill="none" stroke="#ede9fe" strokeWidth="2" strokeDasharray="4 6" />
-
-                                {/* Cartões das áreas */}
-                                {slots.map((nome, i) => {
-                                    const p = posCirculo(i, numSlots, raioAnim, cxAnim, cyAnim);
-                                    return (
-                                        <g key={i}>
-                                            <circle cx={p.x} cy={p.y} r="38" fill="#ffffff" stroke="#c4b5fd" strokeWidth="2.5" filter="url(#sombraAvatar)" />
-                                            <text x={p.x} y={p.y} textAnchor="middle" dominantBaseline="middle" fontSize="8.5" fontWeight="800" fill="#5b21b6">
-                                                {(nome.length > 15 ? nome.slice(0, 14) + '…' : nome).split(' ').slice(0, 2).map((linha, li) => (
-                                                    <tspan key={li} x={p.x} dy={li === 0 ? -1 : 10}>{linha}</tspan>
-                                                ))}
-                                            </text>
-                                        </g>
-                                    );
-                                })}
-
-                                {/* Centro: data em destaque */}
-                                <circle cx={cxAnim} cy={cyAnim} r="30" fill="#ffffff" stroke="#7c3aed" strokeWidth="2" />
-                                <text x={cxAnim} y={cyAnim - 5} textAnchor="middle" fontSize="8" fontWeight="700" fill="#7c3aed">HOJE</text>
-                                <text x={cxAnim} y={cyAnim + 9} textAnchor="middle" fontSize="9.5" fontWeight="800" fill="#312e81">{fmtBR(dataEscolhida)}</text>
-
-                                {/* Avatares dos colaboradores nas posições atuais — a posição de cada
-                                    avatar vem da área real do colaborador na Escala do dia (com overrides
-                                    aplicados), a mesma fonte usada no Relatório do dia. */}
+                        <style>{`
+                            @keyframes r5sRingSpin { from{ transform: translate(-50%,-50%) rotateX(76deg) rotateZ(0deg);} to{ transform: translate(-50%,-50%) rotateX(76deg) rotateZ(360deg);} }
+                            @keyframes r5sPedestalPulse { 0%,100%{ opacity:.78; transform: translateX(-50%) rotateX(76deg) scale(1); } 50%{ opacity:1; transform: translateX(-50%) rotateX(76deg) scale(1.05); } }
+                            @keyframes r5sEnter { 0%{ opacity:0; transform: translateY(50px) rotateX(-90deg) scale(.6); } 55%{ opacity:1; } 100%{ opacity:1; transform: translateY(0) rotateX(0deg) scale(1); } }
+                            @keyframes r5sFloat { 0%,100%{ transform: translateY(0) rotateY(0deg) rotateZ(0deg); } 50%{ transform: translateY(-10px) rotateY(6deg) rotateZ(-1deg); } }
+                            @keyframes r5sGlow { 0%,100%{ box-shadow: 0 16px 30px -8px var(--r5sglow), 0 0 0 1px rgba(255,255,255,0.6) inset; } 50%{ box-shadow: 0 22px 40px -6px var(--r5sglow), 0 0 0 1px rgba(255,255,255,0.85) inset; } }
+                        `}</style>
+                        <div style={{ textAlign: 'center', marginBottom: '4px' }}>
+                            <span style={{ fontSize: '13px', fontWeight: 800, color: '#374151', background: '#f3f4f6', borderRadius: '999px', padding: '5px 16px' }}>
+                                📅 HOJE · {fmtBR(dataEscolhida)}
+                            </span>
+                        </div>
+                        <div style={{ perspective: '1600px', padding: '30px 10px 10px', overflowX: 'auto' }}>
+                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: '18px', flexWrap: 'wrap' }}>
                                 {colaboradores.map((c, i) => {
                                     const areaDoColab = areaPorColaboradorAnim[c.id];
-                                    if (areaDoColab === 'FOLGA') return null; // de folga: não ocupa posição no giro do dia
-                                    const idxSlot = areaDoColab ? slots.indexOf(areaDoColab) : -1;
-                                    const slotAtual = idxSlot >= 0 ? idxSlot : (i % numSlots);
-                                    const p = posCirculo(slotAtual, numSlots, raioAnim, cxAnim, cyAnim);
-                                    const cor = coresColab[i % coresColab.length];
-                                    const clip = 'r5sClip_' + c.id;
+                                    const emFolga = areaDoColab === 'FOLGA';
+                                    const idxSlot = (!emFolga && areaDoColab) ? slots.indexOf(areaDoColab) : (i % numSlots);
+                                    const cor = CORES_AREA_ANIM[(idxSlot >= 0 ? idxSlot : i) % CORES_AREA_ANIM.length];
                                     return (
-                                        <g key={c.id} style={{ transition: 'transform 0.9s cubic-bezier(.4,1.4,.6,1)' }} transform={`translate(${p.x},${p.y})`}>
-                                            <defs>
-                                                <clipPath id={clip}><circle cx="0" cy="0" r="13" /></clipPath>
-                                            </defs>
-                                            <circle cx="0" cy="0" r="15.5" fill="#fff" filter="url(#sombraAvatar)" style={{ opacity: animando ? 0.7 : 1 }} />
-                                            {c.foto ? (
-                                                <image href={c.foto} x="-13" y="-13" width="26" height="26" clipPath={`url(#${clip})`} style={{ opacity: animando ? 0.7 : 1 }} />
-                                            ) : (
-                                                <circle cx="0" cy="0" r="13" fill={cor} style={{ opacity: animando ? 0.7 : 1 }} />
-                                            )}
-                                            {!c.foto && (
-                                                <text x="0" y="0.5" textAnchor="middle" dominantBaseline="middle" fontSize="8" fontWeight="800" fill="#fff">{iniciais(c.nome)}</text>
-                                            )}
-                                            <circle cx="0" cy="0" r="15.5" fill="none" stroke={cor} strokeWidth="1.5" />
-                                            <title>{c.nome} — {areaDoColab || slots[slotAtual]}</title>
-                                        </g>
+                                        <div key={c.id + '_' + dataEscolhida} style={{ position: 'relative', width: '150px', minHeight: '220px', transformStyle: 'preserve-3d' }}>
+                                            {/* cartão do colaborador */}
+                                            <div style={{
+                                                position: 'relative', zIndex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
+                                                padding: '0 4px 60px', '--r5sglow': emFolga ? 'rgba(107,114,128,0.5)' : cor.glow,
+                                                animation: `r5sEnter 0.8s cubic-bezier(.2,.9,.25,1.2) both ${i * 0.1}s, r5sFloat 4.6s ease-in-out ${0.9 + i * 0.1}s infinite`,
+                                            }}>
+                                                <div style={{ width: '84px', height: '84px', borderRadius: '50%', background: '#fff', padding: '3px', animation: 'r5sGlow 2.6s ease-in-out infinite', opacity: animando ? 0.6 : 1 }}>
+                                                    {c.foto ? (
+                                                        <img src={c.foto} alt={c.nome} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover', display: 'block' }} />
+                                                    ) : (
+                                                        <div style={{ width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: emFolga ? 'linear-gradient(135deg,#94a3b8,#64748b)' : cor.grad, color: '#fff', fontWeight: 800, fontSize: '22px' }}>{iniciais(c.nome)}</div>
+                                                    )}
+                                                </div>
+                                                <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#1f2937', textAlign: 'center', lineHeight: 1.25, minHeight: '47px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                    {c.nome.split(' ').slice(0, 3).map((palavra, pi, arr) => (
+                                                        <React.Fragment key={pi}>{palavra}{pi < arr.length - 1 ? <br /> : null}</React.Fragment>
+                                                    ))}
+                                                </div>
+                                                <div style={{
+                                                    textAlign: 'center', fontWeight: 900, fontSize: '11.5px', color: '#fff', maxWidth: '140px',
+                                                    background: emFolga ? 'linear-gradient(135deg,#9ca3af,#6b7280)' : cor.grad,
+                                                    borderRadius: '10px', padding: '6px 10px', boxShadow: `0 6px 14px ${emFolga ? 'rgba(107,114,128,0.4)' : cor.glow}`,
+                                                }}>
+                                                    {emFolga ? '😴 Folga' : `${cor.icon} ${areaDoColab || slots[idxSlot]}`}
+                                                </div>
+                                            </div>
+                                        </div>
                                     );
                                 })}
-                            </svg>
-                        </div>
-                        <div className="flex flex-wrap justify-center gap-3 mt-2">
-                            {colaboradores.map((c, i) => (
-                                <span key={c.id} className="inline-flex items-center gap-1 text-xs font-bold text-gray-600">
-                                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: coresColab[i % coresColab.length], display: 'inline-block' }}></span>
-                                    {c.nome}
-                                    {areaPorColaboradorAnim[c.id] && (
-                                        <span className="text-gray-400 font-normal">· {areaPorColaboradorAnim[c.id] === 'FOLGA' ? '😴 folga' : areaPorColaboradorAnim[c.id]}</span>
-                                    )}
-                                </span>
-                            ))}
+                            </div>
                         </div>
                     </div>
 
@@ -14902,7 +14899,7 @@
                         <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
                             <h3 className="text-lg font-bold text-gray-800">📄 Relatório do dia</h3>
                             <button onClick={gerarRelatorioPDF} disabled={gerandoPdf || ehFimDeSemana}
-                                className="bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-bold px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50 shadow-sm">
+                                style={{ background: 'linear-gradient(135deg,#9333ea,#2563eb)', color: '#ffffff', border: 'none', borderRadius: '8px', padding: '8px 16px', fontWeight: 800, fontSize: '14px', cursor: (gerandoPdf || ehFimDeSemana) ? 'not-allowed' : 'pointer', opacity: (gerandoPdf || ehFimDeSemana) ? 0.5 : 1, boxShadow: '0 2px 8px rgba(79,70,229,0.35)' }}>
                                 {gerandoPdf ? '⏳ Gerando...' : '⬇️ Gerar arquivo (PDF) do dia vigente'}
                             </button>
                         </div>
@@ -15220,6 +15217,15 @@
                     const arr = [...prev];
                     [arr[idx], arr[novoIdx]] = [arr[novoIdx], arr[idx]];
                     return arr;
+                });
+                // A ordem definida aqui já vale para a semana atual — remove um eventual
+                // ajuste manual que estivesse travando a semana na ordem antiga, para que
+                // o rodízio automático passe a seguir exatamente a nova ordem escolhida.
+                setOverridesSemana(prev => {
+                    if (!prev[semanaAtualInicio]) return prev;
+                    const cp = { ...prev };
+                    delete cp[semanaAtualInicio];
+                    return cp;
                 });
             }
 
