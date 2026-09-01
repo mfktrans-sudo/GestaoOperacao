@@ -8685,7 +8685,13 @@
                         <button 
                             type="submit"
                             disabled={bloqueado}
-                            className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold py-4 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all btn-animated disabled:opacity-50"
+                            className="w-full text-white font-bold py-4 rounded-lg transition-all btn-animated disabled:opacity-50"
+                            style={{
+                                background: bloqueado
+                                    ? '#9ca3af'
+                                    : 'linear-gradient(to right, #7c3aed, #2563eb)',
+                                color: '#ffffff'
+                            }}
                         >
                             {bloqueado ? '🔒 Cadastro Bloqueado' : '💾 Salvar Operação'}
                         </button>
