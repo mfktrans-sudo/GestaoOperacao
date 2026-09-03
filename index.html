@@ -1142,14 +1142,32 @@
 
         // ========== BANCO DE DADOS - FIRESTORE ==========
         class FirestoreDB {
-            constructor(firestoreInstance) {
+            constructor(firestoreInstance, usuarioEmail) {
                 this.db = firestoreInstance;
                 this.fns = window.__firebaseFns;
+                this.usuarioEmail = usuarioEmail || 'desconhecido';
+            }
+
+            // ===== AUDITORIA (registro de quem fez cada alteração, quando e o quê) =====
+            // Nunca deve travar a ação principal: qualquer erro aqui é apenas registrado no console.
+            async _registrarLog(acao, detalhes) {
+                try {
+                    const { collection, addDoc } = this.fns;
+                    await addDoc(collection(this.db, 'auditoria'), {
+                        usuario: this.usuarioEmail,
+                        acao: String(acao || ''),
+                        detalhes: String(detalhes || '').slice(0, 1000),
+                        timestamp: Date.now()
+                    });
+                } catch (e) {
+                    console.error('Erro ao registrar log de auditoria:', e);
+                }
             }
 
             async addOperacao(operacao) {
                 const { collection, addDoc } = this.fns;
                 const docRef = await addDoc(collection(this.db, 'operacoes'), operacao);
+                this._registrarLog('Operação cadastrada', `Operação: ${operacao.operacao || ''} | Data: ${operacao.data || ''} | Doca: ${operacao.doca || ''} | NF: ${operacao.nf ?? ''} | Vol: ${operacao.vol ?? ''} (id: ${docRef.id})`);
                 return { ...operacao, id: docRef.id };
             }
 
@@ -1160,39 +1178,68 @@
             }
 
             async updateOperacao(operacao) {
-                const { doc, updateDoc } = this.fns;
+                const { doc, updateDoc, getDoc } = this.fns;
                 const { id, ...data } = operacao;
+                let resumoMudancas = '';
+                try {
+                    const antesSnap = await getDoc(doc(this.db, 'operacoes', String(id)));
+                    if (antesSnap.exists()) {
+                        const antes = antesSnap.data();
+                        const mudancas = [];
+                        Object.keys(data).forEach(campo => {
+                            const antigoStr = typeof antes[campo] === 'object' ? JSON.stringify(antes[campo]) : String(antes[campo] ?? '');
+                            const novoStr = typeof data[campo] === 'object' ? JSON.stringify(data[campo]) : String(data[campo] ?? '');
+                            if (antigoStr !== novoStr) mudancas.push(`${campo}: "${antigoStr}" → "${novoStr}"`);
+                        });
+                        resumoMudancas = mudancas.length ? mudancas.join(' | ') : 'Nenhum campo alterado';
+                    }
+                } catch (e) { resumoMudancas = 'Não foi possível calcular as alterações'; }
                 await updateDoc(doc(this.db, 'operacoes', String(id)), data);
+                this._registrarLog('Operação editada', `Operação id ${id}: ${resumoMudancas}`);
             }
 
             async deleteOperacao(id) {
-                const { doc, deleteDoc } = this.fns;
+                const { doc, deleteDoc, getDoc } = this.fns;
+                let resumo = `id ${id}`;
+                try {
+                    const snap = await getDoc(doc(this.db, 'operacoes', String(id)));
+                    if (snap.exists()) {
+                        const d = snap.data();
+                        resumo = `Operação: ${d.operacao || ''} | Data: ${d.data || ''} | Doca: ${d.doca || ''} | NF: ${d.nf ?? ''} | Vol: ${d.vol ?? ''} (id: ${id})`;
+                    }
+                } catch (e) {}
                 await deleteDoc(doc(this.db, 'operacoes', String(id)));
+                this._registrarLog('Operação excluída', resumo);
             }
 
             async clearAll() {
                 const { collection, getDocs, doc, deleteDoc } = this.fns;
                 const snapshot = await getDocs(collection(this.db, 'operacoes'));
+                const total = snapshot.docs.length;
                 const deletes = snapshot.docs.map(d => deleteDoc(doc(this.db, 'operacoes', d.id)));
                 await Promise.all(deletes);
+                this._registrarLog('Todos os dados removidos', `${total} operação(ões) excluída(s) via "Limpar Todos os Dados"`);
             }
 
             // ===== LINHA VERMELHA (ticagem de conferência antes da doca de expedição) =====
             async addLinhaVermelha(registro) {
                 const { collection, addDoc } = this.fns;
                 const docRef = await addDoc(collection(this.db, 'linhaVermelha'), registro);
+                this._registrarLog('Linha Vermelha - registro criado', `id: ${docRef.id}`);
                 return { ...registro, id: docRef.id };
             }
 
             async deleteLinhaVermelha(id) {
                 const { doc, deleteDoc } = this.fns;
                 await deleteDoc(doc(this.db, 'linhaVermelha', String(id)));
+                this._registrarLog('Linha Vermelha - registro excluído', `id: ${id}`);
             }
 
             async updateLinhaVermelha(registro) {
                 const { doc, updateDoc } = this.fns;
                 const { id, ...data } = registro;
                 await updateDoc(doc(this.db, 'linhaVermelha', String(id)), data);
+                this._registrarLog('Linha Vermelha - registro editado', `id: ${id}`);
             }
 
             async getConfig(id) {
@@ -1204,6 +1251,7 @@
             async setConfig(id, data) {
                 const { doc, setDoc } = this.fns;
                 await setDoc(doc(this.db, 'configuracoes', id), data, { merge: true });
+                this._registrarLog('Configuração alterada', `"${id}": ${JSON.stringify(data).slice(0, 400)}`);
             }
 
             // ===== SOLICITAÇÕES DE EXCLUSÃO (aprovação do administrador) =====
@@ -1218,23 +1266,27 @@
                     criadoEm: Date.now(),
                     status: 'pendente'
                 });
+                this._registrarLog('Solicitação de exclusão criada', `Item id ${id}: ${resumo || ''}`);
             }
 
             async aprovarExclusaoOperacao(solicitacaoId, itemId) {
                 const { doc, deleteDoc, updateDoc } = this.fns;
                 await deleteDoc(doc(this.db, 'operacoes', String(itemId)));
                 await updateDoc(doc(this.db, 'solicitacoesExclusao', String(solicitacaoId)), { status: 'aprovado', resolvidoEm: Date.now() });
+                this._registrarLog('Solicitação de exclusão aprovada', `Item id ${itemId} (solicitação ${solicitacaoId})`);
             }
 
             async rejeitarExclusaoSolicitacao(solicitacaoId) {
                 const { doc, updateDoc } = this.fns;
                 await updateDoc(doc(this.db, 'solicitacoesExclusao', String(solicitacaoId)), { status: 'rejeitado', resolvidoEm: Date.now() });
+                this._registrarLog('Solicitação de exclusão rejeitada', `Solicitação ${solicitacaoId}`);
             }
 
             // ===== FAROL OPERACIONAL TP (acompanhamento de fluxo — não duplica o cadastro do Dashboard) =====
             async upsertFarolTP(operacaoId, patch) {
                 const { doc, setDoc } = this.fns;
                 await setDoc(doc(this.db, 'farolTP', String(operacaoId)), patch, { merge: true });
+                this._registrarLog('Farol TP atualizado', `Operação id ${operacaoId}: ${JSON.stringify(patch).slice(0, 300)}`);
             }
 
             // Remove o acompanhamento do Farol TP de uma operação (ela volta ao estado
@@ -1244,16 +1296,19 @@
             async deleteFarolTP(operacaoId) {
                 const { doc, deleteDoc } = this.fns;
                 await deleteDoc(doc(this.db, 'farolTP', String(operacaoId)));
+                this._registrarLog('Farol TP - acompanhamento removido', `Operação id ${operacaoId}`);
             }
 
             async setPerfilFarolTP(emailNormalizado, perfil) {
                 const { doc, setDoc } = this.fns;
                 await setDoc(doc(this.db, 'perfisFarolTP', emailNormalizado), { perfil, atualizadoEm: Date.now() }, { merge: true });
+                this._registrarLog('Perfil Farol TP definido', `${emailNormalizado} → ${perfil}`);
             }
 
             async removerPerfilFarolTP(emailNormalizado) {
                 const { doc, deleteDoc } = this.fns;
                 await deleteDoc(doc(this.db, 'perfisFarolTP', emailNormalizado));
+                this._registrarLog('Perfil Farol TP removido', emailNormalizado);
             }
         }
 
@@ -1416,7 +1471,7 @@
                         setUser(firebaseUser);
                         setAuthLoading(false);
                         if (firebaseUser) {
-                            const firestoreDb = new FirestoreDB(window.__firebaseDb);
+                            const firestoreDb = new FirestoreDB(window.__firebaseDb, firebaseUser.email);
                             dbRef.current = firestoreDb;
                             setDb(firestoreDb);
                             try {
@@ -2019,7 +2074,7 @@
                         <nav className="flex gap-2 mb-6 flex-wrap">
                             {(restritoAoFarolTP
                                 ? ['faroltp']
-                                : ['torre', 'dashboard', 'performance', 'graficos', 'capacidade', 'cadastrar', 'linhavermelha', 'faroltp', 'comunicacoes', 'planejamento', 'rotatividade5s', 'editar', 'gerenciar', 'relatorios', 'upload', 'configuracoes']
+                                : ['torre', 'dashboard', 'performance', 'graficos', 'capacidade', 'cadastrar', 'linhavermelha', 'faroltp', 'comunicacoes', 'planejamento', 'rotatividade5s', 'editar', 'gerenciar', 'relatorios', 'upload', ...(isAdmin ? ['configuracoes'] : [])]
                             ).map(aba => (
                                 <button
                                     key={aba}
@@ -2171,7 +2226,7 @@
                             {abaSelecionada === 'upload' && (
                                 <UploadBackup db={db} operacoes={operacoes} listaOperacoes={listaOperacoes} onUpdate={carregarOperacoes} onSalvarLista={handleSalvarListaOperacoes} />
                             )}
-                            {abaSelecionada === 'configuracoes' && (
+                            {abaSelecionada === 'configuracoes' && isAdmin && (
                                 <Configuracoes 
                                     db={db}
                                     operacoes={operacoes}
@@ -10261,6 +10316,71 @@
             const [usuariosPresenca, setUsuariosPresenca] = useState([]);
             const [salvandoPermissoes, setSalvandoPermissoes] = useState(false);
 
+            // ===== AUDITORIA: relatório de mudanças (dia, hora e quem fez) - somente admin =====
+            const [logsAuditoria, setLogsAuditoria] = useState([]);
+            const [logsCarregando, setLogsCarregando] = useState(true);
+            const [logsErro, setLogsErro] = useState('');
+            const [filtroLogUsuario, setFiltroLogUsuario] = useState('');
+            const [filtroLogAcao, setFiltroLogAcao] = useState('');
+            const [filtroLogTexto, setFiltroLogTexto] = useState('');
+
+            useEffect(() => {
+                if (!isAdmin) return;
+                if (!window.__firebaseReady) return;
+                const { collection, onSnapshot, query, orderBy, limit } = window.__firebaseFns;
+                const fsDb = window.__firebaseDb;
+                let unsubscribe;
+                try {
+                    const q = query(collection(fsDb, 'auditoria'), orderBy('timestamp', 'desc'), limit(500));
+                    unsubscribe = onSnapshot(
+                        q,
+                        (snapshot) => {
+                            setLogsAuditoria(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+                            setLogsCarregando(false);
+                        },
+                        (err) => {
+                            console.error('Erro no listener de auditoria:', err);
+                            setLogsErro('Não foi possível carregar o relatório de alterações. Verifique as regras do Firestore para a coleção "auditoria".');
+                            setLogsCarregando(false);
+                        }
+                    );
+                } catch (e) {
+                    console.error('Erro ao configurar listener de auditoria:', e);
+                    setLogsErro('Não foi possível carregar o relatório de alterações.');
+                    setLogsCarregando(false);
+                }
+                return () => { if (unsubscribe) unsubscribe(); };
+            }, [isAdmin]);
+
+            const usuariosDosLogs = useMemo(() => {
+                const set = new Set(logsAuditoria.map(l => l.usuario).filter(Boolean));
+                return Array.from(set).sort();
+            }, [logsAuditoria]);
+
+            const acoesDosLogs = useMemo(() => {
+                const set = new Set(logsAuditoria.map(l => l.acao).filter(Boolean));
+                return Array.from(set).sort();
+            }, [logsAuditoria]);
+
+            const logsFiltrados = useMemo(() => {
+                return logsAuditoria.filter(l => {
+                    if (filtroLogUsuario && l.usuario !== filtroLogUsuario) return false;
+                    if (filtroLogAcao && l.acao !== filtroLogAcao) return false;
+                    if (filtroLogTexto) {
+                        const alvo = `${l.acao || ''} ${l.detalhes || ''} ${l.usuario || ''}`.toLowerCase();
+                        if (!alvo.includes(filtroLogTexto.toLowerCase())) return false;
+                    }
+                    return true;
+                });
+            }, [logsAuditoria, filtroLogUsuario, filtroLogAcao, filtroLogTexto]);
+
+            const formatarDataHoraLog = (timestamp) => {
+                if (!timestamp) return '—';
+                try {
+                    return new Date(timestamp).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+                } catch (e) { return '—'; }
+            };
+
             const handleAlterarPermissao = async (campo, valor) => {
                 if (!isAdmin || !db) return;
                 setSalvandoPermissoes(true);
@@ -10406,6 +10526,78 @@
                                 <p className="flex items-center gap-2"><strong>Sincronização:</strong> <span style={{display:'inline-flex',alignItems:'center',gap:'5px',color:'#10b981',fontWeight:'700'}}><span style={{width:8,height:8,borderRadius:'50%',background:'#10b981',display:'inline-block',animation:'pulse 2s infinite'}}></span> Tempo Real (onSnapshot)</span></p>
                             </div>
                         </div>
+
+                        {/* RELATÓRIO DE AUDITORIA: quem alterou o quê, dia e hora (somente administrador) */}
+                        {isAdmin && (
+                        <div className="bg-white p-6 rounded-lg shadow-lg">
+                            <h3 className="text-xl font-bold mb-1 flex items-center gap-2">
+                                📜 Relatório de Alterações (Auditoria)
+                                <span style={{background:'#e0e7ff',color:'#4338ca',fontSize:'12px',fontWeight:'700',padding:'2px 10px',borderRadius:'99px',marginLeft:'4px'}}>
+                                    {logsFiltrados.length} registro(s)
+                                </span>
+                            </h3>
+                            <p className="text-gray-500 text-sm mb-4">Toda alteração feita nos dados do sistema (cadastro, edição, exclusão, configurações etc.) fica registrada aqui com dia, hora e usuário responsável.</p>
+
+                            {logsErro && (
+                                <div className="p-3 rounded-lg mb-4 bg-red-100 text-red-800 text-sm">{logsErro}</div>
+                            )}
+
+                            <div style={{display:'flex',flexWrap:'wrap',gap:'10px',marginBottom:'14px'}}>
+                                <select
+                                    value={filtroLogUsuario}
+                                    onChange={(e) => setFiltroLogUsuario(e.target.value)}
+                                    style={{padding:'8px 10px',borderRadius:'8px',border:'1px solid #d1d5db',fontSize:'13px'}}
+                                >
+                                    <option value="">Todos os usuários</option>
+                                    {usuariosDosLogs.map(u => <option key={u} value={u}>{u}</option>)}
+                                </select>
+                                <select
+                                    value={filtroLogAcao}
+                                    onChange={(e) => setFiltroLogAcao(e.target.value)}
+                                    style={{padding:'8px 10px',borderRadius:'8px',border:'1px solid #d1d5db',fontSize:'13px'}}
+                                >
+                                    <option value="">Todas as ações</option>
+                                    {acoesDosLogs.map(a => <option key={a} value={a}>{a}</option>)}
+                                </select>
+                                <input
+                                    type="text"
+                                    placeholder="Buscar por texto, campo ou operação..."
+                                    value={filtroLogTexto}
+                                    onChange={(e) => setFiltroLogTexto(e.target.value)}
+                                    style={{flex:1,minWidth:200,padding:'8px 10px',borderRadius:'8px',border:'1px solid #d1d5db',fontSize:'13px'}}
+                                />
+                            </div>
+
+                            {logsCarregando ? (
+                                <p className="text-gray-400 italic text-sm">Carregando relatório de alterações...</p>
+                            ) : logsFiltrados.length === 0 ? (
+                                <p className="text-gray-400 italic text-sm">Nenhuma alteração registrada até o momento.</p>
+                            ) : (
+                                <div style={{maxHeight:420,overflowY:'auto',border:'1px solid #e5e7eb',borderRadius:10}}>
+                                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12.5px'}}>
+                                        <thead style={{position:'sticky',top:0,background:'#f9fafb',zIndex:1}}>
+                                            <tr>
+                                                <th style={{textAlign:'left',padding:'8px 10px',borderBottom:'1px solid #e5e7eb',color:'#374151'}}>Dia / Hora</th>
+                                                <th style={{textAlign:'left',padding:'8px 10px',borderBottom:'1px solid #e5e7eb',color:'#374151'}}>Usuário</th>
+                                                <th style={{textAlign:'left',padding:'8px 10px',borderBottom:'1px solid #e5e7eb',color:'#374151'}}>Ação</th>
+                                                <th style={{textAlign:'left',padding:'8px 10px',borderBottom:'1px solid #e5e7eb',color:'#374151'}}>Detalhes</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {logsFiltrados.map(log => (
+                                                <tr key={log.id} style={{borderBottom:'1px solid #f3f4f6'}}>
+                                                    <td style={{padding:'8px 10px',whiteSpace:'nowrap',color:'#6b7280'}}>{formatarDataHoraLog(log.timestamp)}</td>
+                                                    <td style={{padding:'8px 10px',fontWeight:700,color:'#1f2937'}}>{log.usuario || '—'}</td>
+                                                    <td style={{padding:'8px 10px',color:'#4338ca'}}>{log.acao || '—'}</td>
+                                                    <td style={{padding:'8px 10px',color:'#374151'}}>{log.detalhes || '—'}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                        )}
 
                         {/* PAINEL DE USUÁRIOS ONLINE */}
                         <div className="bg-white p-6 rounded-lg shadow-lg">
