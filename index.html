@@ -8908,6 +8908,7 @@
                                     <th className="px-4 py-3 text-left">Vol</th>
                                     <th className="px-4 py-3 text-left">Cubagem</th>
                                     <th className="px-4 py-3 text-left">Início</th>
+                                    <th className="px-4 py-3 text-left">Romaneio</th>
                                     <th className="px-4 py-3 text-left">Término</th>
                                     <th className="px-4 py-3 text-left">🔍 Conferentes</th>
                                     <th className="px-4 py-3 text-left">🚪 Doca</th>
@@ -8919,7 +8920,7 @@
                             <tbody>
                                 {operacoesFiltradas.length === 0 ? (
                                     <tr>
-                                        <td colSpan="12" className="text-center py-8 text-gray-500">
+                                        <td colSpan="13" className="text-center py-8 text-gray-500">
                                             Nenhuma operação encontrada
                                         </td>
                                     </tr>
@@ -8933,6 +8934,7 @@
                                                 <td className="px-4 py-3">{op.vol}</td>
                                                 <td className="px-4 py-3">{(Math.round((parseFloat(op.cubagem)||0)*100)/100).toFixed(2)}</td>
                                                 <td className="px-4 py-3">{op.inicio}</td>
+                                                <td className="px-4 py-3">{op.romaneio}</td>
                                                 <td className="px-4 py-3">{op.termino}</td>
                                                 <td className="px-4 py-3">{op.conferentes || <span style={{color:'#94a3b8'}}>—</span>}</td>
                                                 <td className="px-4 py-3">{op.doca || <span style={{color:'#94a3b8'}}>—</span>}</td>
@@ -8980,7 +8982,7 @@
                                             </tr>
                                             {editando === op.id && (
                                                 <tr>
-                                                    <td colSpan="12" style={{padding:'0',background:'#f0f4ff',borderBottom:'2px solid #667eea'}}>
+                                                    <td colSpan="13" style={{padding:'0',background:'#f0f4ff',borderBottom:'2px solid #667eea'}}>
                                                         <div style={{padding:'18px 20px',borderLeft:'4px solid #667eea'}}>
                                                             <div style={{fontWeight:'800',fontSize:'13px',color:'#667eea',marginBottom:'14px'}}>✏️ Editando: {dadosEdicao.operacao}{dadosEdicao.otimizada && <span style={{marginLeft:6,background:'#ede9fe',color:'#6d28d9',padding:'1px 8px',borderRadius:10,fontSize:10,fontWeight:800}}>🔗 Otimizada</span>}</div>
                                                             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'10px',marginBottom:'12px'}}>
@@ -9011,6 +9013,10 @@
                                                                 <div>
                                                                     <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Início</label>
                                                                     <input type="time" value={dadosEdicao.inicio} onChange={(e) => handleChange('inicio', e.target.value)} className="w-full p-2 border rounded input-edit" />
+                                                                </div>
+                                                                <div>
+                                                                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Romaneio</label>
+                                                                    <input type="time" value={dadosEdicao.romaneio} onChange={(e) => handleChange('romaneio', e.target.value)} className="w-full p-2 border rounded input-edit" />
                                                                 </div>
                                                                 <div>
                                                                     <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Término</label>
