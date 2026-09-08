@@ -798,7 +798,7 @@
         /* Aplica um acabamento tátil/glossy (relevo, brilho superior, sombra de profundidade,
            elevação no hover e "afundamento" no clique) a todos os botões funcionais da
            ferramenta, sem alterar cores, textos, classes ou qualquer comportamento existente. */
-        button[class*="bg-"]:not(.window-btn):not(.kpi-btn):not(.print-btn),
+        button[class*="bg-"]:not(.window-btn):not(.kpi-btn):not(.print-btn):not(.grad-native),
         .tab-active,
         .tab-inactive,
         .btn-sair-fixo,
@@ -2029,7 +2029,7 @@
                                 <button
                                     type="submit"
                                     disabled={loginCarregando}
-                                    className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold py-3 rounded-xl hover:opacity-90 transition-all disabled:opacity-60"
+                                    className="grad-native w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold py-3 rounded-xl hover:opacity-90 transition-all disabled:opacity-60"
                                 >
                                     {loginCarregando ? '⏳ Entrando...' : '🔐 Entrar'}
                                 </button>
@@ -3698,7 +3698,7 @@
                         <button
                             onClick={handleEnviar}
                             disabled={enviando || !texto.trim()}
-                            className="bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold px-6 rounded-xl hover:opacity-90 transition-all disabled:opacity-50"
+                            className="grad-native bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold px-6 rounded-xl hover:opacity-90 transition-all disabled:opacity-50"
                             style={{ minWidth: 100 }}
                         >
                             {enviando ? '⏳' : '📨 Enviar'}
@@ -9404,7 +9404,7 @@
 
                     <button 
                         onClick={handleSalvar}
-                        className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white font-bold py-4 rounded-lg hover:from-green-600 hover:to-green-700 btn-animated"
+                        className="grad-native w-full bg-gradient-to-r from-green-500 to-green-600 text-white font-bold py-4 rounded-lg hover:from-green-600 hover:to-green-700 btn-animated"
                     >
                         💾 Salvar Todas as Alterações
                     </button>
