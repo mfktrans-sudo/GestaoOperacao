@@ -4363,8 +4363,8 @@
                             'Volume': Number(o.vol) || 0,
                             'NFs': Number(o.nf) || 0,
                             'Cubagem m³': parseFloat(o.cubagem || 0),
-                            'Início': o.inicio || '',
-                            'Término': o.termino || '',
+                            'Fim de Conf.': o.inicio || '',
+                            'Término de Carregamento': o.termino || '',
                             'Status': o.status === 'verde' ? 'No Prazo' : o.status === 'vermelho' ? 'Crítico' : 'Atenção',
                         };
                     });
@@ -4415,7 +4415,7 @@
                 } else if (tipo==='operacoes') {
                     titulo='⚡ Todas as Operações no Período';
                     dados=[...opsFiltradas].sort((a,b)=>b.data.localeCompare(a.data));
-                    colunas=['Data','Operação','Veículo','Volume','NFs','Cubagem m³','Início','Término','Status'];
+                    colunas=['Data','Operação','Veículo','Volume','NFs','Cubagem m³','Fim de Conf.','Término de Carregamento','Status'];
                 }
                 setTorreModal({titulo,dados,colunas,tipo});
             };
@@ -7627,9 +7627,9 @@
                                         <th className="px-4 py-2 text-left text-sm font-bold">NF</th>
                                         <th className="px-4 py-2 text-left text-sm font-bold">Volume</th>
                                         <th className="px-4 py-2 text-left text-sm font-bold">Cubagem</th>
-                                        <th className="px-4 py-2 text-left text-sm font-bold">Início</th>
-                                        <th className="px-4 py-2 text-left text-sm font-bold">Romaneio</th>
-                                        <th className="px-4 py-2 text-left text-sm font-bold">Término</th>
+                                        <th className="px-4 py-2 text-left text-sm font-bold">Fim de Conf.</th>
+                                        <th className="px-4 py-2 text-left text-sm font-bold">Romaneio Entregue</th>
+                                        <th className="px-4 py-2 text-left text-sm font-bold">Término de Carregamento</th>
                                         <th className="px-4 py-2 text-left text-sm font-bold">Meta</th>
                                         <th className="px-4 py-2 text-left text-sm font-bold">🔍 Conferentes</th>
                                         <th className="px-4 py-2 text-left text-sm font-bold">🚪 Doca</th>
@@ -8661,7 +8661,7 @@
                             )}
 
                             <div>
-                                <label className="block text-sm font-bold mb-2">Início</label>
+                                <label className="block text-sm font-bold mb-2">Fim de Conf.</label>
                                 <input 
                                     type="time" 
                                     name="inicio"
@@ -8672,7 +8672,7 @@
                             </div>
 
                             <div>
-                                <label className="block text-sm font-bold mb-2">Romaneio</label>
+                                <label className="block text-sm font-bold mb-2">Romaneio Entregue</label>
                                 <input 
                                     type="time" 
                                     name="romaneio"
@@ -8683,7 +8683,7 @@
                             </div>
 
                             <div>
-                                <label className="block text-sm font-bold mb-2">Término</label>
+                                <label className="block text-sm font-bold mb-2">Término de Carregamento</label>
                                 <input 
                                     type="time" 
                                     name="termino"
@@ -8907,9 +8907,9 @@
                                     <th className="px-4 py-3 text-left">NF</th>
                                     <th className="px-4 py-3 text-left">Vol</th>
                                     <th className="px-4 py-3 text-left">Cubagem</th>
-                                    <th className="px-4 py-3 text-left">Início</th>
-                                    <th className="px-4 py-3 text-left">Romaneio</th>
-                                    <th className="px-4 py-3 text-left">Término</th>
+                                    <th className="px-4 py-3 text-left">Fim de Conf.</th>
+                                    <th className="px-4 py-3 text-left">Romaneio Entregue</th>
+                                    <th className="px-4 py-3 text-left">Término de Carregamento</th>
                                     <th className="px-4 py-3 text-left">🔍 Conferentes</th>
                                     <th className="px-4 py-3 text-left">🚪 Doca</th>
                                     <th className="px-4 py-3 text-left">🪑 Mesa LV</th>
@@ -9011,15 +9011,15 @@
                                                                 </>
                                                                 )}
                                                                 <div>
-                                                                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Início</label>
+                                                                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Fim de Conf.</label>
                                                                     <input type="time" value={dadosEdicao.inicio} onChange={(e) => handleChange('inicio', e.target.value)} className="w-full p-2 border rounded input-edit" />
                                                                 </div>
                                                                 <div>
-                                                                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Romaneio</label>
+                                                                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Romaneio Entregue</label>
                                                                     <input type="time" value={dadosEdicao.romaneio} onChange={(e) => handleChange('romaneio', e.target.value)} className="w-full p-2 border rounded input-edit" />
                                                                 </div>
                                                                 <div>
-                                                                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Término</label>
+                                                                    <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Término de Carregamento</label>
                                                                     <input type="time" value={dadosEdicao.termino} onChange={(e) => handleChange('termino', e.target.value)} className="w-full p-2 border rounded input-edit" />
                                                                 </div>
                                                                 <div style={{position:'relative',minWidth:'160px'}}>
@@ -9472,8 +9472,8 @@
                     'NF': op.nf || 0,
                     'Volumes': op.vol || 0,
                     'Cubagem': op.cubagem || 0,
-                    'Início': op.inicio || '',
-                    'Término': op.termino || '',
+                    'Fim de Conf.': op.inicio || '',
+                    'Término de Carregamento': op.termino || '',
                     'Meta (min)': op.meta || 0,
                     'Status': op.status === 'verde' ? 'Verde' : op.status === 'vermelho' ? 'Vermelho' : 'Amarelo'
                 }));
@@ -12819,7 +12819,7 @@
 
             const handleDownloadCSV = () => {
                 setPrintMenu(false);
-                const header = 'Data,Operação,NF,Volume,Cubagem,Início,Término,Meta,Status\n';
+                const header = 'Data,Operação,NF,Volume,Cubagem,Fim de Conf.,Término de Carregamento,Meta,Status\n';
                 const rows = dadosFiltrados.map(o => `${o.data},${o.operacao},${o.nf||0},${o.vol||0},${o.cubagem||0},${o.inicio||''},${o.termino||''},${o.meta||''},${o.status}`).join('\n');
                 const blob = new Blob(['\uFEFF'+header+rows], { type: 'text/csv;charset=utf-8;' });
                 const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
@@ -12845,15 +12845,15 @@
                 if (tipo === 'total') {
                     titulo = '📦 Total de Operações — Detalhamento';
                     dados = dadosFiltrados.sort((a,b)=>a.data.localeCompare(b.data));
-                    cols = ['Data','Operação','NF','Volume','Cubagem','Início','Término','Status'];
+                    cols = ['Data','Operação','NF','Volume','Cubagem','Fim de Conf.','Término de Carregamento','Status'];
                 } else if (tipo === 'sucesso') {
                     titulo = '✅ Operações no Prazo';
                     dados = dadosFiltrados.filter(o=>o.status==='verde').sort((a,b)=>a.data.localeCompare(b.data));
-                    cols = ['Data','Operação','NF','Volume','Início','Término','Meta'];
+                    cols = ['Data','Operação','NF','Volume','Fim de Conf.','Término de Carregamento','Meta'];
                 } else if (tipo === 'atraso') {
                     titulo = '❌ Operações Atrasadas';
                     dados = dadosFiltrados.filter(o=>o.status==='vermelho').sort((a,b)=>a.data.localeCompare(b.data));
-                    cols = ['Data','Operação','NF','Volume','Término','Meta','Diferença'];
+                    cols = ['Data','Operação','NF','Volume','Término de Carregamento','Meta','Diferença'];
                 } else if (tipo === 'nf') {
                     titulo = '📋 NF por Operação';
                     const agg = {};
@@ -12878,7 +12878,7 @@
                         const [hi,mi]=o.inicio.split(':').map(Number); const [ht,mt]=o.termino.split(':').map(Number);
                         const dur=(ht*60+mt)-(hi*60+mi); return {...o,dur:dur>0?dur:0};
                     }).sort((a,b)=>b.dur-a.dur);
-                    cols = ['Data','Operação','Início','Término','Duração (min)','Status'];
+                    cols = ['Data','Operação','Fim de Conf.','Término de Carregamento','Duração (min)','Status'];
                 } else if (tipo === 'pordia') {
                     titulo = '📅 Ops por Dia';
                     const por = {};
@@ -12888,7 +12888,7 @@
                 } else if (tipo === 'pendente') {
                     titulo = '⏳ Operações Pendentes';
                     dados = dadosFiltrados.filter(o=>o.status==='amarelo').sort((a,b)=>a.data.localeCompare(b.data));
-                    cols = ['Data','Operação','NF','Volume','Início','Término'];
+                    cols = ['Data','Operação','NF','Volume','Fim de Conf.','Término de Carregamento'];
                 } else if (tipo === 'meta') {
                     titulo = '🎯 Meta × Realizado por Operação';
                     dados = metaVsReal;
@@ -13044,7 +13044,7 @@
                                     { id:'nf', icon:'📋', label:'NF Total', value: kpis.nfTotal.toLocaleString('pt-BR'), sub: `Média: ${kpis.nfMedio.toFixed(0)}/op`, grad:'linear-gradient(135deg,#3b82f6,#2563eb)' },
                                     { id:'volume', icon:'📦', label:'Volume Total', value: kpis.volTotal.toLocaleString('pt-BR'), sub: `Média: ${kpis.volMedio.toFixed(0)}/op`, grad:'linear-gradient(135deg,#14b8a6,#0d9488)' },
                                     { id:'cubagem', icon:'📐', label:'Cubagem Total', value: kpis.cubTotal.toFixed(2)+' m³', sub:'soma do período', grad:'linear-gradient(135deg,#f97316,#ea580c)' },
-                                    { id:'duracao', icon:'⏱️', label:'Duração Média', value: `${kpis.duracaoMediaH}h${String(kpis.duracaoMediaM).padStart(2,'0')}`, sub:'início → término', grad:'linear-gradient(135deg,#8b5cf6,#7c3aed)' },
+                                    { id:'duracao', icon:'⏱️', label:'Duração Média', value: `${kpis.duracaoMediaH}h${String(kpis.duracaoMediaM).padStart(2,'0')}`, sub:'fim de conf. → término de carregamento', grad:'linear-gradient(135deg,#8b5cf6,#7c3aed)' },
                                     { id:'pordia', icon:'📅', label:'Ops/Dia', value: kpis.mediaPorDia.toFixed(1), sub:`em ${kpis.diasUnicos} dias`, grad:'linear-gradient(135deg,#ec4899,#db2777)' },
                                     { id:'pendente', icon:'⏳', label:'Pendentes', value: kpis.amarelo, sub:`${kpis.total>0?((kpis.amarelo/kpis.total)*100).toFixed(0):0}% do total`, grad:'linear-gradient(135deg,#f59e0b,#d97706)' },
                                     { id:'meta', icon:'🎯', label:'Meta Atingida', value: `${kpis.verde}/${kpis.total}`, sub: kpis.taxaSucesso>=80?'🟢 Excelente':kpis.taxaSucesso>=50?'🟡 Regular':'🔴 Crítico', grad:'linear-gradient(135deg,#475569,#334155)' },
