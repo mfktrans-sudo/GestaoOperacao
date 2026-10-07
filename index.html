@@ -4257,6 +4257,22 @@
                 return { total, verde, vol, nf, cub, sla: total>0?(verde/total*100):0 };
             }, [operacoes, hoje]);
 
+            // Tempos de romaneio: Fim de Conf. -> Romaneio Entregue -> Término de Carregamento
+            const hmMin = (t) => { if (!t) return null; const [h,m] = String(t).split(':').map(Number); return (isNaN(h)||isNaN(m)) ? null : h*60+m; };
+            const fmtTempoMin = (m) => { if (m===null || m===undefined || isNaN(m)) return '—'; const r=Math.round(m); return r<60 ? r+' min' : Math.floor(r/60)+'h'+String(r%60).padStart(2,'0'); };
+            const temposRomaneio = (lista) => {
+                const a=[], b=[];
+                lista.forEach(o => {
+                    const i=hmMin(o.inicio), r=hmMin(o.romaneio), t=hmMin(o.termino);
+                    if (i!==null && r!==null && r-i>=0) a.push(r-i);
+                    if (r!==null && t!==null && t-r>=0) b.push(t-r);
+                });
+                const med = arr => arr.length ? arr.reduce((x,y)=>x+y,0)/arr.length : null;
+                return { romMed: med(a), romQtd: a.length, carMed: med(b), carQtd: b.length };
+            };
+            const tempos     = useMemo(() => temposRomaneio(opsFiltradas), [opsFiltradas]);
+            const temposHoje = useMemo(() => temposRomaneio(operacoes.filter(o => o.data === hoje)), [operacoes, hoje]);
+
             // Evolução diária
             const evolucao = useMemo(() => {
                 const map = {};
@@ -4416,6 +4432,13 @@
                     titulo='⚡ Todas as Operações no Período';
                     dados=[...opsFiltradas].sort((a,b)=>b.data.localeCompare(a.data));
                     colunas=['Data','Operação','Veículo','Volume','NFs','Cubagem m³','Fim de Conf.','Término de Carregamento','Status'];
+                } else if (tipo==='tempo_romaneio' || tipo==='tempo_carregamento') {
+                    const calc = o => { const i=hmMin(o.inicio), r=hmMin(o.romaneio), t=hmMin(o.termino);
+                        return {...o, d1:(i!==null&&r!==null&&r-i>=0)?r-i:null, d2:(r!==null&&t!==null&&t-r>=0)?t-r:null}; };
+                    const chave = tipo==='tempo_romaneio' ? 'd1' : 'd2';
+                    titulo = tipo==='tempo_romaneio' ? '📄 Tempo até o Romaneio — Fim de Conf. → Romaneio Entregue' : '🚚 Tempo de Carregamento — Romaneio Entregue → Término de Carregamento';
+                    dados = opsFiltradas.map(calc).filter(o=>o[chave]!==null).sort((a,b)=>b[chave]-a[chave]);
+                    colunas=['Data','Operação','Fim de Conf.','Romaneio Entregue','Término de Carregamento','Conf. → Romaneio','Romaneio → Término','Status'];
                 }
                 setTorreModal({titulo,dados,colunas,tipo});
             };
@@ -4447,6 +4470,20 @@
                         {cel(parseFloat(row.cubagem||0).toFixed(2),{color:AMBER_C})}
                         {cel(row.inicio||'—')}
                         {cel(row.termino||'—')}
+                        <td style={{padding:'9px 14px',borderBottom:'1px solid #f3f0ff'}}>{pill(row.status)}</td>
+                    </tr>;
+                }
+                if (tipo==='tempo_romaneio' || tipo==='tempo_carregamento') {
+                    const destaque = tipo==='tempo_romaneio' ? 'd1' : 'd2';
+                    const tm = v => (v===null||v===undefined) ? '—' : (v<60 ? v+' min' : Math.floor(v/60)+'h'+String(v%60).padStart(2,'0'));
+                    return <tr key={i} style={{background:bg}}>
+                        {cel(fmtFull2(row.data))}
+                        {cel(normalizarNome(row.operacao),{bold:true})}
+                        {cel(row.inicio||'—')}
+                        {cel(row.romaneio||'—')}
+                        {cel(row.termino||'—')}
+                        {cel(tm(row.d1),{color:BLUE_C,bold:destaque==='d1'})}
+                        {cel(tm(row.d2),{color:AMBER_C,bold:destaque==='d2'})}
                         <td style={{padding:'9px 14px',borderBottom:'1px solid #f3f0ff'}}>{pill(row.status)}</td>
                     </tr>;
                 }
@@ -4761,10 +4798,13 @@
                         {id:'cub', cls:'amber',  icon:'📐', label:'Cubagem m³',        val:kpi.cubTotal.toFixed(1),   sub:'Média '+kpi.mediaCub.toFixed(1)+' m³ / dia',  hoje:kpiHoje.cub.toFixed(1)+' m³',   valColor:AMBER},
                         {id:'sla', cls:kpi.sla>=80?'green':kpi.sla>=60?'amber':'red', icon:'🎯', label:'SLA no Prazo', val:kpi.sla.toFixed(1)+'%', sub:slaLabel(kpi.sla)+' · '+kpi.verde+'/'+kpi.total+' ops', hoje:kpiHoje.sla.toFixed(1)+'%', valColor:slaColor(kpi.sla)},
                         {id:'ops', cls:'purple', icon:'⚡', label:'Total Operações',   val:kpi.total,                 sub:kpi.dias+' dias · '+porOperacao.length+' tipos', hoje:kpiHoje.total,                 valColor:PURPLE},
+                        {id:'t_rom', modal:'tempo_romaneio',     cls:'blue',  icon:'📄', label:'Fim Conf. → Romaneio',   val:fmtTempoMin(tempos.romMed), sub:'Romaneio Entregue · '+tempos.romQtd+' ops', hoje:fmtTempoMin(temposHoje.romMed), valColor:'#3b82f6'},
+                        {id:'t_car', modal:'tempo_carregamento', cls:'amber', icon:'🚚', label:'Romaneio → Término',     val:fmtTempoMin(tempos.carMed), sub:'Término de Carregamento · '+tempos.carQtd+' ops', hoje:fmtTempoMin(temposHoje.carMed), valColor:'#f59e0b'},
                     ].map(c => (
                         <div key={c.id}
                             className={'torre-kpi-card '+c.cls+' torre-kpi-hover'+(exploding[c.id]?' torre-kpi-explode':'')}
-                            onClick={() => explodeCard(c.id)}
+                            onClick={() => { explodeCard(c.id); if (c.modal) abrirTorreModal(c.modal); }}
+                            title={c.modal ? 'Clique para ver detalhes' : undefined}
                             style={{cursor:'pointer',transition:'transform 0.2s,box-shadow 0.2s'}}>
                             <div className="torre-kpi-icon">{c.icon}</div>
                             <div className="torre-kpi-label">{c.label}</div>
