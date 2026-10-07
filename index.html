@@ -4077,6 +4077,310 @@
             );
         }
 
+        // ========== TORRE — ANÁLISE DO TEMPO DE ROMANEIO (Fim de Conf. → Romaneio Entregue) ==========
+        const tarToMin = (t) => { if (!t) return null; const p = String(t).split(':').map(Number); return (p.length < 2 || isNaN(p[0]) || isNaN(p[1])) ? null : p[0]*60 + p[1]; };
+        const tarFmt = (v) => { if (v === null || v === undefined || isNaN(v)) return '—'; const r = Math.round(v); return r < 60 ? r + ' min' : Math.floor(r/60) + 'h' + String(r%60).padStart(2,'0'); };
+        const tarMean = (a) => a.length ? a.reduce((x,y) => x+y, 0) / a.length : null;
+        const tarPct = (a, p) => { if (!a.length) return null; const s = [...a].sort((x,y) => x-y); const k = (s.length-1)*p; const f = Math.floor(k), c = Math.ceil(k); return s[f] + (s[c]-s[f])*(k-f); };
+        const tarPearson = (xs, ys) => {
+            const n = xs.length; if (n < 3) return null;
+            const mx = tarMean(xs), my = tarMean(ys); let sxy = 0, sxx = 0, syy = 0;
+            for (let i = 0; i < n; i++) { sxy += (xs[i]-mx)*(ys[i]-my); sxx += (xs[i]-mx)**2; syy += (ys[i]-my)**2; }
+            return (sxx > 0 && syy > 0) ? sxy / Math.sqrt(sxx*syy) : null;
+        };
+        const tarAgrupar = (regs, lim, keyFn, labelFn) => {
+            const mp = {};
+            regs.forEach(r => {
+                const k = keyFn(r); if (k === null || k === undefined) return;
+                if (!mp[k]) mp[k] = { key: k, label: labelFn(k), vals: [] };
+                mp[k].vals.push(r.min);
+            });
+            return Object.values(mp).map(g => ({
+                key: g.key, label: g.label, n: g.vals.length,
+                media: tarMean(g.vals), pico: Math.max(...g.vals), mediana: tarPct(g.vals, 0.5),
+                acima: g.vals.filter(v => v > lim).length
+            }));
+        };
+
+        function TorreAnaliseRomaneio({ opsFiltradas, normalizarNome }) {
+            const { useState, useEffect, useMemo, useRef } = React;
+            const [visao, setVisao] = useState('diaria');
+            const [metrica, setMetrica] = useState('media');
+            const [limite, setLimite] = useState(30);
+            const [topN, setTopN] = useState(10);
+            const [soAcima, setSoAcima] = useState(false);
+            const canvasRef = useRef(null);
+            const chartRef = useRef(null);
+
+            const BLUE = '#3b82f6', RED = '#ef4444', AMBER = '#f59e0b', GREEN = '#10b981', PURPLE = '#7c3aed';
+            const DIAS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+            const fmtData = s => { if (!s) return ''; const [y,m,d] = s.split('-'); return d+'/'+m+'/'+y; };
+            const fmtDM   = s => { if (!s) return ''; const [,m,d] = s.split('-'); return d+'/'+m; };
+            const lim = Number(limite) || 0;
+
+            // Registros válidos: Fim de Conf. e Romaneio Entregue preenchidos e em ordem
+            const regs = useMemo(() => {
+                const out = [];
+                (opsFiltradas || []).forEach(o => {
+                    const i = tarToMin(o.inicio), r = tarToMin(o.romaneio), t = tarToMin(o.termino);
+                    if (i === null || r === null || r - i < 0) return;
+                    const dt = o.data ? new Date(o.data + 'T12:00:00') : null;
+                    const nomeOrig = (o.operacao || '').trim();
+                    const mv = nomeOrig.match(/[\s\-_]*(\d+)\s*$/);
+                    out.push({
+                        data: o.data, dow: (dt && !isNaN(dt)) ? dt.getDay() : null, hora: Math.floor(i/60), min: r - i,
+                        d2: (t !== null && t - r >= 0) ? t - r : null,
+                        op: normalizarNome(nomeOrig), veic: mv ? mv[1] : '',
+                        vol: Number(o.vol) || 0, nf: Number(o.nf) || 0, cub: parseFloat(o.cubagem || 0) || 0,
+                        inicio: o.inicio, romaneio: o.romaneio, termino: o.termino || '', doca: o.doca || '', status: o.status
+                    });
+                });
+                return out;
+            }, [opsFiltradas]);
+            const semHorario = (opsFiltradas || []).length - regs.length;
+
+            const stats = useMemo(() => {
+                if (!regs.length) return null;
+                const m = regs.map(r => r.min);
+                const pico = regs.reduce((a,b) => b.min > a.min ? b : a, regs[0]);
+                const acima = regs.filter(r => r.min > lim).length;
+                const cc = regs.filter(r => r.d2 !== null);
+                const somaEsp = cc.reduce((a,r) => a + r.min, 0), somaTot = cc.reduce((a,r) => a + r.min + r.d2, 0);
+                return { n: regs.length, media: tarMean(m), mediana: tarPct(m, 0.5), p90: tarPct(m, 0.9), max: pico.min, pico,
+                         acima, pctAcima: acima / regs.length * 100, shareCiclo: somaTot > 0 ? somaEsp / somaTot * 100 : null, nCiclo: cc.length };
+            }, [regs, lim]);
+
+            const grupos = useMemo(() => {
+                if (!regs.length) return [];
+                if (visao === 'diaria')  return tarAgrupar(regs, lim, r => r.data, k => fmtDM(k)).sort((a,b) => a.key.localeCompare(b.key));
+                if (visao === 'hora')    return tarAgrupar(regs, lim, r => r.hora, k => String(k).padStart(2,'0') + 'h').sort((a,b) => a.key - b.key);
+                if (visao === 'semana')  return tarAgrupar(regs, lim, r => r.dow, k => DIAS[k]).sort((a,b) => ((a.key+6)%7) - ((b.key+6)%7));
+                if (visao === 'operacao') return tarAgrupar(regs, lim, r => r.op, k => k).sort((a,b) => metrica === 'pico' ? b.pico - a.pico : b.media - a.media).slice(0, 15);
+                if (visao === 'porte') {
+                    const vols = regs.filter(r => r.vol > 0).map(r => r.vol);
+                    if (vols.length < 4) return [];
+                    const q1 = tarPct(vols, 0.25), q2 = tarPct(vols, 0.5), q3 = tarPct(vols, 0.75);
+                    const idx = r => r.vol <= 0 ? null : (r.vol <= q1 ? 0 : r.vol <= q2 ? 1 : r.vol <= q3 ? 2 : 3);
+                    const nomes = ['Menor porte (até ' + Math.round(q1) + ' vol)', 'Médio-baixo (até ' + Math.round(q2) + ')', 'Médio-alto (até ' + Math.round(q3) + ')', 'Maior porte (> ' + Math.round(q3) + ' vol)'];
+                    return tarAgrupar(regs, lim, idx, k => nomes[k]).sort((a,b) => a.key - b.key);
+                }
+                if (visao === 'distribuicao') {
+                    const bins = [[0,10,'0–10'],[10,20,'10–20'],[20,30,'20–30'],[30,45,'30–45'],[45,60,'45–60'],[60,120,'1h–2h'],[120,Infinity,'> 2h']];
+                    return bins.map(([lo,hi,lb]) => ({ key: lb, label: lb + ' min', lo, hi, n: regs.filter(r => r.min >= lo && r.min < hi).length }));
+                }
+                return [];
+            }, [regs, visao, metrica, lim]);
+
+            // Gráfico
+            useEffect(() => {
+                if (chartRef.current) { try { chartRef.current.destroy(); } catch(e){} chartRef.current = null; }
+                if (!canvasRef.current || !grupos.length) return;
+                const grid = { color: 'rgba(124,58,237,0.07)' };
+                const tick = { color: '#6b7280', font: { size: 10 } };
+                const tip = { backgroundColor: '#2d1b69', titleColor: '#c4b5fd' };
+                const r1 = v => Math.round(v * 10) / 10;
+                let cfg;
+                if (visao === 'diaria') {
+                    cfg = { type: 'line',
+                        data: { labels: grupos.map(g => g.label), datasets: [
+                            { label: 'Média (min)', data: grupos.map(g => r1(g.media)), borderColor: BLUE, backgroundColor: 'rgba(59,130,246,0.12)', fill: true, tension: 0.35, pointRadius: 3, borderWidth: 2.5 },
+                            { label: 'Pico do dia (min)', data: grupos.map(g => g.pico), borderColor: RED, backgroundColor: RED, tension: 0.2, pointRadius: 4, borderWidth: 2, borderDash: [5,4] },
+                            { label: 'Limite (' + lim + ' min)', data: grupos.map(() => lim), borderColor: AMBER, borderWidth: 1.5, borderDash: [2,3], pointRadius: 0, fill: false }
+                        ] },
+                        options: { responsive: true, maintainAspectRatio: false,
+                            plugins: { legend: { labels: { color: '#6b7280', font: { size: 10 }, boxWidth: 12 } }, tooltip: { ...tip, callbacks: { afterLabel: c => c.datasetIndex === 0 ? grupos[c.dataIndex].n + ' carga(s) · ' + grupos[c.dataIndex].acima + ' acima do limite' : '' } } },
+                            scales: { x: { grid: { display: false }, ticks: { ...tick, maxTicksLimit: 14 } }, y: { grid, ticks: tick, beginAtZero: true, title: { display: true, text: 'minutos', color: '#9ca3af', font: { size: 10 } } } } } };
+                } else if (visao === 'distribuicao') {
+                    cfg = { type: 'bar',
+                        data: { labels: grupos.map(g => g.label), datasets: [{ label: 'Cargas', data: grupos.map(g => g.n),
+                            backgroundColor: grupos.map(g => g.lo >= lim ? 'rgba(239,68,68,0.75)' : (g.hi > lim ? 'rgba(245,158,11,0.75)' : 'rgba(59,130,246,0.75)')), borderRadius: 6 }] },
+                        options: { responsive: true, maintainAspectRatio: false,
+                            plugins: { legend: { display: false }, tooltip: { ...tip, callbacks: { label: c => ' ' + c.raw + ' carga(s) · ' + (regs.length ? (c.raw / regs.length * 100).toFixed(0) : 0) + '%' } } },
+                            scales: { x: { grid: { display: false }, ticks: tick }, y: { grid, ticks: { ...tick, precision: 0 }, beginAtZero: true, title: { display: true, text: 'cargas', color: '#9ca3af', font: { size: 10 } } } } } };
+                } else {
+                    const horiz = visao === 'operacao';
+                    const vals = grupos.map(g => metrica === 'pico' ? g.pico : r1(g.media));
+                    cfg = { type: 'bar',
+                        data: { labels: grupos.map(g => g.label), datasets: [{ label: metrica === 'pico' ? 'Pico (min)' : 'Média (min)', data: vals,
+                            backgroundColor: vals.map(v => v > lim ? 'rgba(239,68,68,0.75)' : 'rgba(59,130,246,0.75)'), borderRadius: 6 }] },
+                        options: { indexAxis: horiz ? 'y' : 'x', responsive: true, maintainAspectRatio: false,
+                            plugins: { legend: { display: false }, tooltip: { ...tip, callbacks: { label: c => ' ' + tarFmt(c.raw), afterLabel: c => { const g = grupos[c.dataIndex]; return g.n + ' carga(s) · média ' + tarFmt(g.media) + ' · pico ' + tarFmt(g.pico) + ' · ' + g.acima + ' acima do limite'; } } } },
+                            scales: horiz
+                                ? { x: { grid, ticks: tick, beginAtZero: true, title: { display: true, text: 'minutos', color: '#9ca3af', font: { size: 10 } } }, y: { grid: { display: false }, ticks: tick } }
+                                : { x: { grid: { display: false }, ticks: tick }, y: { grid, ticks: tick, beginAtZero: true, title: { display: true, text: 'minutos', color: '#9ca3af', font: { size: 10 } } } } } };
+                }
+                chartRef.current = new Chart(canvasRef.current, cfg);
+                return () => { if (chartRef.current) { try { chartRef.current.destroy(); } catch(e){} chartRef.current = null; } };
+            }, [grupos, visao, metrica, lim]);
+
+            // Análise automática
+            const insights = useMemo(() => {
+                if (!stats) return [];
+                const L = [];
+                const piorPor = (arr, minN) => { const c = arr.filter(g => g.n >= minN); const base = c.length ? c : arr; return base.length ? base.reduce((a,b) => b.media > a.media ? b : a, base[0]) : null; };
+                L.push({ ic: '📌', t: 'Em ' + stats.n + ' romaneios analisados, a espera média entre Fim de Conf. e Romaneio Entregue foi de ' + tarFmt(stats.media) + ' (mediana ' + tarFmt(stats.mediana) + '; 90% das cargas esperaram até ' + tarFmt(stats.p90) + '). ' + stats.acima + ' carga(s) (' + stats.pctAcima.toFixed(0) + '%) passaram do limite de ' + lim + ' min.' });
+                const p = stats.pico;
+                L.push({ ic: '🚨', t: 'Maior espera do período: ' + tarFmt(stats.max) + ' em ' + fmtData(p.data) + ' — ' + p.op + (p.veic ? ' (veíc. ' + p.veic + ')' : '') + ', Fim de Conf. ' + p.inicio + ' → Romaneio ' + p.romaneio + ' (' + p.vol + ' vol / ' + p.nf + ' NF).' });
+                const gh = tarAgrupar(regs, lim, r => r.hora, k => String(k).padStart(2,'0') + 'h');
+                const ph = piorPor(gh, 2);
+                if (ph && gh.length > 1) L.push({ ic: '⏰', t: 'Faixa de maior espera: conferências finalizadas por volta das ' + ph.label + ' têm a pior média (' + tarFmt(ph.media) + ', pico ' + tarFmt(ph.pico) + ', ' + ph.n + ' carga(s)). Vale avaliar a cobertura do ADM nesse horário.' });
+                const gs = tarAgrupar(regs, lim, r => r.dow, k => DIAS[k]);
+                const ps = piorPor(gs, 2);
+                if (ps && gs.length > 1) L.push({ ic: '📅', t: 'Dia da semana mais lento: ' + ps.label + ' (média ' + tarFmt(ps.media) + ', ' + ps.n + ' carga(s)).' });
+                const go = tarAgrupar(regs, lim, r => r.op, k => k);
+                const po = piorPor(go, 2);
+                if (po && go.length > 1) L.push({ ic: '🚛', t: 'Operação com maior espera média: ' + po.label + ' (' + tarFmt(po.media) + ', pico ' + tarFmt(po.pico) + ', ' + po.n + ' carga(s)).' });
+                const mAc = go.filter(g => g.acima > 0).sort((a,b) => b.acima - a.acima)[0];
+                if (mAc) L.push({ ic: '⚠️', t: 'Operação com mais cargas acima do limite: ' + mAc.label + ' (' + mAc.acima + ' de ' + mAc.n + ').' });
+                const cv = regs.filter(r => r.vol > 0);
+                if (cv.length >= 5) {
+                    const r = tarPearson(cv.map(x => x.vol), cv.map(x => x.min));
+                    if (r !== null) {
+                        const forca = Math.abs(r) >= 0.5 ? 'forte' : Math.abs(r) >= 0.3 ? 'moderada' : 'fraca';
+                        const leitura = r >= 0.3 ? 'cargas maiores tendem a esperar mais pelo romaneio — o gargalo parece ligado ao volume.' : 'o tamanho da carga explica pouco a espera — o gap tende a estar na fila/processo do ADM, e não no volume.';
+                        L.push({ ic: '📦', t: 'Relação volume × espera: correlação ' + forca + ' (r = ' + r.toFixed(2) + '); ' + leitura });
+                    }
+                }
+                if (stats.shareCiclo !== null && stats.nCiclo >= 1) L.push({ ic: '⏱️', t: 'A espera pelo romaneio consome ' + stats.shareCiclo.toFixed(0) + '% do tempo entre Fim de Conf. e Término de Carregamento (' + stats.nCiclo + ' carga(s) com os 3 horários). Cada minuto reduzido aqui encurta o ciclo todo.' });
+                const dias = tarAgrupar(regs, lim, r => r.data, k => k).sort((a,b) => a.key.localeCompare(b.key));
+                if (dias.length >= 4) {
+                    const h = Math.floor(dias.length / 2);
+                    const a1 = tarMean(dias.slice(0, h).map(d => d.media)), a2 = tarMean(dias.slice(dias.length - h).map(d => d.media));
+                    if (a1 > 0) {
+                        const dif = (a2 - a1) / a1 * 100;
+                        if (Math.abs(dif) >= 10) L.push({ ic: dif > 0 ? '📈' : '📉', t: 'Tendência: a média da segunda metade do período (' + tarFmt(a2) + ') ficou ' + Math.abs(dif).toFixed(0) + '% ' + (dif > 0 ? 'acima (piora)' : 'abaixo (melhora)') + ' da primeira metade (' + tarFmt(a1) + ').' });
+                        else L.push({ ic: '➖', t: 'Tendência estável: média da primeira metade ' + tarFmt(a1) + ' vs. segunda metade ' + tarFmt(a2) + '.' });
+                    }
+                }
+                if (semHorario > 0) L.push({ ic: 'ℹ️', t: semHorario + ' operação(ões) do filtro ficaram fora da análise por não terem Fim de Conf. e Romaneio Entregue válidos (vazios ou com horário invertido).' });
+                return L;
+            }, [stats, regs, lim, semHorario]);
+
+            const topCargas = useMemo(() => {
+                let a = [...regs].sort((x,y) => y.min - x.min);
+                if (soAcima) a = a.filter(r => r.min > lim);
+                return a.slice(0, topN);
+            }, [regs, topN, soAcima, lim]);
+
+            const btn = (ativo) => ({ padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: '1.5px solid ' + (ativo ? PURPLE : '#ddd6fe'), background: ativo ? PURPLE : '#fff', color: ativo ? '#fff' : PURPLE });
+            const visoes = [['diaria','📈 Evolução diária'],['hora','⏰ Picos por hora'],['semana','📅 Dia da semana'],['operacao','🚛 Por operação'],['porte','📦 Por porte da carga'],['distribuicao','📊 Distribuição']];
+            const usaMetrica = ['hora','semana','operacao','porte'].includes(visao);
+            const alturaGraf = visao === 'operacao' ? Math.max(260, grupos.length * 30 + 60) : 280;
+            const th = { background: 'linear-gradient(135deg,#4c1d95,#6d28d9)', color: '#fff', padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' };
+            const td = { padding: '8px 12px', borderBottom: '1px solid #f3f0ff', color: '#374151', fontSize: 12 };
+
+            return (
+                <div style={{background:'#fff',borderRadius:14,padding:20,border:'1.5px solid #ede9fe',marginBottom:14}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10,marginBottom:14}}>
+                        <div>
+                            <div style={{fontSize:13,fontWeight:800,color:PURPLE,textTransform:'uppercase',letterSpacing:'0.08em'}}>⏱️ Análise do Tempo de Romaneio (ADM)</div>
+                            <div style={{fontSize:11,color:'#6b7280',marginTop:2}}>Da finalização da conferência (Fim de Conf.) até o Romaneio Entregue · segue os filtros da Torre</div>
+                        </div>
+                        <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,fontWeight:700,color:'#6b7280'}}>
+                            Limite aceitável (min)
+                            <input type="number" min="1" value={limite} onChange={e => setLimite(e.target.value)} style={{width:70,padding:'5px 8px',borderRadius:8,border:'1.5px solid #ddd6fe',background:'#faf5ff',color:'#4c1d95',fontWeight:700,fontSize:12}} />
+                        </label>
+                    </div>
+
+                    {!stats ? (
+                        <div style={{textAlign:'center',padding:40,color:'#94a3b8'}}>
+                            <div style={{fontSize:36,marginBottom:6}}>📭</div>
+                            <div style={{fontSize:13}}>Nenhuma operação com Fim de Conf. e Romaneio Entregue preenchidos neste filtro.</div>
+                        </div>
+                    ) : (
+                    <div>
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:10,marginBottom:16}}>
+                            {[
+                                {l:'Média', v:tarFmt(stats.media), c:BLUE},
+                                {l:'Mediana', v:tarFmt(stats.mediana), c:BLUE},
+                                {l:'90% até (P90)', v:tarFmt(stats.p90), c:AMBER},
+                                {l:'Pico (máx.)', v:tarFmt(stats.max), c:RED},
+                                {l:'Acima do limite', v:stats.acima + ' (' + stats.pctAcima.toFixed(0) + '%)', c:stats.pctAcima > 30 ? RED : stats.pctAcima > 10 ? AMBER : GREEN},
+                                {l:'% do ciclo até Término', v:stats.shareCiclo === null ? '—' : stats.shareCiclo.toFixed(0) + '%', c:PURPLE},
+                            ].map(x => (
+                                <div key={x.l} style={{background:'#faf5ff',border:'1px solid #ede9fe',borderRadius:10,padding:'10px 12px'}}>
+                                    <div style={{fontSize:10,fontWeight:700,color:'#9ca3af',textTransform:'uppercase'}}>{x.l}</div>
+                                    <div style={{fontSize:20,fontWeight:900,color:x.c,marginTop:2}}>{x.v}</div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:10}}>
+                            {visoes.map(([id,l]) => <button key={id} onClick={() => setVisao(id)} style={btn(visao === id)}>{l}</button>)}
+                            {usaMetrica && (
+                                <span style={{marginLeft:'auto',display:'flex',gap:6,alignItems:'center'}}>
+                                    <span style={{fontSize:11,fontWeight:700,color:'#6b7280'}}>Mostrar:</span>
+                                    <button onClick={() => setMetrica('media')} style={btn(metrica === 'media')}>Média</button>
+                                    <button onClick={() => setMetrica('pico')} style={btn(metrica === 'pico')}>Picos (máx.)</button>
+                                </span>
+                            )}
+                        </div>
+
+                        {grupos.length === 0 ? (
+                            <div style={{textAlign:'center',padding:30,color:'#94a3b8',fontSize:13}}>Dados insuficientes para esta visão (são necessárias ao menos 4 cargas com volume informado).</div>
+                        ) : (
+                            <div style={{height:alturaGraf,position:'relative'}}><canvas ref={canvasRef}></canvas></div>
+                        )}
+                        <div style={{fontSize:10,color:'#9ca3af',marginTop:6}}>
+                            {visao === 'distribuicao' ? 'Vermelho: faixa totalmente acima do limite · Laranja: faixa que cruza o limite.' : visao === 'diaria' ? 'Linha laranja pontilhada = limite aceitável.' : 'Barras vermelhas = acima do limite (' + lim + ' min). Passe o mouse para ver quantidade de cargas, média e pico.'}
+                        </div>
+
+                        <div style={{marginTop:18,background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:12,padding:'14px 16px'}}>
+                            <div style={{fontSize:12,fontWeight:800,color:'#334155',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>🧠 Diagnóstico automático — onde estão os gaps</div>
+                            <div style={{display:'flex',flexDirection:'column',gap:7}}>
+                                {insights.map((x,i) => (
+                                    <div key={i} style={{display:'flex',gap:8,fontSize:12.5,color:'#334155',lineHeight:1.45}}>
+                                        <span>{x.ic}</span><span>{x.t}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div style={{marginTop:18}}>
+                            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8,marginBottom:8}}>
+                                <div style={{fontSize:12,fontWeight:800,color:'#334155',textTransform:'uppercase',letterSpacing:'0.06em'}}>🏋️ Cargas que mais demoraram a receber o romaneio</div>
+                                <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
+                                    {[10,20,50].map(n => <button key={n} onClick={() => setTopN(n)} style={btn(topN === n)}>Top {n}</button>)}
+                                    <label style={{display:'flex',alignItems:'center',gap:4,fontSize:12,fontWeight:700,color:'#6b7280',cursor:'pointer'}}>
+                                        <input type="checkbox" checked={soAcima} onChange={e => setSoAcima(e.target.checked)} /> só acima do limite
+                                    </label>
+                                </div>
+                            </div>
+                            <div style={{overflowX:'auto',border:'1px solid #ede9fe',borderRadius:10}}>
+                                <table style={{width:'100%',borderCollapse:'collapse'}}>
+                                    <thead><tr>{['#','Data','Operação','Veíc.','Volume','NFs','Fim de Conf.','Romaneio','Término','Espera ADM','vs. limite'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+                                    <tbody>
+                                        {topCargas.length === 0 ? (
+                                            <tr><td colSpan="11" style={{...td,textAlign:'center',color:'#94a3b8',padding:20}}>Nenhuma carga acima do limite de {lim} min.</td></tr>
+                                        ) : topCargas.map((r,i) => (
+                                            <tr key={i} style={{background:i%2===0?'#f8fafc':'#fff'}}>
+                                                <td style={{...td,color:'#9ca3af',fontWeight:700}}>{i+1}</td>
+                                                <td style={td}>{fmtData(r.data)}</td>
+                                                <td style={{...td,fontWeight:700}}>{r.op}</td>
+                                                <td style={td}>{r.veic ? '🚛 ' + r.veic : '—'}</td>
+                                                <td style={{...td,color:PURPLE,fontWeight:700}}>{Math.round(r.vol).toLocaleString('pt-BR')}</td>
+                                                <td style={td}>{Math.round(r.nf).toLocaleString('pt-BR')}</td>
+                                                <td style={td}>{r.inicio}</td>
+                                                <td style={td}>{r.romaneio}</td>
+                                                <td style={td}>{r.termino || '—'}</td>
+                                                <td style={{...td,fontWeight:800,color:r.min > lim ? RED : BLUE}}>{tarFmt(r.min)}</td>
+                                                <td style={td}>
+                                                    <span style={{padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:700,background:r.min > lim ? '#fee2e2' : '#d1fae5',color:r.min > lim ? '#991b1b' : '#065f46'}}>
+                                                        {r.min > lim ? '+' + tarFmt(r.min - lim) : 'dentro'}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    )}
+                </div>
+            );
+        }
+
         // ========== TORRE DE CONTROLE — V13 PALETA ORIGINAL ==========
         function TorreDeControle({ operacoes, listaOperacoes }) {
             const { useState, useEffect, useMemo, useRef } = React;
@@ -4818,6 +5122,9 @@
                         </div>
                     ))}
                 </div>
+
+                {/* ══ ANÁLISE DO TEMPO DE ROMANEIO (ADM) ══ */}
+                <TorreAnaliseRomaneio opsFiltradas={opsFiltradas} normalizarNome={normalizarNome} />
 
                 {/* ══ ROW: STATUS + DONUT + HOJE ══ */}
                 <div style={{display:'grid',gridTemplateColumns:'1fr 220px 220px',gap:12,marginBottom:14}}>
