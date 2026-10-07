@@ -12,7 +12,6 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
@@ -4295,173 +4294,6 @@
                 })).sort((a,b)=>b.vol-a.vol);
             }, [opsFiltradas]);
 
-            // ══ TABELA DINÂMICA — agrupa "porOperacao" por prefixo (Grupo) igual ao painel de Volumetria/Cubagem por Ferramenta ══
-            const [showPivot, setShowPivot] = useState(false);
-            const pivotData = useMemo(() => {
-                const GRUPOS_CONHECIDOS = ['TP','TZ','TS'];
-                const mapGrupos = {};
-                porOperacao.forEach(o => {
-                    const primeiraPalavra = (o.op || '').split(' ')[0];
-                    const grupoKey = GRUPOS_CONHECIDOS.includes(primeiraPalavra) ? primeiraPalavra : 'OUTROS';
-                    if (!mapGrupos[grupoKey]) mapGrupos[grupoKey] = [];
-                    mapGrupos[grupoKey].push(o);
-                });
-                const ordem = [...GRUPOS_CONHECIDOS, 'OUTROS'];
-                return ordem
-                    .filter(g => mapGrupos[g] && mapGrupos[g].length > 0)
-                    .map(g => {
-                        const itens = [...mapGrupos[g]].sort((a,b) => a.op.localeCompare(b.op));
-                        return {
-                            grupo: g,
-                            itens,
-                            totalNF:  itens.reduce((a,i) => a + i.nf,  0),
-                            totalVol: itens.reduce((a,i) => a + i.vol, 0),
-                            totalCub: itens.reduce((a,i) => a + i.cub, 0),
-                        };
-                    });
-            }, [porOperacao]);
-            const pivotTotalGeral = useMemo(() => ({
-                nf:  pivotData.reduce((a,g) => a + g.totalNF,  0),
-                vol: pivotData.reduce((a,g) => a + g.totalVol, 0),
-                cub: pivotData.reduce((a,g) => a + g.totalCub, 0),
-            }), [pivotData]);
-            const fmtCub = v => (Number(v)||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
-
-            // ══ EXPORTAR EXCEL — TABELA DINÂMICA (aba 1: pivô formatado igual ao modelo, aba 2: base de dados tratada) ══
-            const exportarExcelPivot = async () => {
-                const wb = new ExcelJS.Workbook();
-
-                // ── ABA 1: TABELA DINÂMICA (formatação igual ao modelo enviado) ──
-                const ws = wb.addWorksheet('Tabela Dinâmica');
-                ws.columns = [
-                    { width: 10 }, // Grupo
-                    { width: 30 }, // Destino
-                    { width: 14 }, // NF
-                    { width: 14 }, // Volumes
-                    { width: 15 }, // Cubagem
-                ];
-
-                const AZUL_HEADER = 'FF1F6FC5';
-                const AZUL_TOTALGERAL = 'FF1F3864';
-                const LILAS_SUBTOTAL = 'FFD9E1F2';
-                const AZUL_TEXTO = 'FF1F3864';
-                const BORDA = { style: 'thin', color: { argb: 'FFB4C6E7' } };
-
-                ws.mergeCells('A1:E1');
-                const tituloCell = ws.getCell('A1');
-                tituloCell.value = 'Operações Consolidadas NF - Volumetria - Cubagem - Ferramenta TP';
-                tituloCell.font = { bold: true, size: 13, color: { argb: AZUL_TEXTO } };
-                tituloCell.alignment = { horizontal: 'center', vertical: 'middle' };
-                ws.getRow(1).height = 22;
-
-                const headerRow = ws.addRow(['Grupo', 'Destino', 'NF', 'Volumes', 'Cubagem']);
-                headerRow.height = 20;
-                headerRow.eachCell(cell => {
-                    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AZUL_HEADER } };
-                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
-                    cell.border = { top: BORDA, left: BORDA, bottom: BORDA, right: BORDA };
-                });
-
-                pivotData.forEach(g => {
-                    const startRow = ws.rowCount + 1;
-                    g.itens.forEach(item => {
-                        const row = ws.addRow([g.grupo, item.op, item.nf, item.vol, item.cub]);
-                        row.getCell(1).font = { bold: true, color: { argb: AZUL_TEXTO } };
-                        row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
-                        row.getCell(2).font = { color: { argb: 'FF1F2937' } };
-                        row.getCell(3).numFmt = '#,##0';
-                        row.getCell(4).numFmt = '#,##0';
-                        row.getCell(5).numFmt = '#,##0.00';
-                        row.getCell(3).alignment = { horizontal: 'right' };
-                        row.getCell(4).alignment = { horizontal: 'right' };
-                        row.getCell(5).alignment = { horizontal: 'right' };
-                        row.eachCell(cell => { cell.border = { bottom: BORDA, left: BORDA, right: BORDA }; });
-                    });
-                    const endRow = ws.rowCount;
-                    if (endRow > startRow) {
-                        ws.mergeCells(`A${startRow}:A${endRow}`);
-                        ws.getCell(`A${startRow}`).alignment = { horizontal: 'center', vertical: 'middle' };
-                    }
-
-                    const subRow = ws.addRow(['', `${g.grupo} Total`, g.totalNF, g.totalVol, g.totalCub]);
-                    ws.mergeCells(`A${subRow.number}:B${subRow.number}`);
-                    subRow.eachCell(cell => {
-                        cell.font = { bold: true, color: { argb: AZUL_TEXTO } };
-                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LILAS_SUBTOTAL } };
-                        cell.border = { top: BORDA, bottom: BORDA, left: BORDA, right: BORDA };
-                    });
-                    subRow.getCell(3).numFmt = '#,##0';
-                    subRow.getCell(4).numFmt = '#,##0';
-                    subRow.getCell(5).numFmt = '#,##0.00';
-                    subRow.getCell(3).alignment = { horizontal: 'right' };
-                    subRow.getCell(4).alignment = { horizontal: 'right' };
-                    subRow.getCell(5).alignment = { horizontal: 'right' };
-                    subRow.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' };
-                });
-
-                const totalRow = ws.addRow(['', 'Total Geral', pivotTotalGeral.nf, pivotTotalGeral.vol, pivotTotalGeral.cub]);
-                ws.mergeCells(`A${totalRow.number}:B${totalRow.number}`);
-                totalRow.height = 20;
-                totalRow.eachCell(cell => {
-                    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AZUL_TOTALGERAL } };
-                    cell.border = { top: BORDA, bottom: BORDA, left: BORDA, right: BORDA };
-                });
-                totalRow.getCell(3).numFmt = '#,##0';
-                totalRow.getCell(4).numFmt = '#,##0';
-                totalRow.getCell(5).numFmt = '#,##0.00';
-                totalRow.getCell(3).alignment = { horizontal: 'right' };
-                totalRow.getCell(4).alignment = { horizontal: 'right' };
-                totalRow.getCell(5).alignment = { horizontal: 'right' };
-                totalRow.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' };
-
-                // ── ABA 2: BASE DE DADOS (todos os registros tratados que originaram a tabela dinâmica) ──
-                const wsBase = wb.addWorksheet('Base de Dados');
-                const colunasBase = ['Data','Grupo','Destino (Operação Normalizada)','Operação Original','Veículo/Sufixo','NF','Volumes','Cubagem m³','Fim de Conf.','Término de Carregamento','Status'];
-                wsBase.columns = [
-                    { width: 12 }, { width: 10 }, { width: 30 }, { width: 30 }, { width: 16 },
-                    { width: 10 }, { width: 12 }, { width: 14 }, { width: 12 }, { width: 12 }, { width: 12 },
-                ];
-                const headerBase = wsBase.addRow(colunasBase);
-                headerBase.eachCell(cell => {
-                    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AZUL_HEADER } };
-                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
-                });
-
-                [...opsFiltradas].sort((a,b) => b.data.localeCompare(a.data)).forEach(o => {
-                    const nomeOrig = (o.operacao||'').trim();
-                    const nomeBase = normalizarNome(nomeOrig);
-                    const primeira = nomeBase.split(' ')[0];
-                    const grupoKey = ['TP','TZ','TS'].includes(primeira) ? primeira : 'OUTROS';
-                    const sufixo   = nomeOrig !== nomeBase ? nomeOrig.replace(nomeBase,'').trim() : '';
-                    const row = wsBase.addRow([
-                        o.data || '', grupoKey, nomeBase, nomeOrig, sufixo,
-                        Number(o.nf) || 0, Number(o.vol) || 0, parseFloat(o.cubagem || 0),
-                        o.inicio || '', o.termino || '',
-                        o.status === 'verde' ? 'No Prazo' : o.status === 'vermelho' ? 'Crítico' : 'Atenção',
-                    ]);
-                    row.getCell(8).numFmt = '#,##0.00';
-                });
-
-                let nomeArquivo = 'Tabela_Dinamica_Torre_de_Controle';
-                nomeArquivo += mesSelecionado ? `_${mesSelecionado}` : (dataIni && dataFim ? `_${dataIni}_a_${dataFim}` : '');
-                nomeArquivo += (opsFiltro.length===0 || opsFiltro.includes('TODAS')) ? '' : `_${opsFiltro.length===1 ? opsFiltro[0].replace(/[^a-zA-Z0-9]/g,'_') : 'multi'}`;
-                nomeArquivo += '.xlsx';
-
-                const buffer = await wb.xlsx.writeBuffer();
-                const blob = new Blob([buffer], { type: 'application/octet-stream' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = nomeArquivo;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            };
-
             const drillDados = useMemo(() => {
                 if (!drillOp) return [];
                 return opsFiltradas
@@ -4890,10 +4722,6 @@
                             style={{marginLeft:'auto',padding:'8px 18px',borderRadius:20,fontSize:12,fontWeight:800,border:'2px solid #fff',background:'rgba(255,255,255,0.15)',color:'#fff',cursor:'pointer',whiteSpace:'nowrap'}}>
                             📥 Baixar Excel
                         </button>
-                        <button onClick={()=>setShowPivot(true)}
-                            style={{padding:'8px 18px',borderRadius:20,fontSize:12,fontWeight:800,border:'2px solid #fff',background:'rgba(255,255,255,0.15)',color:'#fff',cursor:'pointer',whiteSpace:'nowrap'}}>
-                            🧮 Tabela Dinâmica
-                        </button>
                         <button onClick={()=>setShowApresentacao(true)}
                             style={{padding:'8px 18px',borderRadius:20,fontSize:12,fontWeight:800,border:'2px solid #fff',background:'#fff',color:'#6d28d9',cursor:'pointer',boxShadow:'0 3px 12px rgba(0,0,0,0.25)',whiteSpace:'nowrap'}}>
                             📊 Gerar Apresentação Executiva
@@ -5303,75 +5131,6 @@
                             </div>
                             <div style={{padding:'12px 18px',background:'#f8fafc',borderTop:'1px solid #e2e8f0',display:'flex',gap:8,justifyContent:'flex-end',flexShrink:0}}>
                                 <button onClick={()=>setTorreModal(null)} style={{background:'#f1f5f9',color:'#475569',border:'none',borderRadius:8,padding:'7px 18px',cursor:'pointer',fontWeight:700,fontSize:12}}>Fechar</button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* ══ MODAL TABELA DINÂMICA — NF / Volumes / Cubagem por Grupo e Destino ══ */}
-                {showPivot && (
-                    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',backdropFilter:'blur(4px)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
-                        onClick={e=>{if(e.target===e.currentTarget)setShowPivot(false);}}>
-                        <div style={{background:'#fff',borderRadius:18,width:'100%',maxWidth:820,maxHeight:'85vh',overflow:'hidden',display:'flex',flexDirection:'column',boxShadow:'0 24px 60px rgba(0,0,0,0.25)'}}>
-                            <div style={{padding:'18px 22px',background:'linear-gradient(135deg,#1e3a8a,#2563eb)',color:'#fff',display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
-                                <div>
-                                    <div style={{fontWeight:800,fontSize:16}}>🧮 Operações Consolidadas — NF · Volumetria · Cubagem</div>
-                                    <div style={{fontSize:12,opacity:0.85,marginTop:2}}>{fmtFull(dataIni)} → {fmtFull(dataFim)} · {opFiltroLabel}</div>
-                                </div>
-                                <button onClick={()=>setShowPivot(false)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'#fff',borderRadius:8,padding:'6px 14px',cursor:'pointer',fontWeight:700,fontSize:14}}>✕ Fechar</button>
-                            </div>
-                            <div style={{overflowY:'auto',flex:1}}>
-                                {pivotData.length===0 ? (
-                                    <div style={{textAlign:'center',padding:60,color:'#94a3b8'}}>
-                                        <div style={{fontSize:40,marginBottom:8}}>📭</div>
-                                        <p>Nenhum registro encontrado para este filtro</p>
-                                    </div>
-                                ) : (
-                                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-                                        <thead>
-                                            <tr>
-                                                {['Grupo','Destino','NF','Volumes','Cubagem'].map(c=>(
-                                                    <th key={c} style={{background:'linear-gradient(135deg,#1e3a8a,#2563eb)',color:'#fff',padding:'10px 14px',textAlign:c==='Grupo'||c==='Destino'?'left':'right',fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.05em',position:'sticky',top:0,zIndex:1}}>{c}</th>
-                                                ))}
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {pivotData.map(g => (
-                                                <React.Fragment key={g.grupo}>
-                                                    {g.itens.map((item,idx) => (
-                                                        <tr key={item.op} style={{background: idx%2===0 ? '#fff' : '#eef2ff'}}>
-                                                            {idx===0 ? (
-                                                                <td rowSpan={g.itens.length} style={{padding:'8px 14px',fontWeight:800,color:'#1e3a8a',verticalAlign:'top',borderRight:'1px solid #dbeafe',background:'#f8fafc'}}>{g.grupo}</td>
-                                                            ) : null}
-                                                            <td style={{padding:'8px 14px',color:'#334155'}}>{item.op}</td>
-                                                            <td style={{padding:'8px 14px',textAlign:'right',color:'#334155'}}>{fmtN(item.nf)}</td>
-                                                            <td style={{padding:'8px 14px',textAlign:'right',color:'#334155'}}>{fmtN(item.vol)}</td>
-                                                            <td style={{padding:'8px 14px',textAlign:'right',color:'#334155'}}>{fmtCub(item.cub)}</td>
-                                                        </tr>
-                                                    ))}
-                                                    <tr style={{background:'#dbeafe',fontWeight:800}}>
-                                                        <td colSpan={2} style={{padding:'8px 14px',color:'#1e3a8a'}}>{g.grupo} Total</td>
-                                                        <td style={{padding:'8px 14px',textAlign:'right',color:'#1e3a8a'}}>{fmtN(g.totalNF)}</td>
-                                                        <td style={{padding:'8px 14px',textAlign:'right',color:'#1e3a8a'}}>{fmtN(g.totalVol)}</td>
-                                                        <td style={{padding:'8px 14px',textAlign:'right',color:'#1e3a8a'}}>{fmtCub(g.totalCub)}</td>
-                                                    </tr>
-                                                </React.Fragment>
-                                            ))}
-                                        </tbody>
-                                        <tfoot>
-                                            <tr style={{background:'linear-gradient(135deg,#1e3a8a,#2563eb)',color:'#fff',fontWeight:900}}>
-                                                <td colSpan={2} style={{padding:'10px 14px'}}>Total Geral</td>
-                                                <td style={{padding:'10px 14px',textAlign:'right'}}>{fmtN(pivotTotalGeral.nf)}</td>
-                                                <td style={{padding:'10px 14px',textAlign:'right'}}>{fmtN(pivotTotalGeral.vol)}</td>
-                                                <td style={{padding:'10px 14px',textAlign:'right'}}>{fmtCub(pivotTotalGeral.cub)}</td>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
-                                )}
-                            </div>
-                            <div style={{padding:'12px 18px',background:'#f8fafc',borderTop:'1px solid #e2e8f0',display:'flex',gap:8,justifyContent:'flex-end',flexShrink:0}}>
-                                <button onClick={exportarExcelPivot} style={{background:'#10b981',color:'#fff',border:'none',borderRadius:8,padding:'7px 18px',cursor:'pointer',fontWeight:700,fontSize:12}}>📥 Baixar Excel</button>
-                                <button onClick={()=>setShowPivot(false)} style={{background:'#f1f5f9',color:'#475569',border:'none',borderRadius:8,padding:'7px 18px',cursor:'pointer',fontWeight:700,fontSize:12}}>Fechar</button>
                             </div>
                         </div>
                     </div>
@@ -12902,9 +12661,22 @@
                 const duracaoMedia = duracoes.length > 0 ? (duracoes.reduce((a,b)=>a+b,0)/duracoes.length) : 0;
                 const duracaoMediaH = Math.floor(duracaoMedia / 60);
                 const duracaoMediaM = Math.round(duracaoMedia % 60);
+                // Tempo do romaneio: Fim de Conf. (inicio) -> Romaneio Entregue (romaneio)
+                const temposRomaneio = [];
+                dadosFiltrados.forEach(o => {
+                    if (o.inicio && o.romaneio) {
+                        const [hi, mi] = o.inicio.split(':').map(Number);
+                        const [hr, mr] = o.romaneio.split(':').map(Number);
+                        const dur = (hr * 60 + mr) - (hi * 60 + mi);
+                        if (dur >= 0) temposRomaneio.push(dur);
+                    }
+                });
+                const romaneioMedia = temposRomaneio.length > 0 ? (temposRomaneio.reduce((a,b)=>a+b,0)/temposRomaneio.length) : 0;
+                const romaneioMediaTxt = temposRomaneio.length === 0 ? '—' : (romaneioMedia < 60 ? `${Math.round(romaneioMedia)} min` : `${Math.floor(romaneioMedia/60)}h${String(Math.round(romaneioMedia%60)).padStart(2,'0')}`);
+                const romaneioQtd = temposRomaneio.length;
                 const diasUnicos = new Set(dadosFiltrados.map(o => o.data)).size;
                 const mediaPorDia = diasUnicos > 0 ? (total / diasUnicos) : 0;
-                return { total, verde, vermelho, amarelo, taxaSucesso, taxaAtraso, nfTotal, volTotal, cubTotal, nfMedio, volMedio, duracaoMediaH, duracaoMediaM, diasUnicos, mediaPorDia, duracoes };
+                return { total, verde, vermelho, amarelo, taxaSucesso, taxaAtraso, nfTotal, volTotal, cubTotal, nfMedio, volMedio, duracaoMediaH, duracaoMediaM, romaneioMediaTxt, romaneioQtd, diasUnicos, mediaPorDia, duracoes };
             }, [dadosFiltrados]);
 
             const rankingOps = React.useMemo(() => {
@@ -13120,6 +12892,13 @@
                         const dur=(ht*60+mt)-(hi*60+mi); return {...o,dur:dur>0?dur:0};
                     }).sort((a,b)=>b.dur-a.dur);
                     cols = ['Data','Operação','Fim de Conf.','Término de Carregamento','Duração (min)','Status'];
+                } else if (tipo === 'romaneio') {
+                    titulo = '📄 Tempo do Romaneio — Fim de Conf. → Romaneio Entregue';
+                    dados = dadosFiltrados.filter(o=>o.inicio&&o.romaneio).map(o=>{
+                        const [hi,mi]=o.inicio.split(':').map(Number); const [hr,mr]=o.romaneio.split(':').map(Number);
+                        const dur=(hr*60+mr)-(hi*60+mi); return {...o,dur};
+                    }).filter(o=>o.dur>=0).sort((a,b)=>b.dur-a.dur);
+                    cols = ['Data','Operação','Fim de Conf.','Romaneio Entregue','Término de Carregamento','Tempo até Romaneio (min)','Status'];
                 } else if (tipo === 'pordia') {
                     titulo = '📅 Ops por Dia';
                     const por = {};
@@ -13148,6 +12927,7 @@
                 if (tipo==='volume') return <tr key={i} style={{background:i%2===0?'#f8fafc':'#fff'}}><td style={{padding:'7px 12px',fontSize:'12px',fontWeight:'600'}}>{row.op}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'right',fontWeight:'700',color:'#667eea'}}>{fmt(row.vol)}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'right'}}>{fmt(row.nf)}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'right'}}>{row.total}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'right'}}>{(row.vol/row.total).toFixed(0)}</td></tr>;
                 if (tipo==='cubagem') return <tr key={i} style={{background:i%2===0?'#f8fafc':'#fff'}}><td style={{padding:'7px 12px',fontSize:'12px',fontWeight:'600'}}>{row.op}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'right',fontWeight:'700',color:'#f97316'}}>{row.cub.toFixed(2)}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'right'}}>{row.total}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'right'}}>{(row.cub/row.total).toFixed(2)}</td></tr>;
                 if (tipo==='duracao') return <tr key={i} style={{background:i%2===0?'#f8fafc':'#fff'}}><td style={{padding:'7px 12px',fontSize:'12px'}}>{row.data?.split('-').reverse().join('/')}</td><td style={{padding:'7px 12px',fontSize:'12px',fontWeight:'600'}}>{row.operacao}</td><td style={{padding:'7px 12px',fontSize:'12px'}}>{row.inicio}</td><td style={{padding:'7px 12px',fontSize:'12px'}}>{row.termino}</td><td style={{padding:'7px 12px',fontSize:'12px',fontWeight:'700',color:'#8b5cf6'}}>{row.dur} min</td><td style={{padding:'7px 12px'}}>{statusBadge(row.status)}</td></tr>;
+                if (tipo==='romaneio') return <tr key={i} style={{background:i%2===0?'#f8fafc':'#fff'}}><td style={{padding:'7px 12px',fontSize:'12px'}}>{row.data?.split('-').reverse().join('/')}</td><td style={{padding:'7px 12px',fontSize:'12px',fontWeight:'600'}}>{row.operacao}</td><td style={{padding:'7px 12px',fontSize:'12px'}}>{row.inicio}</td><td style={{padding:'7px 12px',fontSize:'12px'}}>{row.romaneio}</td><td style={{padding:'7px 12px',fontSize:'12px'}}>{row.termino || <span style={{color:'#94a3b8'}}>—</span>}</td><td style={{padding:'7px 12px',fontSize:'12px',fontWeight:'700',color:'#0284c7'}}>{row.dur} min</td><td style={{padding:'7px 12px'}}>{statusBadge(row.status)}</td></tr>;
                 if (tipo==='pordia') { const tx=row.total>0?((row.verde/row.total)*100).toFixed(1):0; return <tr key={i} style={{background:i%2===0?'#f8fafc':'#fff'}}><td style={{padding:'7px 12px',fontSize:'12px',fontWeight:'600'}}>{row.data?.split('-').reverse().join('/')}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'center'}}>{row.total}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'center',color:'#059669',fontWeight:'700'}}>{row.verde}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'center',color:'#dc2626',fontWeight:'700'}}>{row.vermelho}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'center',color:'#d97706',fontWeight:'700'}}>{row.amarelo}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'right'}}>{fmt(row.nf)}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'right'}}>{fmt(row.vol)}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'center'}}><span style={{background:getBgTaxa(parseFloat(tx)),color:getCorTaxa(parseFloat(tx)),padding:'2px 8px',borderRadius:'999px',fontWeight:'700',fontSize:'11px'}}>{tx}%</span></td></tr>; }
                 if (tipo==='pendente') return <tr key={i} style={{background:i%2===0?'#fffbeb':'#fff'}}><td style={{padding:'7px 12px',fontSize:'12px'}}>{row.data?.split('-').reverse().join('/')}</td><td style={{padding:'7px 12px',fontSize:'12px',fontWeight:'600'}}>{row.operacao}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'right'}}>{fmt(row.nf)}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'right'}}>{fmt(row.vol)}</td><td style={{padding:'7px 12px',fontSize:'12px'}}>{row.inicio}</td><td style={{padding:'7px 12px',fontSize:'12px'}}>{row.termino}</td></tr>;
                 if (tipo==='meta') return <tr key={i} style={{background:i%2===0?'#f8fafc':'#fff'}}><td style={{padding:'7px 12px',fontSize:'12px',fontWeight:'600'}}>{row.nome}</td><td style={{padding:'7px 12px',fontSize:'12px'}}>{row.meta}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'center',color:'#059669',fontWeight:'700'}}>{row.verde}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'center'}}>{row.total}</td><td style={{padding:'7px 12px',fontSize:'12px',textAlign:'center'}}><span style={{background:getBgTaxa(parseFloat(row.taxa)),color:getCorTaxa(parseFloat(row.taxa)),padding:'2px 8px',borderRadius:'999px',fontWeight:'700',fontSize:'11px'}}>{row.taxa}%</span></td></tr>;
@@ -13286,6 +13066,7 @@
                                     { id:'volume', icon:'📦', label:'Volume Total', value: kpis.volTotal.toLocaleString('pt-BR'), sub: `Média: ${kpis.volMedio.toFixed(0)}/op`, grad:'linear-gradient(135deg,#14b8a6,#0d9488)' },
                                     { id:'cubagem', icon:'📐', label:'Cubagem Total', value: kpis.cubTotal.toFixed(2)+' m³', sub:'soma do período', grad:'linear-gradient(135deg,#f97316,#ea580c)' },
                                     { id:'duracao', icon:'⏱️', label:'Duração Média', value: `${kpis.duracaoMediaH}h${String(kpis.duracaoMediaM).padStart(2,'0')}`, sub:'fim de conf. → término de carregamento', grad:'linear-gradient(135deg,#8b5cf6,#7c3aed)' },
+                                    { id:'romaneio', icon:'📄', label:'Tempo do Romaneio', value: kpis.romaneioMediaTxt, sub:`fim de conf. → romaneio entregue • ${kpis.romaneioQtd} op(s)`, grad:'linear-gradient(135deg,#0ea5e9,#0284c7)' },
                                     { id:'pordia', icon:'📅', label:'Ops/Dia', value: kpis.mediaPorDia.toFixed(1), sub:`em ${kpis.diasUnicos} dias`, grad:'linear-gradient(135deg,#ec4899,#db2777)' },
                                     { id:'pendente', icon:'⏳', label:'Pendentes', value: kpis.amarelo, sub:`${kpis.total>0?((kpis.amarelo/kpis.total)*100).toFixed(0):0}% do total`, grad:'linear-gradient(135deg,#f59e0b,#d97706)' },
                                     { id:'meta', icon:'🎯', label:'Meta Atingida', value: `${kpis.verde}/${kpis.total}`, sub: kpis.taxaSucesso>=80?'🟢 Excelente':kpis.taxaSucesso>=50?'🟡 Regular':'🔴 Crítico', grad:'linear-gradient(135deg,#475569,#334155)' },
