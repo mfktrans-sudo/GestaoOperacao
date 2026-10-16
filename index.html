@@ -235,14 +235,14 @@
         /* ═══════════ TORRE DE CONTROLE — ESTILOS ═══════════ */
         .torre-wrapper { font-family: 'Inter', -apple-system, sans-serif; }
         .torre-header-bar {
-            background: linear-gradient(135deg, #1a0a3e 0%, #2d1b69 50%, #1a0a3e 100%);
+            background: linear-gradient(135deg, #031530 0%, #04234a 50%, #031530 100%);
             border-radius: 16px; padding: 20px 28px; margin-bottom: 20px;
             display: flex; align-items: center; justify-content: space-between;
-            flex-wrap: wrap; gap: 12px; box-shadow: 0 8px 32px rgba(102,65,234,0.35);
+            flex-wrap: wrap; gap: 12px; box-shadow: 0 8px 32px rgba(14,165,233,0.35);
         }
         .torre-header-title { font-size: 22px; font-weight: 800; color: #fff; letter-spacing: -0.3px; }
-        .torre-header-subtitle { font-size: 12px; color: rgba(200,180,255,0.8); margin-top: 2px; }
-        .torre-badge { background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 5px 14px; font-size: 12px; color: #e0d5ff; font-weight: 600; }
+        .torre-header-subtitle { font-size: 12px; color: rgba(186,230,253,0.85); margin-top: 2px; }
+        .torre-badge { background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 5px 14px; font-size: 12px; color: #e0f2fe; font-weight: 600; }
         .torre-section-title { font-size: 13px; font-weight: 700; color: #7c3aed; text-transform: uppercase; letter-spacing: 0.1em; margin: 0 0 12px; display: flex; align-items: center; gap: 6px; }
         .torre-section-title::after { content: ""; flex: 1; height: 1px; background: linear-gradient(to right, #7c3aed33, transparent); }
         .torre-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 14px; margin-bottom: 20px; }
@@ -269,7 +269,7 @@
         .torre-select { padding: 6px 12px; border-radius: 10px; font-size: 12px; font-weight: 600; border: 1.5px solid #ddd6fe; color: #4c1d95; background: #faf5ff; cursor: pointer; outline: none; }
         .torre-input-date { padding: 6px 10px; border-radius: 10px; font-size: 12px; font-weight: 500; border: 1.5px solid #ddd6fe; color: #4c1d95; background: #faf5ff; outline: none; }
         .torre-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        .torre-table th { background: linear-gradient(135deg,#4c1d95,#6d28d9); color: #fff; padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+        .torre-table th { background: linear-gradient(135deg,#04234a,#0a6fd6); color: #fff; padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
         .torre-table th:first-child { border-radius: 8px 0 0 8px; }
         .torre-table th:last-child  { border-radius: 0 8px 8px 0; }
         .torre-table td { padding: 10px 14px; border-bottom: 1px solid #f3f0ff; color: #374151; vertical-align: middle; }
@@ -282,10 +282,10 @@
         .torre-progress-bar { height: 8px; border-radius: 4px; background: #e5e7eb; overflow: hidden; min-width: 80px; }
         .torre-progress-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
         .torre-main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
-        .torre-resumo-periodo { background: linear-gradient(135deg,#2d1b69 0%,#4c1d95 100%); border-radius: 14px; padding: 18px 20px; color: #fff; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+        .torre-resumo-periodo { background: linear-gradient(135deg,#031530 0%,#04234a 100%); border-radius: 14px; padding: 18px 20px; color: #fff; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
         .torre-resumo-item { text-align: center; }
         .torre-resumo-val { font-size: 22px; font-weight: 800; }
-        .torre-resumo-lbl { font-size: 10px; color: rgba(200,180,255,0.8); font-weight: 600; text-transform: uppercase; }
+        .torre-resumo-lbl { font-size: 10px; color: rgba(186,230,253,0.85); font-weight: 600; text-transform: uppercase; }
         .torre-empty { text-align: center; padding: 60px 20px; color: #9ca3af; }
         .torre-empty-icon { font-size: 48px; margin-bottom: 12px; }
         .torre-trend-up   { color: #10b981; font-size: 12px; font-weight: 700; }
@@ -1128,9 +1128,8 @@
         .tab-inactive { filter: saturate(1.3) brightness(1.05) drop-shadow(0 0 6px rgba(255,255,255,0.28)); }
 
         /* painéis roxos: brilho na própria cor */
-        .torre-header-bar { box-shadow: 0 0 0 1px rgba(124,58,237,0.40), 0 0 24px rgba(124,58,237,0.55), 0 8px 32px rgba(102,65,234,0.45); }
-        .torre-resumo-periodo { box-shadow: 0 0 0 1px rgba(124,58,237,0.35), 0 0 22px rgba(124,58,237,0.50); }
-        [style*="linear-gradient(135deg,#4c1d95,#6d28d9)"] { box-shadow: 0 0 0 1px rgba(124,58,237,0.35), 0 0 20px rgba(124,58,237,0.50); }
+        .torre-header-bar { box-shadow: 0 0 0 1px rgba(56,189,248,0.40), 0 0 24px rgba(14,165,233,0.50), 0 8px 32px rgba(14,165,233,0.35); }
+        .torre-resumo-periodo { box-shadow: 0 0 0 1px rgba(56,189,248,0.35), 0 0 22px rgba(14,165,233,0.45); }
         .torre-btn-periodo.active, .torre-pbtn-active { box-shadow: 0 0 14px rgba(124,58,237,0.65); }
 
         /* cards de KPI: faixa colorida e borda com brilho da própria cor */
@@ -4419,7 +4418,7 @@
             const visoes = [['diaria','📈 Evolução diária'],['hora','⏰ Picos por hora'],['semana','📅 Dia da semana'],['operacao','🚛 Por operação'],['porte','📦 Por porte da carga'],['distribuicao','📊 Distribuição']];
             const usaMetrica = ['hora','semana','operacao','porte'].includes(visao);
             const alturaGraf = visao === 'operacao' ? Math.max(260, grupos.length * 30 + 60) : 280;
-            const th = { background: 'linear-gradient(135deg,#4c1d95,#6d28d9)', color: '#fff', padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' };
+            const th = { background: 'linear-gradient(135deg,#04234a,#0a6fd6)', color: '#fff', padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' };
             const td = { padding: '8px 12px', borderBottom: '1px solid #f3f0ff', color: '#374151', fontSize: 12 };
 
             return (
@@ -5131,10 +5130,10 @@
                 </div>
 
                 {/* ══ FILTROS ══ */}
-                <div style={{background:'linear-gradient(135deg,#4c1d95,#6d28d9)',borderRadius:14,padding:'14px 20px',marginBottom:14,border:'1px solid #7c3aed'}}>
+                <div style={{background:'linear-gradient(135deg,#04234a,#0a6fd6)',borderRadius:14,padding:'14px 20px',marginBottom:14,border:'1px solid rgba(56,189,248,0.45)',boxShadow:'0 0 20px rgba(14,165,233,0.45)'}}>
                     {/* Linha 1: botões de período */}
                     <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:10}}>
-                        <span style={{fontSize:11,fontWeight:700,color:'#e9d5ff',textTransform:'uppercase',letterSpacing:'0.08em',flexShrink:0,marginRight:4}}>Período:</span>
+                        <span style={{fontSize:11,fontWeight:700,color:'#e0f2fe',textTransform:'uppercase',letterSpacing:'0.08em',flexShrink:0,marginRight:4}}>Período:</span>
                         {periodos.map(([k,l]) => {
                             const isActive = periodo === k;
                             return (
@@ -5172,7 +5171,7 @@
                                     style={{padding:'6px 10px',borderRadius:8,border:'1.5px solid rgba(255,255,255,0.5)',background:'rgba(255,255,255,0.15)',color:'#fff',fontSize:12,fontWeight:600,outline:'none'}}/>
                             </>
                         )}
-                        <span style={{fontSize:11,fontWeight:700,color:'#e9d5ff',textTransform:'uppercase',letterSpacing:'0.08em',flexShrink:0}}>Mês:</span>
+                        <span style={{fontSize:11,fontWeight:700,color:'#e0f2fe',textTransform:'uppercase',letterSpacing:'0.08em',flexShrink:0}}>Mês:</span>
                         <select value={mesSelecionado} onChange={e=>setMesSelecionado(e.target.value)}
                             style={{padding:'6px 12px',borderRadius:10,fontSize:12,fontWeight:700,border:'1.5px solid rgba(255,255,255,0.5)',color:'#4c1d95',background:'#fff',cursor:'pointer',outline:'none'}}>
                             <option value="">Todos os meses</option>
@@ -5184,7 +5183,7 @@
                                 <span onClick={()=>setMesSelecionado('')} style={{cursor:'pointer',color:RED,fontWeight:900,fontSize:15,lineHeight:1}}>✕</span>
                             </div>
                         )}
-                        <span style={{fontSize:11,fontWeight:700,color:'#e9d5ff',textTransform:'uppercase',letterSpacing:'0.08em',flexShrink:0}}>Operação:</span>
+                        <span style={{fontSize:11,fontWeight:700,color:'#e0f2fe',textTransform:'uppercase',letterSpacing:'0.08em',flexShrink:0}}>Operação:</span>
                         <div ref={opDropdownRef} className="torre-op-dropdown" style={{position:'relative'}}>
                             <button type="button" onClick={()=>setOpDropdownOpen(v=>!v)}
                                 style={{padding:'6px 12px',borderRadius:10,fontSize:12,fontWeight:700,border:'1.5px solid rgba(255,255,255,0.5)',color:'#4c1d95',background:'#fff',cursor:'pointer',outline:'none',display:'inline-flex',alignItems:'center',gap:6,minWidth:140,justifyContent:'space-between'}}>
@@ -5619,7 +5618,7 @@
                                         <thead>
                                             <tr>
                                                 {torreModal.colunas.map(c=>(
-                                                    <th key={c} style={{background:'linear-gradient(135deg,#4c1d95,#6d28d9)',color:'#fff',padding:'10px 14px',textAlign:'left',fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.05em',position:'sticky',top:0,zIndex:1}}>{c}</th>
+                                                    <th key={c} style={{background:'linear-gradient(135deg,#04234a,#0a6fd6)',color:'#fff',padding:'10px 14px',textAlign:'left',fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.05em',position:'sticky',top:0,zIndex:1}}>{c}</th>
                                                 ))}
                                             </tr>
                                         </thead>
