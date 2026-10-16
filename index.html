@@ -198,11 +198,11 @@
         }
 
         .filter-panel {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #031530 0%, #04234a 100%);
             padding: 20px;
             border-radius: 12px;
             margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 0 0 1px rgba(56,189,248,0.35), 0 0 18px rgba(14,165,233,0.35), 0 4px 6px rgba(0, 0, 0, 0.1);
         }
 
         .filter-tag {
@@ -214,7 +214,7 @@
             border-radius: 20px;
             font-size: 14px;
             font-weight: 600;
-            color: #667eea;
+            color: #0a6fd6;
             margin: 4px;
         }
 
@@ -5112,7 +5112,7 @@
                 {/* ══ HEADER ══ */}
                 <div className="torre-header-bar">
                     <div style={{display:'flex',alignItems:'center',gap:14}}>
-                        <div style={{background:'linear-gradient(135deg,#667eea,#764ba2)',width:46,height:46,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,boxShadow:'0 4px 18px rgba(102,102,234,0.5)',flexShrink:0}}>📊</div>
+                        <div style={{background:'linear-gradient(135deg,#0ea5e9,#0a6fd6)',width:46,height:46,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,boxShadow:'0 4px 18px rgba(14,165,233,0.5)',flexShrink:0}}>📊</div>
                         <div>
                             <div className="torre-header-title">Central de Desempenho Operacional</div>
                             <div className="torre-header-subtitle" style={{display:'flex',alignItems:'center',gap:8}}>
@@ -8006,7 +8006,7 @@
                             return (
                                 <div className="modal-overlay" onClick={() => setModalCubagem(false)}>
                                     <div className="modal-content" style={{maxWidth:'720px',width:'94%'}} onClick={e => e.stopPropagation()}>
-                                        <div style={{background:'linear-gradient(135deg,#667eea,#764ba2)',borderRadius:'16px 16px 0 0',padding:'20px 24px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                                        <div style={{background:'linear-gradient(135deg,#031530,#04234a)',borderRadius:'16px 16px 0 0',padding:'20px 24px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                                             <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
                                                 <span style={{fontSize:'26px'}}>🚛</span>
                                                 <div>
@@ -8105,7 +8105,7 @@
                                                     );
                                                 })}
                                             </div>
-                                            <button onClick={() => setModalCubagem(false)} style={{marginTop:'20px',width:'100%',background:'linear-gradient(135deg,#667eea,#764ba2)',color:'white',border:'none',borderRadius:'10px',padding:'12px',fontWeight:'800',fontSize:'14px',cursor:'pointer'}}>
+                                            <button onClick={() => setModalCubagem(false)} style={{marginTop:'20px',width:'100%',background:'linear-gradient(135deg,#0ea5e9,#0a6fd6)',color:'white',border:'none',borderRadius:'10px',padding:'12px',fontWeight:'800',fontSize:'14px',cursor:'pointer'}}>
                                                 ✕ Fechar gráfico
                                             </button>
                                         </div>
@@ -13443,7 +13443,7 @@
                 { id:'ishikawa', icon:'🐟', label:'Ishikawa' },
             ];
 
-            const btStyle = (active) => ({padding:'7px 13px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',cursor:'pointer',border:'none',transition:'all 0.2s',whiteSpace:'nowrap',background:active?'linear-gradient(135deg,#667eea,#764ba2)':'#f1f5f9',color:active?'#fff':'#64748b',boxShadow:active?'0 3px 8px rgba(102,126,234,0.4)':'none'});
+            const btStyle = (active) => ({padding:'7px 13px',borderRadius:'8px',fontSize:'12px',fontWeight:'700',cursor:'pointer',border:'none',transition:'all 0.2s',whiteSpace:'nowrap',background:active?'linear-gradient(135deg,#0ea5e9,#0a6fd6)':'#f1f5f9',color:active?'#fff':'#64748b',boxShadow:active?'0 3px 8px rgba(14,165,233,0.45)':'none'});
 
             return (
                 <div style={{maxWidth:'100%',overflow:'hidden'}} ref={perfRef}>
@@ -13464,13 +13464,13 @@
                     .kpi-btn:active { transform:scale(0.97); }
                     .perf-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.55); backdrop-filter:blur(4px); z-index:2000; display:flex; align-items:center; justify-content:center; padding:20px; }
                     .perf-modal { background:#fff; border-radius:18px; width:100%; max-width:900px; max-height:85vh; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 24px 60px rgba(0,0,0,0.25); }
-                    .perf-modal-head { padding:18px 22px; background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
+                    .perf-modal-head { padding:18px 22px; background:linear-gradient(135deg,#031530,#04234a); color:#fff; display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
                     .perf-modal-body { overflow-y:auto; flex:1; padding:0; }
                     .perf-table { width:100%; border-collapse:collapse; font-size:12px; }
-                    .perf-table th { background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; padding:9px 12px; text-align:left; position:sticky; top:0; z-index:1; }
+                    .perf-table th { background:linear-gradient(135deg,#04234a,#0a6fd6); color:#fff; padding:9px 12px; text-align:left; position:sticky; top:0; z-index:1; }
                     .perf-table td { padding:8px 12px; border-bottom:1px solid #f1f5f9; }
                     .perf-table tr:hover td { background:#f8f7ff; }
-                    .print-btn { background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; padding:8px 16px; border-radius:8px; border:none; font-weight:700; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:6px; }
+                    .print-btn { background:linear-gradient(135deg,#0ea5e9,#0a6fd6); color:#fff; padding:8px 16px; border-radius:8px; border:none; font-weight:700; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:6px; }
                     .print-menu { position:absolute; top:100%; right:0; background:#fff; border-radius:12px; box-shadow:0 8px 30px rgba(0,0,0,0.15); z-index:100; padding:8px; min-width:200px; margin-top:4px; }
                     .print-item { padding:9px 14px; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; color:#374151; display:flex; align-items:center; gap:8px; transition:background 0.15s; }
                     .print-item:hover { background:#f1f5f9; }
@@ -13505,7 +13505,7 @@
                             <div style={{color:'#fff',fontSize:'11px',fontWeight:'700',marginBottom:'4px'}}>⚡ Período Rápido</div>
                             <div style={{display:'flex',gap:'4px',flexWrap:'wrap'}}>
                                 {[['hoje','Hoje'],['semana','7 dias'],['mes','Mês'],['trimestre','Trimestre']].map(([v,l]) => (
-                                    <button key={v} onClick={() => aplicarPeriodo(v)} style={{padding:'6px 12px',borderRadius:'7px',fontSize:'12px',fontWeight:'700',border:'none',cursor:'pointer',background:periodoTipo===v?'#fff':'rgba(255,255,255,0.2)',color:periodoTipo===v?'#764ba2':'#fff'}}>{l}</button>
+                                    <button key={v} onClick={() => aplicarPeriodo(v)} style={{padding:'6px 12px',borderRadius:'7px',fontSize:'12px',fontWeight:'700',border:'none',cursor:'pointer',background:periodoTipo===v?'#fff':'rgba(255,255,255,0.2)',color:periodoTipo===v?'#0a6fd6':'#fff'}}>{l}</button>
                                 ))}
                             </div>
                         </div>
@@ -13556,7 +13556,7 @@
                             </div>
                             <div className="perf-grid-kpi">
                                 {[
-                                    { id:'total', icon:'📦', label:'Total Ops', value: kpis.total, sub: `${kpis.diasUnicos} dia(s)`, grad:'linear-gradient(135deg,#667eea,#764ba2)' },
+                                    { id:'total', icon:'📦', label:'Total Ops', value: kpis.total, sub: `${kpis.diasUnicos} dia(s)`, grad:'linear-gradient(135deg,#0ea5e9,#0a6fd6)' },
                                     { id:'sucesso', icon:'✅', label:'Taxa Sucesso', value: kpis.taxaSucesso.toFixed(1)+'%', sub: `${kpis.verde} no prazo`, grad: kpis.taxaSucesso>=80?'linear-gradient(135deg,#10b981,#059669)':kpis.taxaSucesso>=50?'linear-gradient(135deg,#f59e0b,#d97706)':'linear-gradient(135deg,#ef4444,#dc2626)' },
                                     { id:'atraso', icon:'❌', label:'Taxa Atraso', value: kpis.taxaAtraso.toFixed(1)+'%', sub: `${kpis.vermelho} atrasadas`, grad: kpis.taxaAtraso<=10?'linear-gradient(135deg,#10b981,#059669)':kpis.taxaAtraso<=30?'linear-gradient(135deg,#f59e0b,#d97706)':'linear-gradient(135deg,#ef4444,#dc2626)' },
                                     { id:'nf', icon:'📋', label:'NF Total', value: kpis.nfTotal.toLocaleString('pt-BR'), sub: `Média: ${kpis.nfMedio.toFixed(0)}/op`, grad:'linear-gradient(135deg,#3b82f6,#2563eb)' },
@@ -13735,7 +13735,7 @@
                                         </select>
                                         <div style={{display:'flex',alignItems:'center',gap:'4px'}}><label style={{fontSize:'12px',color:'#64748b'}}>T/C:</label><input type="number" value={novaEtapa.tc} min={0} onChange={e=>setNovaEtapa(p=>({...p,tc:+e.target.value}))} style={{border:'1px solid #e2e8f0',borderRadius:'8px',padding:'7px 8px',fontSize:'12px',width:'60px',textAlign:'center'}}/><span style={{fontSize:'12px',color:'#64748b'}}>min</span></div>
                                         <div style={{display:'flex',alignItems:'center',gap:'4px'}}><label style={{fontSize:'12px',color:'#64748b'}}>Espera:</label><input type="number" value={novaEtapa.espera} min={0} onChange={e=>setNovaEtapa(p=>({...p,espera:+e.target.value}))} style={{border:'1px solid #e2e8f0',borderRadius:'8px',padding:'7px 8px',fontSize:'12px',width:'60px',textAlign:'center'}}/><span style={{fontSize:'12px',color:'#64748b'}}>min</span></div>
-                                        <button onClick={()=>{if(novaEtapa.nome.trim()){setVsmEtapas(p=>[...p,{...novaEtapa,id:Date.now()}]);setNovaEtapa({nome:'',tipo:'VA',tc:0,espera:0});}}} style={{background:'linear-gradient(135deg,#667eea,#764ba2)',color:'#fff',padding:'7px 16px',borderRadius:'8px',border:'none',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>Adicionar</button>
+                                        <button onClick={()=>{if(novaEtapa.nome.trim()){setVsmEtapas(p=>[...p,{...novaEtapa,id:Date.now()}]);setNovaEtapa({nome:'',tipo:'VA',tc:0,espera:0});}}} style={{background:'linear-gradient(135deg,#0ea5e9,#0a6fd6)',color:'#fff',padding:'7px 16px',borderRadius:'8px',border:'none',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>Adicionar</button>
                                     </div>
                                 </div>
                                 {/* Resumo VSM calculado */}
@@ -13828,7 +13828,7 @@
                                     <div style={{fontWeight:'700',fontSize:'13px',marginBottom:'8px',color:'#374151'}}>➕ Adicionar Nova Área</div>
                                     <div style={{display:'flex',gap:'8px',alignItems:'center',flexWrap:'wrap'}}>
                                         <input placeholder="Nome da área (ex: Doca de Recebimento)" value={nova5SArea} onChange={e=>setNova5SArea(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&nova5SArea.trim()){setAudit5S(p=>[...p,{id:Date.now(),area:nova5SArea.trim(),seiri:3,seiton:3,seiso:3,seiketsu:3,shitsuke:3,obs:''}]);setNova5SArea('');}}} style={{border:'1px solid #e2e8f0',borderRadius:'8px',padding:'7px 10px',fontSize:'12px',minWidth:'240px'}}/>
-                                        <button onClick={()=>{if(nova5SArea.trim()){setAudit5S(p=>[...p,{id:Date.now(),area:nova5SArea.trim(),seiri:3,seiton:3,seiso:3,seiketsu:3,shitsuke:3,obs:''}]);setNova5SArea('');}}} style={{background:'linear-gradient(135deg,#667eea,#764ba2)',color:'#fff',padding:'7px 16px',borderRadius:'8px',border:'none',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>Adicionar Área</button>
+                                        <button onClick={()=>{if(nova5SArea.trim()){setAudit5S(p=>[...p,{id:Date.now(),area:nova5SArea.trim(),seiri:3,seiton:3,seiso:3,seiketsu:3,shitsuke:3,obs:''}]);setNova5SArea('');}}} style={{background:'linear-gradient(135deg,#0ea5e9,#0a6fd6)',color:'#fff',padding:'7px 16px',borderRadius:'8px',border:'none',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>Adicionar Área</button>
                                     </div>
                                 </div>
                             </div>
@@ -13930,7 +13930,7 @@
                                         </select>
                                     </div>
                                     <textarea placeholder="Descrição da melhoria..." value={novoKaizen.descricao} onChange={e=>setNovoKaizen(p=>({...p,descricao:e.target.value}))} rows={2} style={{border:'1px solid #e2e8f0',borderRadius:'8px',padding:'7px 10px',fontSize:'12px',width:'100%',boxSizing:'border-box',resize:'vertical',marginBottom:'8px'}}/>
-                                    <button onClick={()=>{if(novoKaizen.titulo.trim()){setKaizenItens(p=>[...p,{...novoKaizen,id:Date.now(),status:'planejado'}]);setNovoKaizen({...kaizenVazio});}}} style={{background:'linear-gradient(135deg,#667eea,#764ba2)',color:'#fff',padding:'7px 18px',borderRadius:'8px',border:'none',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>Adicionar Kaizen</button>
+                                    <button onClick={()=>{if(novoKaizen.titulo.trim()){setKaizenItens(p=>[...p,{...novoKaizen,id:Date.now(),status:'planejado'}]);setNovoKaizen({...kaizenVazio});}}} style={{background:'linear-gradient(135deg,#0ea5e9,#0a6fd6)',color:'#fff',padding:'7px 18px',borderRadius:'8px',border:'none',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>Adicionar Kaizen</button>
                                 </div>
                             </div>
                             <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'10px'}}>
@@ -14009,7 +14009,7 @@
                                             <option value="planejado">Planejado</option><option value="ativo">Ativo</option>
                                         </select>
                                     </div>
-                                    <button onClick={()=>{if(novaPoka.processo.trim()&&novaPoka.problema.trim()){setPokaItens(p=>[...p,{...novaPoka,id:Date.now()}]);setNovaPoka({...pokaVazio});}}} style={{background:'linear-gradient(135deg,#667eea,#764ba2)',color:'#fff',padding:'7px 16px',borderRadius:'8px',border:'none',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>Adicionar Poka-Yoke</button>
+                                    <button onClick={()=>{if(novaPoka.processo.trim()&&novaPoka.problema.trim()){setPokaItens(p=>[...p,{...novaPoka,id:Date.now()}]);setNovaPoka({...pokaVazio});}}} style={{background:'linear-gradient(135deg,#0ea5e9,#0a6fd6)',color:'#fff',padding:'7px 16px',borderRadius:'8px',border:'none',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>Adicionar Poka-Yoke</button>
                                 </div>
                             </div>
                             <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'10px'}}>
@@ -14098,7 +14098,7 @@
                                         </tbody>
                                     </table>
                                 </div>
-                                <button onClick={()=>setFmeaItens(p=>[...p,{id:Date.now(),processo:'',modo:'',efeito:'',causa:'',severidade:5,ocorrencia:5,deteccao:5,acao:''}])} style={{marginTop:'12px',background:'linear-gradient(135deg,#667eea,#764ba2)',color:'#fff',padding:'8px 18px',borderRadius:'8px',border:'none',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>➕ Adicionar Linha FMEA</button>
+                                <button onClick={()=>setFmeaItens(p=>[...p,{id:Date.now(),processo:'',modo:'',efeito:'',causa:'',severidade:5,ocorrencia:5,deteccao:5,acao:''}])} style={{marginTop:'12px',background:'linear-gradient(135deg,#0ea5e9,#0a6fd6)',color:'#fff',padding:'8px 18px',borderRadius:'8px',border:'none',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>➕ Adicionar Linha FMEA</button>
                             </div>
                             <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'10px'}}>
                                 {[['🚨 Críticos (RPN ≥100)',fmeaItens.filter(f=>f.severidade*f.ocorrencia*f.deteccao>=100).length,'#fee2e2','#991b1b'],['⚠️ Atenção (RPN 50–99)',fmeaItens.filter(f=>{const r=f.severidade*f.ocorrencia*f.deteccao;return r>=50&&r<100;}).length,'#fef3c7','#92400e'],['✅ Aceitáveis (RPN <50)',fmeaItens.filter(f=>f.severidade*f.ocorrencia*f.deteccao<50).length,'#d1fae5','#065f46']].map(([l,v,bg,c])=>(
