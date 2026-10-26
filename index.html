@@ -2226,7 +2226,7 @@
                         <nav className="flex gap-2 mb-6 flex-wrap">
                             {(restritoAoFarolTP
                                 ? ['faroltp']
-                                : ['torre', 'dashboard', 'performance', 'graficos', 'capacidade', 'cadastrar', 'linhavermelha', 'faroltp', 'comunicacoes', 'planejamento', 'rotatividade5s', 'editar', 'gerenciar', 'relatorios', 'upload', ...(isAdmin ? ['configuracoes'] : [])]
+                                : ['torre', 'dashboard', 'performance', 'graficos', 'capacidade', 'cadastrar', 'linhavermelha', 'expedicao', 'faroltp', 'comunicacoes', 'planejamento', 'rotatividade5s', 'editar', 'gerenciar', 'relatorios', 'upload', ...(isAdmin ? ['configuracoes'] : [])]
                             ).map(aba => (
                                 <button
                                     key={aba}
@@ -2255,6 +2255,7 @@
                                     {aba === 'capacidade' && <><span className="icon-bounce inline-block">👥</span> Capacidade</>}
                                     {aba === 'cadastrar' && <><span className="icon-bounce inline-block">➕</span> Cadastrar</>}
                                     {aba === 'linhavermelha' && <><span className="icon-pulse inline-block">🚦</span> Linha Vermelha</>}
+                                    {aba === 'expedicao' && <><span className="icon-pulse inline-block">📦</span> Controle de Expedição</>}
                                     {aba === 'faroltp' && <><span className="icon-pulse inline-block">🚦</span> Farol Operacional TP</>}
                                     {aba === 'faroltp' && farolAtrasos > 0 && (
                                         <span style={{
@@ -2298,6 +2299,7 @@
                                     solicitacoesPendentes={solicitacoesPendentes}
                                     onAprovarExclusao={handleAprovarExclusao}
                                     onRejeitarExclusao={handleRejeitarExclusao}
+                                    onEditar={handleEditarOperacao}
                                 />
                             )}
                             {abaSelecionada === 'performance' && (
@@ -2323,6 +2325,14 @@
                                     onSalvar={handleNovaLinhaVermelha}
                                     onAtualizar={handleAtualizarLinhaVermelha}
                                     onDeletar={handleDeletarLinhaVermelha}
+                                />
+                            )}
+                            {abaSelecionada === 'expedicao' && (
+                                <ControleExpedicao
+                                    operacoes={operacoes}
+                                    dataSelecionada={dataSelecionada}
+                                    setDataSelecionada={setDataSelecionada}
+                                    onEditar={handleEditarOperacao}
                                 />
                             )}
                             {abaSelecionada === 'faroltp' && (
@@ -2389,6 +2399,187 @@
                             )}
                         </main>
                     </div>
+                </div>
+            );
+        }
+
+        // ========== CONTROLE DE EXPEDIÇÃO (substitui o papel "Controle de Expedição") ==========
+        // Fonte dos dados: coleção 'operacoes' (a mesma do Dashboard). Nada é duplicado:
+        //   Fim de Conf. = op.inicio · Romaneio Entregue = op.romaneio · Término de Carregamento = op.termino
+        // O conferente só registra o horário atual ("Agora"); a correção manual é feita apenas no Dashboard.
+        function ControleExpedicao({ operacoes, dataSelecionada, setDataSelecionada, onEditar }) {
+            const LS_CONF = 'expedicao_conferente_v1';
+            const TODAS = '__todas__';
+            const [conferente, setConferente] = useState(() => { try { return localStorage.getItem(LS_CONF) || ''; } catch (e) { return ''; } });
+            const [cargaAbertaId, setCargaAbertaId] = useState(null);
+            const [salvando, setSalvando] = useState(false);
+
+            const norm = (s) => String(s || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+            const nomesDaCarga = (op) => String(op.conferentes || '').split(/[,;/&+]/).map(n => n.trim()).filter(Boolean);
+            const horaAgora = () => new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+            const dataBR = (d) => { const p = String(d || '').split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : d; };
+
+            const opsDia = useMemo(() => operacoes
+                .filter(o => o.data === dataSelecionada)
+                .sort((a, b) => String(a.operacao || '').localeCompare(String(b.operacao || ''), 'pt-BR')), [operacoes, dataSelecionada]);
+
+            const conferentesDoDia = useMemo(() => {
+                const mapa = new Map();
+                opsDia.forEach(o => nomesDaCarga(o).forEach(n => { if (!mapa.has(norm(n))) mapa.set(norm(n), n); }));
+                return Array.from(mapa.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+            }, [opsDia]);
+
+            const escolherConferente = (v) => {
+                setConferente(v);
+                try { localStorage.setItem(LS_CONF, v); } catch (e) {}
+            };
+
+            const minhasCargas = useMemo(() => {
+                if (!conferente) return [];
+                if (conferente === TODAS) return opsDia;
+                const alvo = norm(conferente);
+                return opsDia.filter(o => nomesDaCarga(o).some(n => norm(n) === alvo));
+            }, [opsDia, conferente]);
+
+            const cargaAberta = cargaAbertaId ? opsDia.find(o => String(o.id) === String(cargaAbertaId)) : null;
+
+            const ETAPAS = [
+                { campo: 'inicio',   rotulo: 'Final de conferência', icone: '✅' },
+                { campo: 'romaneio', rotulo: 'Entrega do romaneio',  icone: '📄' },
+                { campo: 'termino',  rotulo: 'Final de carregamento', icone: '🚚' }
+            ];
+
+            const registrarAgora = async (op, etapa) => {
+                if (salvando || op[etapa.campo]) return;
+                const hora = horaAgora();
+                if (!window.confirm(`Registrar "${etapa.rotulo}" agora, às ${hora}?\n\nDepois de registrado, só dá para corrigir pelo Dashboard.`)) return;
+                setSalvando(true);
+                try {
+                    const patch = { id: op.id, [etapa.campo]: hora };
+                    if (etapa.campo === 'termino') patch.status = calcularStatus(op.meta, hora);
+                    await onEditar(patch);
+                } catch (e) {
+                    alert('❌ Não foi possível registrar o horário. Verifique a conexão e tente novamente.');
+                } finally {
+                    setSalvando(false);
+                }
+            };
+
+            const concluidas = minhasCargas.filter(o => o.inicio && o.romaneio && o.termino).length;
+            const destinosTxt = (op) => (Array.isArray(op.destinos) && op.destinos.length) ? op.destinos.map(d => d.nome).filter(Boolean).join(' + ') : '';
+
+            return (
+                <div>
+                    <div className="flex flex-wrap items-end gap-4 mb-5">
+                        <div>
+                            <h2 className="text-2xl font-bold text-gray-800">📦 Controle de Expedição</h2>
+                            <p className="text-sm text-gray-500">Registre os horários direto aqui — os dados da carga vêm do Dashboard.</p>
+                        </div>
+                        <div className="ml-auto flex flex-wrap gap-3 items-end">
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 block mb-1">📅 Data</label>
+                                <input type="date" value={dataSelecionada} onChange={e => e.target.value && setDataSelecionada(e.target.value)}
+                                    className="border-2 border-gray-300 rounded-lg px-3 py-2 font-semibold" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 block mb-1">🔍 Conferente</label>
+                                <select value={conferente} onChange={e => escolherConferente(e.target.value)}
+                                    className="border-2 border-gray-300 rounded-lg px-3 py-2 font-semibold" style={{minWidth:'210px'}}>
+                                    <option value="">Selecione o seu nome</option>
+                                    {conferentesDoDia.map(n => <option key={n} value={n}>{n}</option>)}
+                                    <option value={TODAS}>👁️ Todas as cargas do dia</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    {!conferente ? (
+                        <div className="text-center py-12 text-gray-500">
+                            <div style={{fontSize:'42px'}}>👆</div>
+                            <div className="font-bold mt-2">Selecione o seu nome para ver as suas cargas de {dataBR(dataSelecionada)}.</div>
+                            {opsDia.length === 0 && <div className="text-sm mt-2">Ainda não há cargas cadastradas nesta data.</div>}
+                            {opsDia.length > 0 && conferentesDoDia.length === 0 && <div className="text-sm mt-2">Há cargas na data, mas nenhuma tem conferente definido. Use "Todas as cargas do dia".</div>}
+                        </div>
+                    ) : minhasCargas.length === 0 ? (
+                        <div className="text-center py-12 text-gray-500 font-semibold">Nenhuma carga para este conferente em {dataBR(dataSelecionada)}.</div>
+                    ) : (
+                        <>
+                            <div className="mb-3 text-sm font-bold text-gray-600">{concluidas} de {minhasCargas.length} carga(s) finalizada(s)</div>
+                            <div className="grid gap-3" style={{gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))'}}>
+                                {minhasCargas.map(op => {
+                                    const feitas = ETAPAS.filter(e => op[e.campo]).length;
+                                    const cor = feitas === 3 ? '#16a34a' : feitas === 0 ? '#9ca3af' : '#f59e0b';
+                                    return (
+                                        <button key={op.id} onClick={() => setCargaAbertaId(op.id)}
+                                            style={{textAlign:'left',border:`2px solid ${cor}`,borderRadius:'14px',padding:'14px',background:'#fff',cursor:'pointer'}}>
+                                            <div className="flex justify-between items-start gap-2">
+                                                <div className="font-extrabold text-gray-800 text-lg">{op.operacao}</div>
+                                                <span style={{background:cor,color:'#fff',borderRadius:'999px',padding:'2px 10px',fontSize:'12px',fontWeight:800,whiteSpace:'nowrap'}}>
+                                                    {feitas === 3 ? 'Finalizada' : `${feitas}/3`}
+                                                </span>
+                                            </div>
+                                            {destinosTxt(op) && <div className="text-xs text-gray-500 mt-0.5">{destinosTxt(op)}</div>}
+                                            <div className="text-sm text-gray-600 mt-1">🚪 Doca {op.doca || '—'}{conferente === TODAS && op.conferentes ? ` · 🔍 ${op.conferentes}` : ''}</div>
+                                            <div className="flex gap-2 mt-2 flex-wrap">
+                                                {ETAPAS.map(e => (
+                                                    <span key={e.campo} style={{fontSize:'11px',fontWeight:700,borderRadius:'8px',padding:'2px 8px',background: op[e.campo] ? '#dcfce7' : '#f3f4f6',color: op[e.campo] ? '#166534' : '#6b7280'}}>
+                                                        {op[e.campo] ? `✓ ${op[e.campo]}` : '—'}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </>
+                    )}
+
+                    {cargaAberta && (
+                        <div onClick={() => setCargaAbertaId(null)}
+                            style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'12px'}}>
+                            <div onClick={e => e.stopPropagation()}
+                                style={{background:'#fff',borderRadius:'18px',width:'100%',maxWidth:'520px',maxHeight:'92vh',overflowY:'auto',padding:'20px'}}>
+                                <div className="flex justify-between items-center mb-3">
+                                    <h3 className="text-xl font-extrabold text-gray-800">📦 Controle de Expedição</h3>
+                                    <button onClick={() => setCargaAbertaId(null)} style={{border:'none',background:'#f3f4f6',borderRadius:'10px',padding:'6px 12px',fontWeight:800,cursor:'pointer'}}>✕</button>
+                                </div>
+
+                                <div style={{border:'1px solid #e5e7eb',borderRadius:'12px',overflow:'hidden',marginBottom:'14px'}}>
+                                    {[
+                                        ['Destino da carga', cargaAberta.operacao + (destinosTxt(cargaAberta) ? ' — ' + destinosTxt(cargaAberta) : '')],
+                                        ['Conferente', cargaAberta.conferentes || '—'],
+                                        ['Doca', cargaAberta.doca || '—'],
+                                        ['Data', dataBR(cargaAberta.data)]
+                                    ].map(([rot, val]) => (
+                                        <div key={rot} style={{display:'flex',borderBottom:'1px solid #e5e7eb',background:'#f9fafb'}}>
+                                            <div style={{width:'42%',padding:'10px 12px',fontWeight:800,fontSize:'13px',color:'#374151'}}>{rot.toUpperCase()}</div>
+                                            <div style={{flex:1,padding:'10px 12px',fontWeight:600,color:'#111827',background:'#fff'}}>{val}</div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {ETAPAS.map(etapa => {
+                                    const valor = cargaAberta[etapa.campo];
+                                    return (
+                                        <div key={etapa.campo} style={{border:'2px solid ' + (valor ? '#16a34a' : '#d1d5db'),borderRadius:'12px',padding:'12px',marginBottom:'10px',background: valor ? '#f0fdf4' : '#fff'}}>
+                                            <div className="flex justify-between items-center">
+                                                <div className="font-extrabold text-gray-800">{etapa.icone} {etapa.rotulo.toUpperCase()}</div>
+                                                {valor && <div style={{fontSize:'22px',fontWeight:900,color:'#166534'}}>{valor}</div>}
+                                            </div>
+                                            {valor ? (
+                                                <div className="text-xs text-gray-500 mt-1">✓ Registrado. Para corrigir, fale com o responsável (Dashboard).</div>
+                                            ) : (
+                                                <button disabled={salvando} onClick={() => registrarAgora(cargaAberta, etapa)}
+                                                    className="w-full mt-2 py-4 rounded-xl font-extrabold text-white text-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40">
+                                                    ⏱️ Agora
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }
@@ -6519,7 +6710,7 @@
             return { custom: false, val: prioridadeDestaqueDashboard(nomeOp) };
         };
 
-        function Dashboard({ operacoes, dataSelecionada, setDataSelecionada, listaOperacoes, isAdmin, solicitacoesPendentes, onAprovarExclusao, onRejeitarExclusao }) {
+        function Dashboard({ operacoes, dataSelecionada, setDataSelecionada, listaOperacoes, isAdmin, solicitacoesPendentes, onAprovarExclusao, onRejeitarExclusao, onEditar }) {
             const chartRefs = {
                 status: useRef(null),
                 volumetria: useRef(null),
@@ -6554,6 +6745,45 @@
                 });
             };
             const [imgZoom, setImgZoom] = useState(null); // { src, nome }
+
+            // ✏️ Correção de horários (Fim de Conf. / Romaneio Entregue / Término de Carregamento)
+            // Único lugar onde esses horários podem ser alterados manualmente após o registro no Controle de Expedição.
+            const [editHora, setEditHora] = useState(null); // { id, campo, valor }
+            const salvarHoraDashboard = async () => {
+                if (!editHora || !onEditar) return;
+                const { id, campo, valor } = editHora;
+                const opAtual = operacoes.find(o => String(o.id) === String(id));
+                if (!opAtual) { setEditHora(null); return; }
+                const patch = { id: opAtual.id, [campo]: valor || '' };
+                if (campo === 'termino') patch.status = calcularStatus(opAtual.meta, valor || '');
+                try { await onEditar(patch); }
+                catch (e) { alert('❌ Erro ao salvar o horário: ' + ((e && e.message) || e)); }
+                setEditHora(null);
+            };
+            const celulaHora = (op, campo) => {
+                const editando = editHora && String(editHora.id) === String(op.id) && editHora.campo === campo;
+                if (editando) {
+                    return (
+                        <div style={{display:'flex',gap:'4px',alignItems:'center'}}>
+                            <input type="time" value={editHora.valor} onChange={e => setEditHora({ ...editHora, valor: e.target.value })}
+                                className="border border-gray-300 rounded px-1 py-0.5 text-sm" style={{width:'96px'}} />
+                            <button onClick={salvarHoraDashboard} title="Salvar horário"
+                                style={{border:'none',background:'#16a34a',color:'#fff',borderRadius:'6px',padding:'2px 8px',fontWeight:800,cursor:'pointer'}}>✓</button>
+                            <button onClick={() => setEditHora(null)} title="Cancelar"
+                                style={{border:'none',background:'#9ca3af',color:'#fff',borderRadius:'6px',padding:'2px 8px',fontWeight:800,cursor:'pointer'}}>✕</button>
+                        </div>
+                    );
+                }
+                return (
+                    <span>
+                        {op[campo]}
+                        {onEditar && (
+                            <button onClick={() => setEditHora({ id: op.id, campo, valor: op[campo] || '' })} title="Alterar horário"
+                                style={{marginLeft:'6px',border:'none',background:'transparent',cursor:'pointer',fontSize:'12px',opacity:0.7}}>✏️</button>
+                        )}
+                    </span>
+                );
+            };
             const [alertaCapExpanded, setAlertaCapExpanded] = useState(false);
             const [alertaCubExpanded, setAlertaCubExpanded] = useState(false);
             const cubChartRef = useRef(null);
@@ -8151,9 +8381,9 @@
                                                 <td className="px-4 py-2 text-sm">{op.nf}</td>
                                                 <td className="px-4 py-2 text-sm">{op.vol}</td>
                                                 <td className="px-4 py-2 text-sm">{(Math.round((parseFloat(op.cubagem)||0)*100)/100).toFixed(2)}</td>
-                                                <td className="px-4 py-2 text-sm">{op.inicio}</td>
-                                                <td className="px-4 py-2 text-sm">{op.romaneio}</td>
-                                                <td className="px-4 py-2 text-sm">{op.termino}</td>
+                                                <td className="px-4 py-2 text-sm">{celulaHora(op, 'inicio')}</td>
+                                                <td className="px-4 py-2 text-sm">{celulaHora(op, 'romaneio')}</td>
+                                                <td className="px-4 py-2 text-sm">{celulaHora(op, 'termino')}</td>
                                                 <td className="px-4 py-2 text-sm">{op.meta}</td>
                                                 <td className="px-4 py-2 text-sm">{op.conferentes || <span style={{color:'#94a3b8'}}>—</span>}</td>
                                                 <td className="px-4 py-2 text-sm">{op.doca || <span style={{color:'#94a3b8'}}>—</span>}</td>
