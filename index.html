@@ -2299,7 +2299,6 @@
                                     solicitacoesPendentes={solicitacoesPendentes}
                                     onAprovarExclusao={handleAprovarExclusao}
                                     onRejeitarExclusao={handleRejeitarExclusao}
-                                    onEditar={handleEditarOperacao}
                                 />
                             )}
                             {abaSelecionada === 'performance' && (
@@ -2452,7 +2451,7 @@
             const registrarAgora = async (op, etapa) => {
                 if (salvando || op[etapa.campo]) return;
                 const hora = horaAgora();
-                if (!window.confirm(`Registrar "${etapa.rotulo}" agora, às ${hora}?\n\nDepois de registrado, só dá para corrigir pelo Dashboard.`)) return;
+                if (!window.confirm(`Registrar "${etapa.rotulo}" agora, às ${hora}?\n\nDepois de registrado, só dá para corrigir pela aba Editar.`)) return;
                 setSalvando(true);
                 try {
                     const patch = { id: op.id, [etapa.campo]: hora };
@@ -2567,7 +2566,7 @@
                                                 {valor && <div style={{fontSize:'22px',fontWeight:900,color:'#166534'}}>{valor}</div>}
                                             </div>
                                             {valor ? (
-                                                <div className="text-xs text-gray-500 mt-1">✓ Registrado. Para corrigir, fale com o responsável (Dashboard).</div>
+                                                <div className="text-xs text-gray-500 mt-1">✓ Registrado. Para corrigir, fale com o responsável (aba Editar).</div>
                                             ) : (
                                                 <button disabled={salvando} onClick={() => registrarAgora(cargaAberta, etapa)}
                                                     className="w-full mt-2 py-4 rounded-xl font-extrabold text-white text-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40">
@@ -6710,7 +6709,7 @@
             return { custom: false, val: prioridadeDestaqueDashboard(nomeOp) };
         };
 
-        function Dashboard({ operacoes, dataSelecionada, setDataSelecionada, listaOperacoes, isAdmin, solicitacoesPendentes, onAprovarExclusao, onRejeitarExclusao, onEditar }) {
+        function Dashboard({ operacoes, dataSelecionada, setDataSelecionada, listaOperacoes, isAdmin, solicitacoesPendentes, onAprovarExclusao, onRejeitarExclusao }) {
             const chartRefs = {
                 status: useRef(null),
                 volumetria: useRef(null),
@@ -6745,45 +6744,6 @@
                 });
             };
             const [imgZoom, setImgZoom] = useState(null); // { src, nome }
-
-            // ✏️ Correção de horários (Fim de Conf. / Romaneio Entregue / Término de Carregamento)
-            // Único lugar onde esses horários podem ser alterados manualmente após o registro no Controle de Expedição.
-            const [editHora, setEditHora] = useState(null); // { id, campo, valor }
-            const salvarHoraDashboard = async () => {
-                if (!editHora || !onEditar) return;
-                const { id, campo, valor } = editHora;
-                const opAtual = operacoes.find(o => String(o.id) === String(id));
-                if (!opAtual) { setEditHora(null); return; }
-                const patch = { id: opAtual.id, [campo]: valor || '' };
-                if (campo === 'termino') patch.status = calcularStatus(opAtual.meta, valor || '');
-                try { await onEditar(patch); }
-                catch (e) { alert('❌ Erro ao salvar o horário: ' + ((e && e.message) || e)); }
-                setEditHora(null);
-            };
-            const celulaHora = (op, campo) => {
-                const editando = editHora && String(editHora.id) === String(op.id) && editHora.campo === campo;
-                if (editando) {
-                    return (
-                        <div style={{display:'flex',gap:'4px',alignItems:'center'}}>
-                            <input type="time" value={editHora.valor} onChange={e => setEditHora({ ...editHora, valor: e.target.value })}
-                                className="border border-gray-300 rounded px-1 py-0.5 text-sm" style={{width:'96px'}} />
-                            <button onClick={salvarHoraDashboard} title="Salvar horário"
-                                style={{border:'none',background:'#16a34a',color:'#fff',borderRadius:'6px',padding:'2px 8px',fontWeight:800,cursor:'pointer'}}>✓</button>
-                            <button onClick={() => setEditHora(null)} title="Cancelar"
-                                style={{border:'none',background:'#9ca3af',color:'#fff',borderRadius:'6px',padding:'2px 8px',fontWeight:800,cursor:'pointer'}}>✕</button>
-                        </div>
-                    );
-                }
-                return (
-                    <span>
-                        {op[campo]}
-                        {onEditar && (
-                            <button onClick={() => setEditHora({ id: op.id, campo, valor: op[campo] || '' })} title="Alterar horário"
-                                style={{marginLeft:'6px',border:'none',background:'transparent',cursor:'pointer',fontSize:'12px',opacity:0.7}}>✏️</button>
-                        )}
-                    </span>
-                );
-            };
             const [alertaCapExpanded, setAlertaCapExpanded] = useState(false);
             const [alertaCubExpanded, setAlertaCubExpanded] = useState(false);
             const cubChartRef = useRef(null);
@@ -8381,9 +8341,9 @@
                                                 <td className="px-4 py-2 text-sm">{op.nf}</td>
                                                 <td className="px-4 py-2 text-sm">{op.vol}</td>
                                                 <td className="px-4 py-2 text-sm">{(Math.round((parseFloat(op.cubagem)||0)*100)/100).toFixed(2)}</td>
-                                                <td className="px-4 py-2 text-sm">{celulaHora(op, 'inicio')}</td>
-                                                <td className="px-4 py-2 text-sm">{celulaHora(op, 'romaneio')}</td>
-                                                <td className="px-4 py-2 text-sm">{celulaHora(op, 'termino')}</td>
+                                                <td className="px-4 py-2 text-sm">{op.inicio}</td>
+                                                <td className="px-4 py-2 text-sm">{op.romaneio}</td>
+                                                <td className="px-4 py-2 text-sm">{op.termino}</td>
                                                 <td className="px-4 py-2 text-sm">{op.meta}</td>
                                                 <td className="px-4 py-2 text-sm">{op.conferentes || <span style={{color:'#94a3b8'}}>—</span>}</td>
                                                 <td className="px-4 py-2 text-sm">{op.doca || <span style={{color:'#94a3b8'}}>—</span>}</td>
