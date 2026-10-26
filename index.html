@@ -1676,6 +1676,10 @@
                     alert('🚫 Acesso não autorizado.');
                     return;
                 }
+                if (abasPermitidas && !abasPermitidas.includes(novaAba)) {
+                    alert('🚫 Acesso não autorizado.');
+                    return;
+                }
                 if (pendingChanges && novaAba !== abaSelecionada) {
                     const confirmar = window.confirm('⚠️ Você tem alterações não salvas em "Gerenciar Operações"!\n\nClique em OK para sair sem salvar, ou Cancelar para voltar e salvar.');
                     if (!confirmar) return;
@@ -1887,6 +1891,42 @@
                 }
             }, [restritoAoFarolTP, abaSelecionada]);
 
+            // ========== RESTRIÇÃO DE ABAS POR E-MAIL (definida pelo administrador em Configurações) ==========
+            // Regra guardada em configuracoes/acessoAbas → { lista: [{ email, abas: [...] }] }. O administrador nunca é restringido.
+            // (trava de interface; a trava real de dados depende das Firebase Security Rules)
+            const [acessoAbas, setAcessoAbas] = useState([]);
+            const [acessoAbasPronto, setAcessoAbasPronto] = useState(false);
+            useEffect(() => {
+                if (!user) { setAcessoAbasPronto(false); return; }
+                const { doc, onSnapshot } = window.__firebaseFns;
+                const unsubscribe = onSnapshot(
+                    doc(window.__firebaseDb, 'configuracoes', 'acessoAbas'),
+                    (snap) => {
+                        const d = snap.exists() ? snap.data() : null;
+                        setAcessoAbas(d && Array.isArray(d.lista) ? d.lista : []);
+                        setAcessoAbasPronto(true);
+                    },
+                    (err) => { console.error('Erro no listener de acesso por abas:', err); setAcessoAbasPronto(true); }
+                );
+                return () => unsubscribe();
+            }, [user]);
+            const regraAbasUsuario = (user && !isAdmin)
+                ? acessoAbas.find(r => String(r.email || '').toLowerCase() === String(user.email || '').toLowerCase())
+                : null;
+            const abasPermitidas = (regraAbasUsuario && Array.isArray(regraAbasUsuario.abas) && regraAbasUsuario.abas.length) ? regraAbasUsuario.abas : null;
+            const carregandoAcesso = !!(user && !isAdmin && !acessoAbasPronto);
+            const bloquearConteudo = carregandoAcesso || !!(abasPermitidas && !abasPermitidas.includes(abaSelecionada));
+            useEffect(() => {
+                if (abasPermitidas && !abasPermitidas.includes(abaSelecionada)) {
+                    setAbaSelecionada(abasPermitidas[0]);
+                }
+            }, [abasPermitidas, abaSelecionada]);
+            const handleSalvarAcessoAbas = async (lista) => {
+                const currentDb = dbRef.current || db;
+                if (!currentDb || !isAdmin) return;
+                await currentDb.setConfig('acessoAbas', { lista });
+            };
+
             const handleAtualizarFarolTP = async (operacaoId, patch) => {
                 const currentDb = dbRef.current || db;
                 if (!currentDb) { alert('❌ Banco de dados não inicializado. Aguarde e tente novamente.'); return; }
@@ -1994,7 +2034,7 @@
             };
 
             // Contagem de mensagens do chat ainda não vistas pelo usuário atual
-            const chatNaoLidas = user ? chatMensagens.filter(m => m.autorEmail !== user.email && !(m.lidoPor || []).includes(user.email)).length : 0;
+            const chatNaoLidas = (user && (!abasPermitidas || abasPermitidas.includes('comunicacoes'))) ? chatMensagens.filter(m => m.autorEmail !== user.email && !(m.lidoPor || []).includes(user.email)).length : 0;
 
             // Detecta chegada de mensagens novas (via outra pessoa) para tocar som/alerta
             // quando o usuário está fora da aba "Comunicações" ou fora da janela do navegador
@@ -2011,7 +2051,7 @@
                 const novasDeOutros = novas.filter(m => m.autorEmail !== user.email);
                 if (novasDeOutros.length === 0) return;
                 const foraDaAba = abaSelecionada !== 'comunicacoes' || document.hidden;
-                if (foraDaAba) {
+                if (foraDaAba && (!abasPermitidas || abasPermitidas.includes('comunicacoes'))) {
                     tocarBipNotificacao();
                 }
             }, [chatMensagens, user, abaSelecionada]);
@@ -2227,7 +2267,7 @@
                             {(restritoAoFarolTP
                                 ? ['faroltp']
                                 : ['torre', 'dashboard', 'performance', 'graficos', 'capacidade', 'cadastrar', 'linhavermelha', 'expedicao', 'faroltp', 'comunicacoes', 'planejamento', 'rotatividade5s', 'editar', 'gerenciar', 'relatorios', 'upload', ...(isAdmin ? ['configuracoes'] : [])]
-                            ).map(aba => (
+                            ).filter(aba => !carregandoAcesso && (!abasPermitidas || abasPermitidas.includes(aba))).map(aba => (
                                 <button
                                     key={aba}
                                     onClick={() => trocarAba(aba)}
@@ -2286,6 +2326,9 @@
                         </nav>
 
                         <main className="bg-white rounded-2xl shadow-2xl p-6">
+                            {bloquearConteudo ? (
+                                <div className="text-center py-10 text-gray-500 font-semibold">Carregando permissões...</div>
+                            ) : (<>
                             {abaSelecionada === 'torre' && (
                                 <TorreDeControle operacoes={operacoes} listaOperacoes={listaOperacoes} />
                             )}
@@ -2394,8 +2437,11 @@
                                     onUpdate={carregarOperacoes}
                                     isAdmin={isAdmin}
                                     permissoesUsuarios={permissoesUsuarios}
+                                    acessoAbas={acessoAbas}
+                                    onSalvarAcessoAbas={handleSalvarAcessoAbas}
                                 />
                             )}
+                            </>)}
                         </main>
                     </div>
                 </div>
@@ -11021,10 +11067,41 @@
         }
 
         // ========== CONFIGURAÇÕES ==========
-        function Configuracoes({ db, operacoes, onUpdate, isAdmin, permissoesUsuarios }) {
+        function Configuracoes({ db, operacoes, onUpdate, isAdmin, permissoesUsuarios, acessoAbas, onSalvarAcessoAbas }) {
             const [mensagem, setMensagem] = useState('');
             const [usuariosPresenca, setUsuariosPresenca] = useState([]);
             const [salvandoPermissoes, setSalvandoPermissoes] = useState(false);
+
+            // ===== RESTRIÇÃO DE ABAS POR E-MAIL =====
+            const ABAS_RESTRINGIVEIS = [
+                ['expedicao', '📦 Controle de Expedição'], ['torre', '🗼 Torre de Controle'], ['dashboard', '📊 Dashboard'],
+                ['performance', '🏆 Performance'], ['graficos', '📈 Gráficos'], ['capacidade', '👥 Capacidade'],
+                ['cadastrar', '➕ Cadastrar'], ['linhavermelha', '🚦 Linha Vermelha'], ['faroltp', '🚦 Farol Operacional TP'],
+                ['comunicacoes', '💬 Comunicações'], ['planejamento', '🎯 Planejamento Operacional'], ['rotatividade5s', '🔄 Rotatividade 5S'],
+                ['editar', '✏️ Editar'], ['gerenciar', '🔧 Gerenciar Operações'], ['relatorios', '📋 Relatórios'], ['upload', '📤 Upload & Backup']
+            ];
+            const [acEmail, setAcEmail] = useState('');
+            const [acAbas, setAcAbas] = useState(['expedicao']);
+            const [acSalvando, setAcSalvando] = useState(false);
+            const listaAcesso = Array.isArray(acessoAbas) ? acessoAbas : [];
+            const salvarAcesso = async () => {
+                const email = acEmail.trim().toLowerCase();
+                if (!email || !email.includes('@')) { alert('Informe um e-mail válido.'); return; }
+                if (email === ADMIN_EMAIL.toLowerCase()) { alert('O administrador sempre tem acesso a todas as abas.'); return; }
+                if (acAbas.length === 0) { alert('Marque ao menos uma aba.'); return; }
+                setAcSalvando(true);
+                try {
+                    const nova = [...listaAcesso.filter(r => String(r.email || '').toLowerCase() !== email), { email, abas: acAbas }];
+                    await onSalvarAcessoAbas(nova);
+                    setAcEmail(''); setAcAbas(['expedicao']);
+                } catch (e) { alert('❌ Não foi possível salvar: ' + ((e && e.message) || e)); }
+                finally { setAcSalvando(false); }
+            };
+            const removerAcesso = async (email) => {
+                if (!window.confirm(`Remover a restrição de "${email}"?\n\nEsse e-mail voltará a ver todas as abas.`)) return;
+                try { await onSalvarAcessoAbas(listaAcesso.filter(r => r.email !== email)); }
+                catch (e) { alert('❌ Não foi possível remover: ' + ((e && e.message) || e)); }
+            };
 
             // ===== AUDITORIA: relatório de mudanças (dia, hora e quem fez) - somente admin =====
             const [logsAuditoria, setLogsAuditoria] = useState([]);
@@ -11304,6 +11381,63 @@
                                             ))}
                                         </tbody>
                                     </table>
+                                </div>
+                            )}
+                        </div>
+                        )}
+
+                        {/* RESTRIÇÃO DE ABAS POR E-MAIL */}
+                        {isAdmin && (
+                        <div className="bg-white p-6 rounded-lg shadow-lg">
+                            <h3 className="text-xl font-bold mb-1">🔒 Restringir Abas por E-mail</h3>
+                            <p className="text-gray-500 text-sm mb-4">O e-mail informado só enxerga as abas marcadas. Quem não estiver na lista continua com acesso normal. O administrador nunca é restringido.</p>
+                            <div style={{background:'#f8fafc',border:'1.5px solid #e2e8f0',borderRadius:'10px',padding:'14px',marginBottom:'16px'}}>
+                                <label className="text-xs font-bold text-gray-500 block mb-1">E-mail do usuário</label>
+                                <input type="email" list="acesso-emails" value={acEmail} onChange={e => setAcEmail(e.target.value)} placeholder="conferente@fastshop.com.br"
+                                    className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 mb-3" />
+                                <datalist id="acesso-emails">
+                                    {usuariosPresenca.map(u => u.email ? <option key={u.uid} value={u.email} /> : null)}
+                                </datalist>
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xs font-bold text-gray-500">Abas liberadas</span>
+                                    <button type="button" onClick={() => setAcAbas(['expedicao'])}
+                                        style={{border:'none',background:'#dbeafe',color:'#1d4ed8',borderRadius:'8px',padding:'4px 10px',fontSize:'12px',fontWeight:700,cursor:'pointer'}}>
+                                        Somente Controle de Expedição
+                                    </button>
+                                </div>
+                                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(210px,1fr))',gap:'6px',marginBottom:'12px'}}>
+                                    {ABAS_RESTRINGIVEIS.map(([id, rotulo]) => (
+                                        <label key={id} style={{display:'flex',alignItems:'center',gap:'8px',fontSize:'13px',color:'#374151',cursor:'pointer'}}>
+                                            <input type="checkbox" checked={acAbas.includes(id)}
+                                                onChange={e => setAcAbas(prev => e.target.checked ? [...prev, id] : prev.filter(a => a !== id))}
+                                                style={{width:16,height:16,cursor:'pointer'}} />
+                                            {rotulo}
+                                        </label>
+                                    ))}
+                                </div>
+                                <button type="button" disabled={acSalvando} onClick={salvarAcesso}
+                                    className="px-5 py-2 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40">
+                                    {acSalvando ? 'Salvando...' : '💾 Salvar restrição'}
+                                </button>
+                            </div>
+                            {listaAcesso.length === 0 ? (
+                                <p className="text-gray-400 italic text-sm">Nenhum e-mail restrito até o momento.</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {listaAcesso.map(r => (
+                                        <div key={r.email} style={{display:'flex',alignItems:'center',gap:'12px',padding:'10px 14px',borderRadius:'10px',background:'#f9fafb',border:'1.5px solid #e5e7eb'}}>
+                                            <div style={{flex:1}}>
+                                                <div style={{fontWeight:700,fontSize:'13px',color:'#1f2937'}}>{r.email}</div>
+                                                <div style={{fontSize:'11px',color:'#6b7280'}}>
+                                                    {(r.abas || []).map(id => (ABAS_RESTRINGIVEIS.find(a => a[0] === id) || [id, id])[1]).join(' · ')}
+                                                </div>
+                                            </div>
+                                            <button type="button" title="Editar" onClick={() => { setAcEmail(r.email); setAcAbas(r.abas || []); }}
+                                                style={{border:'none',background:'#e0e7ff',borderRadius:'8px',padding:'4px 10px',cursor:'pointer'}}>✏️</button>
+                                            <button type="button" title="Remover restrição" onClick={() => removerAcesso(r.email)}
+                                                style={{border:'none',background:'#fee2e2',borderRadius:'8px',padding:'4px 10px',cursor:'pointer'}}>🗑️</button>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
                         </div>
