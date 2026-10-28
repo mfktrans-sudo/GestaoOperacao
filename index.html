@@ -9273,8 +9273,32 @@
                 });
             };
 
+            /* Carga compartilhada: nome com "/" (ex.: TP-SANTA/ESTEIO/PINHAIS) -> marca a opção e cria uma linha por destino já com o nome */
+            const autoCompartilhadaRef = useRef(false);
+            const destinosDaOperacao = (nomeOp) => {
+                const s = String(nomeOp || '');
+                if (s.indexOf('/') < 0) return [];
+                const i = s.indexOf('-'), j = s.indexOf('/');
+                const base = (i >= 0 && i < j) ? s.slice(i + 1) : s;   // tira o prefixo "TP-"
+                const nomes = base.split('/').map(x => x.trim()).filter(Boolean);
+                return nomes.length >= 2 ? nomes : [];
+            };
+
             const handleChange = (e) => {
                 const { name, value } = e.target;
+                if (name === 'operacao') {
+                    const nomes = destinosDaOperacao(value);
+                    if (nomes.length) {
+                        autoCompartilhadaRef.current = true;
+                        setFormData(prev => ({ ...prev, operacao: value, otimizada: true, destinos: nomes.map(n => ({ nome: n, nf: '', vol: '', cubagem: '' })) }));
+                        return;
+                    }
+                    if (autoCompartilhadaRef.current) {   // saiu de uma carga compartilhada marcada automaticamente: volta ao normal
+                        autoCompartilhadaRef.current = false;
+                        setFormData(prev => ({ ...prev, operacao: value, otimizada: false, destinos: [ { nome: '', nf: '', vol: '', cubagem: '' }, { nome: '', nf: '', vol: '', cubagem: '' } ] }));
+                        return;
+                    }
+                }
                 setFormData(prev => ({ ...prev, [name]: value }));
             };
 
@@ -9299,7 +9323,7 @@
 
                 if (formData.otimizada) {
                     if (!formData.destinos || formData.destinos.length < 2) {
-                        setMensagem('⚠️ Operação otimizada requer pelo menos 2 destinos!');
+                        setMensagem('⚠️ Carga compartilhada requer pelo menos 2 destinos!');
                         return;
                     }
                     for (const d of formData.destinos) {
@@ -9422,7 +9446,7 @@
                                         onChange={(e) => setFormData(prev => ({ ...prev, otimizada: e.target.checked }))}
                                         className="w-5 h-5 accent-purple-600"
                                     />
-                                    <span className="text-sm font-bold text-purple-800">🔗 Operação Otimizada (uma carreta atende mais de um destino)</span>
+                                    <span className="text-sm font-bold text-purple-800">🔗 Carga Compartilhada (uma carreta atende mais de um destino)</span>
                                 </label>
                             </div>
 
@@ -9778,7 +9802,7 @@
                                         <React.Fragment key={op.id}>
                                             <tr className={`border-b editable-row${editando === op.id ? ' bg-blue-50' : ' hover:bg-gray-50'}`}>
                                                 <td className="px-4 py-3">{formatarData(op.data)}</td>
-                                                <td className="px-4 py-3 font-medium">{op.operacao}{op.otimizada && <span title="Operação Otimizada — múltiplos destinos" style={{marginLeft:6,background:'#ede9fe',color:'#6d28d9',padding:'1px 8px',borderRadius:10,fontSize:10,fontWeight:800}}>🔗 Otimizada</span>}</td>
+                                                <td className="px-4 py-3 font-medium">{op.operacao}{op.otimizada && <span title="Carga Compartilhada — múltiplos destinos" style={{marginLeft:6,background:'#ede9fe',color:'#6d28d9',padding:'1px 8px',borderRadius:10,fontSize:10,fontWeight:800}}>🔗 Compartilhada</span>}</td>
                                                 <td className="px-4 py-3">{op.nf}</td>
                                                 <td className="px-4 py-3">{op.vol}</td>
                                                 <td className="px-4 py-3">{(Math.round((parseFloat(op.cubagem)||0)*100)/100).toFixed(2)}</td>
@@ -9833,7 +9857,7 @@
                                                 <tr>
                                                     <td colSpan="13" style={{padding:'0',background:'#f0f4ff',borderBottom:'2px solid #667eea'}}>
                                                         <div style={{padding:'18px 20px',borderLeft:'4px solid #667eea'}}>
-                                                            <div style={{fontWeight:'800',fontSize:'13px',color:'#667eea',marginBottom:'14px'}}>✏️ Editando: {dadosEdicao.operacao}{dadosEdicao.otimizada && <span style={{marginLeft:6,background:'#ede9fe',color:'#6d28d9',padding:'1px 8px',borderRadius:10,fontSize:10,fontWeight:800}}>🔗 Otimizada</span>}</div>
+                                                            <div style={{fontWeight:'800',fontSize:'13px',color:'#667eea',marginBottom:'14px'}}>✏️ Editando: {dadosEdicao.operacao}{dadosEdicao.otimizada && <span style={{marginLeft:6,background:'#ede9fe',color:'#6d28d9',padding:'1px 8px',borderRadius:10,fontSize:10,fontWeight:800}}>🔗 Compartilhada</span>}</div>
                                                             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'10px',marginBottom:'12px'}}>
                                                                 <div>
                                                                     <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Data</label>
