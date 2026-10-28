@@ -2375,6 +2375,7 @@
                                     dataSelecionada={dataSelecionada}
                                     setDataSelecionada={setDataSelecionada}
                                     onEditar={handleEditarOperacao}
+                                    emailUsuario={user && user.email}
                                 />
                             )}
                             {abaSelecionada === 'faroltp' && (
@@ -2452,8 +2453,20 @@
         // Fonte dos dados: coleção 'operacoes' (a mesma do Dashboard). Nada é duplicado:
         //   Fim de Conf. = op.inicio · Romaneio Entregue = op.romaneio · Término de Carregamento = op.termino
         // O conferente só registra o horário atual ("Agora"); a correção manual é feita apenas no Dashboard.
-        function ControleExpedicao({ operacoes, dataSelecionada, setDataSelecionada, onEditar }) {
+        function ControleExpedicao({ operacoes, dataSelecionada: dataSelecionadaProp, setDataSelecionada, onEditar, emailUsuario }) {
             const LS_CONF = 'expedicao_conferente_v1';
+            // Usuário "conferente@fastshop.com.br": só enxerga a data vigente (sem seletor de data)
+            // e, ao finalizar todas as cargas do dia, a tela é zerada e mostra a apresentação de operação finalizada.
+            const EMAIL_CONFERENTE_TRAVADO = 'conferente@fastshop.com.br';
+            const modoConferente = String(emailUsuario || '').trim().toLowerCase() === EMAIL_CONFERENTE_TRAVADO;
+            const [hojeVigente, setHojeVigente] = useState(() => getHojeStr());
+            useEffect(() => {
+                if (!modoConferente) return;
+                setHojeVigente(getHojeStr());
+                const t = setInterval(() => setHojeVigente(getHojeStr()), 60000);
+                return () => clearInterval(t);
+            }, [modoConferente]);
+            const dataSelecionada = modoConferente ? hojeVigente : dataSelecionadaProp;
             const TODAS = '__todas__';
             const [conferente, setConferente] = useState(() => { try { return localStorage.getItem(LS_CONF) || ''; } catch (e) { return ''; } });
             const [cargaAbertaId, setCargaAbertaId] = useState(null);
@@ -2467,6 +2480,8 @@
             const opsDia = useMemo(() => operacoes
                 .filter(o => o.data === dataSelecionada)
                 .sort((a, b) => String(a.operacao || '').localeCompare(String(b.operacao || ''), 'pt-BR')), [operacoes, dataSelecionada]);
+
+            const operacaoFinalizada = modoConferente && opsDia.length > 0 && opsDia.every(o => o.inicio && o.romaneio && o.termino);
 
             const conferentesDoDia = useMemo(() => {
                 const mapa = new Map();
@@ -2523,10 +2538,14 @@
                         <div className="ml-auto flex flex-wrap gap-3 items-end">
                             <div>
                                 <label className="text-xs font-bold text-gray-500 block mb-1">📅 Data</label>
-                                <input type="date" value={dataSelecionada} onChange={e => e.target.value && setDataSelecionada(e.target.value)}
-                                    className="border-2 border-gray-300 rounded-lg px-3 py-2 font-semibold" />
+                                {modoConferente ? (
+                                    <div className="border-2 border-gray-300 rounded-lg px-3 py-2 font-semibold bg-gray-50 text-gray-800">{dataBR(dataSelecionada)}</div>
+                                ) : (
+                                    <input type="date" value={dataSelecionada} onChange={e => e.target.value && setDataSelecionada(e.target.value)}
+                                        className="border-2 border-gray-300 rounded-lg px-3 py-2 font-semibold" />
+                                )}
                             </div>
-                            <div>
+                            {!operacaoFinalizada && <div>
                                 <label className="text-xs font-bold text-gray-500 block mb-1">🔍 Conferente</label>
                                 <select value={conferente} onChange={e => escolherConferente(e.target.value)}
                                     className="border-2 border-gray-300 rounded-lg px-3 py-2 font-semibold" style={{minWidth:'210px'}}>
@@ -2534,11 +2553,21 @@
                                     {conferentesDoDia.map(n => <option key={n} value={n}>{n}</option>)}
                                     <option value={TODAS}>👁️ Todas as cargas do dia</option>
                                 </select>
-                            </div>
+                            </div>}
                         </div>
                     </div>
 
-                    {!conferente ? (
+                    {operacaoFinalizada ? (
+                        <div style={{textAlign:'center',padding:'48px 20px',border:'2px solid #16a34a',borderRadius:'20px',background:'linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%)'}}>
+                            <div style={{fontSize:'72px',lineHeight:1}}>🏁</div>
+                            <div style={{fontSize:'30px',fontWeight:900,color:'#166534',marginTop:'12px'}}>Operação finalizada!</div>
+                            <div style={{fontSize:'16px',fontWeight:700,color:'#15803d',marginTop:'8px'}}>Todas as cargas de {dataBR(dataSelecionada)} foram conferidas, romaneadas e carregadas.</div>
+                            <div style={{display:'inline-block',marginTop:'20px',background:'#16a34a',color:'#fff',borderRadius:'999px',padding:'8px 22px',fontWeight:800,fontSize:'15px'}}>
+                                ✅ {opsDia.length} {opsDia.length === 1 ? 'carga finalizada' : 'cargas finalizadas'}
+                            </div>
+                            <div style={{fontSize:'13px',color:'#4b5563',marginTop:'18px'}}>Bom trabalho, equipe! 👏</div>
+                        </div>
+                    ) : !conferente ? (
                         <div className="text-center py-12 text-gray-500">
                             <div style={{fontSize:'42px'}}>👆</div>
                             <div className="font-bold mt-2">Selecione o seu nome para ver as suas cargas de {dataBR(dataSelecionada)}.</div>
@@ -2579,7 +2608,7 @@
                         </>
                     )}
 
-                    {cargaAberta && (
+                    {cargaAberta && !operacaoFinalizada && (
                         <div onClick={() => setCargaAbertaId(null)}
                             style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'12px'}}>
                             <div onClick={e => e.stopPropagation()}
