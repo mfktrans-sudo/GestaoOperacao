@@ -794,6 +794,27 @@
         .farol3d-lacre-cena .cadeado::before { content:''; position:absolute; top:-6px; left:2px; width:8px; height:8px; border:2px solid #b45309; border-bottom:none; border-radius:8px 8px 0 0; }
         .farol3d-lacre-cena .brilho { position:absolute; left:11px; top:10px; width:20px; height:16px; border-radius:50%; background:radial-gradient(circle, rgba(16,185,129,0.55), transparent 70%); animation: farolBrilhoLacre 2.2s ease-in-out infinite; }
 
+        /* Controle de Expedição (login conferente) — situação animada da carga */
+        @keyframes expstBox { 0%,100%{ transform: translateY(0) rotate(-6deg); } 50%{ transform: translateY(-5px) rotate(6deg); } }
+        @keyframes expstDots { 0%,20%{ opacity:.2; } 50%{ opacity:1; } 100%{ opacity:.2; } }
+        @keyframes expstSway { 0%,100%{ transform: rotate(-10deg); } 50%{ transform: rotate(10deg); } }
+        @keyframes expstRing { 0%{ transform: scale(.7); opacity:.7; } 100%{ transform: scale(1.9); opacity:0; } }
+        @keyframes expstTruck { 0%{ transform: translateX(-4px); } 50%{ transform: translateX(4px); } 100%{ transform: translateX(-4px); } }
+        @keyframes expstCaixaEntra { 0%{ transform: translate(-14px,-3px) scale(.6); opacity:0; } 60%{ opacity:1; } 100%{ transform: translate(0,0) scale(1); opacity:1; } }
+        @keyframes expstBarra { 0%{ background-position: 0 0; } 100%{ background-position: 28px 0; } }
+        @keyframes expstPop { 0%{ transform: scale(.3); opacity:0; } 60%{ transform: scale(1.25); opacity:1; } 100%{ transform: scale(1); } }
+        .expst-pill { display:flex; align-items:center; gap:8px; margin-top:8px; padding:6px 10px; border-radius:10px; font-size:12px; font-weight:800; border:1.5px solid; position:relative; overflow:hidden; }
+        .expst-ico { position:relative; width:26px; height:22px; display:flex; align-items:center; justify-content:center; font-size:18px; flex:0 0 auto; }
+        .expst-ico .ring { position:absolute; inset:0; margin:auto; width:20px; height:20px; border-radius:50%; border:2px solid currentColor; animation: expstRing 1.6s ease-out infinite; }
+        .expst-dots span { display:inline-block; animation: expstDots 1.2s ease-in-out infinite; }
+        .expst-dots span:nth-child(2) { animation-delay:.2s; } .expst-dots span:nth-child(3) { animation-delay:.4s; }
+        .expst-barra { position:absolute; left:0; right:0; bottom:0; height:3px; background-image: repeating-linear-gradient(45deg, currentColor 0 7px, transparent 7px 14px); background-size:28px 3px; opacity:.55; animation: expstBarra .8s linear infinite; }
+        .expst-sep .expst-ico .emo { animation: expstBox 1.1s ease-in-out infinite; }
+        .expst-rom .expst-ico .emo { animation: expstSway 1.6s ease-in-out infinite; transform-origin: 50% 90%; }
+        .expst-car .expst-ico .emo { animation: expstTruck 1.1s ease-in-out infinite; }
+        .expst-car .expst-ico .cx { position:absolute; left:-6px; top:3px; font-size:10px; animation: expstCaixaEntra 1.1s ease-in infinite; }
+        .expst-fim .expst-ico .emo { animation: expstPop .5s ease-out; }
+
         /* ═══════════ BOTÕES 3D — TRATAMENTO VISUAL GLOBAL ═══════════ */
         /* Aplica um acabamento tátil/glossy (relevo, brilho superior, sombra de profundidade,
            elevação no hover e "afundamento" no clique) a todos os botões funcionais da
@@ -2449,6 +2470,30 @@
             );
         }
 
+        // Situação animada da carga (somente no login conferente): deduzida dos horários já registrados.
+        //   sem Fim de Conf. → separação/conferência em andamento · Fim de Conf. → aguardando romaneio
+        //   Romaneio entregue → em carregamento · Término de Carregamento → finalizada
+        function ExpStatusAnim({ op }) {
+            const etapa = !op.inicio ? 'sep' : !op.romaneio ? 'rom' : !op.termino ? 'car' : 'fim';
+            const cfg = {
+                sep: { cls: 'expst-sep', cor: '#1d4ed8', bg: '#eff6ff', borda: '#93c5fd', emoji: '📦', texto: 'Separação em andamento', anim: true },
+                rom: { cls: 'expst-rom', cor: '#b45309', bg: '#fffbeb', borda: '#fcd34d', emoji: '📄', texto: 'Aguardando romaneio', anim: true },
+                car: { cls: 'expst-car', cor: '#4338ca', bg: '#eef2ff', borda: '#a5b4fc', emoji: '🚚', texto: 'Em carregamento', anim: true },
+                fim: { cls: 'expst-fim', cor: '#166534', bg: '#f0fdf4', borda: '#86efac', emoji: '✅', texto: 'Carga finalizada', anim: false }
+            }[etapa];
+            return (
+                <div className={`expst-pill ${cfg.cls}`} style={{color: cfg.cor, background: cfg.bg, borderColor: cfg.borda}}>
+                    <span className="expst-ico">
+                        {cfg.anim && <span className="ring"></span>}
+                        {etapa === 'car' && <span className="cx">📦</span>}
+                        <span className="emo">{cfg.emoji}</span>
+                    </span>
+                    <span>{cfg.texto}{cfg.anim && <span className="expst-dots"><span>.</span><span>.</span><span>.</span></span>}</span>
+                    {cfg.anim && <span className="expst-barra"></span>}
+                </div>
+            );
+        }
+
         // ========== CONTROLE DE EXPEDIÇÃO (substitui o papel "Controle de Expedição") ==========
         // Fonte dos dados: coleção 'operacoes' (a mesma do Dashboard). Nada é duplicado:
         //   Fim de Conf. = op.inicio · Romaneio Entregue = op.romaneio · Término de Carregamento = op.termino
@@ -2594,6 +2639,7 @@
                                             </div>
                                             {destinosTxt(op) && <div className="text-xs text-gray-500 mt-0.5">{destinosTxt(op)}</div>}
                                             <div className="text-sm text-gray-600 mt-1">🚪 Doca {op.doca || '—'}{conferente === TODAS && op.conferentes ? ` · 🔍 ${op.conferentes}` : ''}</div>
+                                            {modoConferente && <ExpStatusAnim op={op} />}
                                             <div className="flex gap-2 mt-2 flex-wrap">
                                                 {ETAPAS.map(e => (
                                                     <span key={e.campo} style={{fontSize:'11px',fontWeight:700,borderRadius:'8px',padding:'2px 8px',background: op[e.campo] ? '#dcfce7' : '#f3f4f6',color: op[e.campo] ? '#166534' : '#6b7280'}}>
