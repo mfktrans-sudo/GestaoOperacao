@@ -10712,6 +10712,62 @@
             useEffect(() => { bkAtivoRef.current = bkAtivo;     try { localStorage.setItem('bk_ativo', String(bkAtivo)); } catch(e) {} }, [bkAtivo]);
             useEffect(() => { bkPastaRef.current = bkPastaHandle; }, [bkPastaHandle]);
 
+            // ── Vínculo da pasta persistente (IndexedDB) — reconecta sozinho ao reabrir ──
+            const bkIdb = () => new Promise((res, rej) => {
+                const r = indexedDB.open('GestaoBackupPasta', 1);
+                r.onupgradeneeded = () => r.result.createObjectStore('h');
+                r.onsuccess = () => res(r.result);
+                r.onerror = () => rej(r.error);
+            });
+            const bkSalvarHandle = async (hd) => { try { const d = await bkIdb(); await new Promise((res, rej) => { const t = d.transaction('h', 'readwrite'); t.objectStore('h').put(hd, 'pasta'); t.oncomplete = res; t.onerror = () => rej(t.error); }); } catch(e) {} };
+            const bkLerHandle = async () => { try { const d = await bkIdb(); return await new Promise((res, rej) => { const q = d.transaction('h', 'readonly').objectStore('h').get('pasta'); q.onsuccess = () => res(q.result || null); q.onerror = () => rej(q.error); }); } catch(e) { return null; } };
+            const bkApagarHandle = async () => { try { const d = await bkIdb(); await new Promise(res => { const t = d.transaction('h', 'readwrite'); t.objectStore('h').delete('pasta'); t.oncomplete = res; t.onerror = res; }); } catch(e) {} };
+            const bkPendenteRef = useRef(null);
+            const bkAplicarHandle = (hd) => {
+                setBkPastaHandle(hd); setBkPastaNome(hd.name); setBkNeedRelink(false);
+                try { localStorage.setItem('bk_pasta_nome', hd.name); } catch(e) {}
+            };
+            const bkTentarAutorizar = async (hd, pedir) => {
+                try {
+                    let perm = await hd.queryPermission({ mode: 'readwrite' });
+                    if (perm !== 'granted' && pedir) perm = await hd.requestPermission({ mode: 'readwrite' });
+                    if (perm === 'granted') { bkAplicarHandle(hd); bkPendenteRef.current = null; return true; }
+                } catch(e) {}
+                return false;
+            };
+            useEffect(() => {
+                let vivo = true, remover = () => {};
+                (async () => {
+                    if (!('showDirectoryPicker' in window)) return;
+                    const hd = await bkLerHandle();
+                    if (!hd || !vivo) return;
+                    if (await bkTentarAutorizar(hd, false)) {            // permissão já concedida: reconecta sozinho
+                        setBkStatus('ok|✅ Pasta reconectada automaticamente: ' + hd.name);
+                        setTimeout(() => setBkStatus(''), 4000);
+                        return;
+                    }
+                    if (!vivo) return;
+                    bkPendenteRef.current = hd;
+                    setBkPastaNome(hd.name);
+                    // o navegador exige um gesto do usuário: aproveita o primeiro clique/tecla na tela
+                    const tentar = async () => { remover(); await bkTentarAutorizar(hd, true); };
+                    document.addEventListener('pointerdown', tentar);
+                    document.addEventListener('keydown', tentar);
+                    remover = () => { document.removeEventListener('pointerdown', tentar); document.removeEventListener('keydown', tentar); };
+                })();
+                return () => { vivo = false; remover(); };
+            }, []);
+
+            const reconectarPasta = async () => {
+                const hd = bkPendenteRef.current || await bkLerHandle();
+                if (hd && await bkTentarAutorizar(hd, true)) {
+                    setBkStatus('ok|✅ Pasta reconectada: ' + hd.name);
+                    setTimeout(() => setBkStatus(''), 4000);
+                    return;
+                }
+                vincularPastaBackup();   // sem vínculo guardado (ou negado): escolhe a pasta
+            };
+
             const calcProximoBackup = (horario) => {
                 const [h, m] = horario.split(':').map(Number);
                 const agora = new Date();
@@ -10791,6 +10847,7 @@
             const vincularPastaBackup = async () => {
                 try {
                     const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+                    bkSalvarHandle(handle);
                     setBkPastaHandle(handle);
                     setBkPastaNome(handle.name);
                     setBkNeedRelink(false);
@@ -11022,12 +11079,11 @@
                                     <div style={{flex:1}}>
                                         <div style={{fontWeight:'800',color:'#92400e',fontSize:'13px',marginBottom:'2px'}}>Pasta não reconectada após reinício</div>
                                         <div style={{color:'#b45309',fontSize:'12px'}}>
-                                            A pasta <strong>"{bkPastaNome}"</strong> estava vinculada, mas precisa ser autorizada novamente pelo navegador (limitação de segurança).
-                                            Clique em <strong>🔄 Reconectar Pasta</strong> para restaurar o vínculo com um clique.
+                                            A pasta <strong>"{bkPastaNome}"</strong> continua vinculada, mas o navegador pede uma autorização rápida. Clique em qualquer lugar da tela (ou em <strong>🔄 Reconectar Pasta</strong>) e escolha <strong>"Permitir em todas as visitas"</strong> para não precisar mais confirmar.
                                         </div>
                                     </div>
                                     {hasPastaSupport && (
-                                        <button onClick={vincularPastaBackup}
+                                        <button onClick={reconectarPasta}
                                             style={{background:'linear-gradient(135deg,#d97706,#f59e0b)',color:'white',border:'none',borderRadius:'8px',padding:'10px 16px',fontWeight:'800',fontSize:'12px',cursor:'pointer',whiteSpace:'nowrap',flexShrink:0}}>
                                             🔄 Reconectar Pasta
                                         </button>
@@ -11064,6 +11120,7 @@
                                                 setBkPastaHandle(null);
                                                 setBkPastaNome('');
                                                 setBkNeedRelink(false);
+                                                bkApagarHandle(); bkPendenteRef.current = null;
                                                 try { localStorage.removeItem('bk_pasta_nome'); } catch(e) {}
                                             }} style={{background:'#ef4444',color:'white',border:'none',borderRadius:'8px',padding:'10px 12px',fontWeight:'700',fontSize:'12px',cursor:'pointer'}}>🗑️</button>
                                         )}
