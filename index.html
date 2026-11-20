@@ -7873,8 +7873,10 @@
                                                     <td style={cel}>{op.doca || '—'}</td>
                                                     <td style={cel}>{op.mesaLV || '—'}</td>
                                                     <td style={{ ...cel, borderRight: 'none' }}>
-                                                        <span style={{ display: 'inline-block', width: '32px', height: '32px', lineHeight: '32px', borderRadius: '50%', fontSize: '17px', fontWeight: 900, color: '#fff', background: op.status === 'verde' ? 'linear-gradient(135deg,#34d399,#16a34a)' : op.status === 'vermelho' ? 'linear-gradient(135deg,#f87171,#dc2626)' : 'linear-gradient(135deg,#fde047,#f59e0b)', boxShadow: '0 0 10px rgba(255,255,255,.25)' }}>
-                                                            {op.status === 'verde' ? '✓' : op.status === 'vermelho' ? '✕' : '⏳'}
+                                                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '34px', height: '34px', margin: '0 auto', borderRadius: '50%', background: op.status === 'verde' ? 'linear-gradient(135deg,#34d399,#16a34a)' : op.status === 'vermelho' ? 'linear-gradient(135deg,#f87171,#dc2626)' : 'linear-gradient(135deg,#fde047,#f59e0b)', boxShadow: '0 0 10px rgba(255,255,255,.25)' }}>
+                                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={op.status === 'verde' || op.status === 'vermelho' ? '#ffffff' : '#78350f'} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+                                                                {op.status === 'verde' ? <polyline points="5 12.5 10 17.5 19 7" /> : op.status === 'vermelho' ? <g><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></g> : <path d="M7 3h10M7 21h10M8 3v4l4 5-4 5v4M16 3v4l-4 5 4 5v4" />}
+                                                            </svg>
                                                         </span>
                                                     </td>
                                                 </tr>
