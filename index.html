@@ -7598,9 +7598,261 @@
                 };
             }, [operacoesFiltradas, indicadores, dadosEvolucao, antecipacoes]);
 
+            // ===== ENVIO POR WHATSAPP — botão único: Volumetria → Finalização =====
+            const [envioEtapa, setEnvioEtapa] = useState('volumetria'); // 'volumetria' | 'finalizacao' | 'concluido'
+            const [envioBusy, setEnvioBusy] = useState(false);
+            const [envioMsg, setEnvioMsg] = useState(null); // { tipo: 'ok' | 'erro', texto }
+            const [envioCfgAberto, setEnvioCfgAberto] = useState(false);
+            const [envioPainel, setEnvioPainel] = useState(null); // modo manual: { tipo, legenda, contatos }
+            const cfgEnvioPadrao = { endpoint: '', contatos: [] };
+            const [envioCfg, setEnvioCfg] = useState(() => {
+                try { const s = localStorage.getItem('envioWhatsCfg'); return s ? { ...cfgEnvioPadrao, ...JSON.parse(s) } : cfgEnvioPadrao; }
+                catch (e) { return cfgEnvioPadrao; }
+            });
+            const [envioCfgRascunho, setEnvioCfgRascunho] = useState(cfgEnvioPadrao);
+
+            // Etapa do dia (sincroniza entre usuários via Firestore, com fallback em localStorage)
+            useEffect(() => {
+                try {
+                    const s = localStorage.getItem('envioDash_' + dataSelecionada);
+                    setEnvioEtapa(s ? (JSON.parse(s).etapa || 'volumetria') : 'volumetria');
+                } catch (e) { setEnvioEtapa('volumetria'); }
+                if (!window.__firebaseDb || !window.__firebaseFns) return;
+                const { doc, onSnapshot } = window.__firebaseFns;
+                const unsub = onSnapshot(doc(window.__firebaseDb, 'envio_dashboard', dataSelecionada), (snap) => {
+                    if (snap.exists()) {
+                        const d = snap.data();
+                        setEnvioEtapa(d.etapa || 'volumetria');
+                        try { localStorage.setItem('envioDash_' + dataSelecionada, JSON.stringify(d)); } catch (e) {}
+                    }
+                }, (err) => console.warn('Firestore envio_dashboard:', err));
+                return () => unsub();
+            }, [dataSelecionada]);
+
+            // Contatos / endpoint (compartilhados entre usuários)
+            useEffect(() => {
+                if (!window.__firebaseDb || !window.__firebaseFns) return;
+                const { doc, onSnapshot } = window.__firebaseFns;
+                const unsub = onSnapshot(doc(window.__firebaseDb, 'envio_dashboard', 'config'), (snap) => {
+                    if (snap.exists()) {
+                        const d = { ...cfgEnvioPadrao, ...snap.data() };
+                        setEnvioCfg(d);
+                        try { localStorage.setItem('envioWhatsCfg', JSON.stringify(d)); } catch (e) {}
+                    }
+                }, (err) => console.warn('Firestore envio_dashboard/config:', err));
+                return () => unsub();
+            }, []);
+
+            const salvarEtapaEnvio = async (etapa) => {
+                setEnvioEtapa(etapa);
+                const dados = { etapa, atualizadoEm: new Date().toISOString() };
+                try { localStorage.setItem('envioDash_' + dataSelecionada, JSON.stringify(dados)); } catch (e) {}
+                try {
+                    if (window.__firebaseDb && window.__firebaseFns) {
+                        const { doc, setDoc } = window.__firebaseFns;
+                        await setDoc(doc(window.__firebaseDb, 'envio_dashboard', dataSelecionada), dados, { merge: true });
+                    }
+                } catch (e) { console.warn('Erro ao salvar etapa de envio:', e); }
+            };
+
+            const salvarCfgEnvio = async () => {
+                const limpo = {
+                    endpoint: (envioCfgRascunho.endpoint || '').trim(),
+                    contatos: (envioCfgRascunho.contatos || [])
+                        .map(c => {
+                            let n = String(c.numero || '').replace(/\D/g, '');
+                            if (n.length === 10 || n.length === 11) n = '55' + n;
+                            return { nome: (c.nome || '').trim(), numero: n, volumetria: !!c.volumetria, finalizacao: !!c.finalizacao };
+                        })
+                        .filter(c => c.numero)
+                };
+                setEnvioCfg(limpo);
+                try { localStorage.setItem('envioWhatsCfg', JSON.stringify(limpo)); } catch (e) {}
+                try {
+                    if (window.__firebaseDb && window.__firebaseFns) {
+                        const { doc, setDoc } = window.__firebaseFns;
+                        await setDoc(doc(window.__firebaseDb, 'envio_dashboard', 'config'), limpo);
+                    }
+                } catch (e) { console.warn('Erro ao salvar configuração de envio:', e); }
+                setEnvioCfgAberto(false);
+            };
+
+            // Cargas do dia selecionado: a finalização só libera quando todas têm Término de Carregamento
+            const envioPendentes = (operacoes || []).filter(o => o.data === dataSelecionada && !o.termino).length;
+            const envioTemCargas = (operacoes || []).some(o => o.data === dataSelecionada);
+
+            const fmtNumEnvio = (n, casas) => (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: casas || 0, maximumFractionDigits: casas || 0 });
+
+            const montarLegendaEnvio = (tipo) => {
+                const dataBR = formatarData(dataSelecionada);
+                const base = `📋 Operações: ${indicadores.total}\n🧾 NF: ${fmtNumEnvio(indicadores.nfTotal)}\n📦 Volume: ${fmtNumEnvio(indicadores.volTotal)}\n📐 Cubagem: ${fmtNumEnvio(indicadores.cubagemTotal, 2)} m³`;
+                if (tipo === 'volumetria') {
+                    return `📊 *Volumetria do dia ${dataBR}*\nToda a volumetria já está dentro da ferramenta.\n\n${base}`;
+                }
+                return `✅ *Finalização das cargas — ${dataBR}*\nTodas as cargas foram finalizadas.\n\n${base}\n\n🟢 No prazo: ${indicadores.verde}  |  🔴 Fora da meta: ${indicadores.vermelho}`;
+            };
+
+            // Captura (em memória, sem baixar arquivo): cards + tabela, sem os links de uso interno
+            const capturarPainelEnvio = async () => {
+                if (typeof html2canvas === 'undefined') throw new Error('Biblioteca de captura (html2canvas) indisponível.');
+                const alvos = ['dash-envio-cards', 'dash-envio-tabela'].map(id => document.getElementById(id)).filter(Boolean);
+                if (alvos.length < 2) throw new Error('Painel do Dashboard não encontrado na tela.');
+                const opts = {
+                    scale: 2, backgroundColor: '#f8fafc', logging: false, useCORS: true,
+                    onclone: (docClone) => {
+                        docClone.querySelectorAll('#dash-envio-cards .underline, #dash-envio-cards input').forEach(e => { e.style.display = 'none'; });
+                        docClone.querySelectorAll('#dash-envio-tabela .overflow-x-auto').forEach(e => { e.style.overflow = 'visible'; });
+                    }
+                };
+                const canvases = [];
+                for (const el of alvos) canvases.push(await html2canvas(el, opts));
+                const margem = 24, gap = 24;
+                const largura = Math.max(...canvases.map(c => c.width)) + margem * 2;
+                const altura = canvases.reduce((s, c) => s + c.height, 0) + gap * (canvases.length - 1) + margem * 2;
+                const out = document.createElement('canvas');
+                out.width = largura; out.height = altura;
+                const ctx = out.getContext('2d');
+                ctx.fillStyle = '#f8fafc'; ctx.fillRect(0, 0, largura, altura);
+                let y = margem;
+                canvases.forEach(c => { ctx.drawImage(c, margem, y); y += c.height + gap; });
+                return await new Promise(res => out.toBlob(res, 'image/png'));
+            };
+
+            const blobParaBase64 = (blob) => new Promise((res, rej) => {
+                const r = new FileReader();
+                r.onload = () => res(String(r.result).split(',')[1]);
+                r.onerror = () => rej(new Error('Falha ao ler a imagem.'));
+                r.readAsDataURL(blob);
+            });
+
+            const concluirEnvio = async (tipo) => {
+                await salvarEtapaEnvio(tipo === 'volumetria' ? 'finalizacao' : 'concluido');
+                setEnvioMsg({ tipo: 'ok', texto: tipo === 'volumetria' ? 'Volumetria enviada.' : 'Finalização enviada.' });
+                setTimeout(() => setEnvioMsg(null), 4000);
+            };
+
+            const enviarPainel = async (tipo) => {
+                if (envioBusy) return;
+                setEnvioBusy(true); setEnvioMsg(null);
+                try {
+                    const contatos = (envioCfg.contatos || []).filter(c => c.numero && c[tipo]);
+                    const blob = await capturarPainelEnvio();
+                    const legenda = montarLegendaEnvio(tipo);
+                    if (envioCfg.endpoint) {
+                        // Envio direto: a imagem vai em memória para o serviço de WhatsApp configurado
+                        if (contatos.length === 0) throw new Error('Cadastre ao menos um contato para este envio (botão ⚙).');
+                        const resp = await fetch(envioCfg.endpoint, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                tipo, data: dataSelecionada, legenda,
+                                imagemBase64: await blobParaBase64(blob),
+                                destinatarios: contatos.map(c => ({ nome: c.nome, numero: c.numero }))
+                            })
+                        });
+                        if (!resp.ok) throw new Error('O serviço de envio respondeu com erro ' + resp.status + '.');
+                        await concluirEnvio(tipo);
+                    } else {
+                        // Sem serviço configurado: compartilhamento nativo (celular) ou imagem copiada (computador)
+                        const arquivo = new File([blob], `${tipo}_${dataSelecionada}.png`, { type: 'image/png' });
+                        if (navigator.canShare && navigator.canShare({ files: [arquivo] })) {
+                            await navigator.share({ files: [arquivo], text: legenda });
+                            await concluirEnvio(tipo);
+                        } else {
+                            try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); }
+                            catch (e) { throw new Error('Não foi possível copiar a imagem neste navegador.'); }
+                            setEnvioPainel({ tipo, legenda, contatos });
+                        }
+                    }
+                } catch (e) {
+                    if (e && e.name === 'AbortError') { /* usuário cancelou o compartilhamento */ }
+                    else setEnvioMsg({ tipo: 'erro', texto: (e && e.message) || 'Falha ao enviar.' });
+                } finally {
+                    setEnvioBusy(false);
+                }
+            };
+
+            const botaoEnvio = (() => {
+                const base = { fontWeight: 800, fontSize: '14px', padding: '10px 18px', borderRadius: '10px', border: 'none', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.18)', transition: 'all .2s' };
+                if (envioEtapa === 'concluido') {
+                    return <button disabled style={{ ...base, background: '#16a34a', opacity: .85, cursor: 'default' }}>✅ Finalização enviada</button>;
+                }
+                if (envioEtapa === 'finalizacao') {
+                    const bloqueado = envioPendentes > 0 || !envioTemCargas;
+                    return <button onClick={() => enviarPainel('finalizacao')} disabled={bloqueado || envioBusy}
+                        title={bloqueado ? 'Libera quando todas as cargas tiverem o Término de Carregamento' : ''}
+                        style={{ ...base, background: bloqueado ? '#94a3b8' : 'linear-gradient(135deg,#16a34a,#15803d)', cursor: bloqueado ? 'not-allowed' : 'pointer' }}>
+                        {envioBusy ? '⏳ Enviando...' : bloqueado ? `🔒 Finalização · faltam ${envioPendentes} carga${envioPendentes === 1 ? '' : 's'}` : '🏁 Enviar Finalização'}
+                    </button>;
+                }
+                return <button onClick={() => enviarPainel('volumetria')} disabled={envioBusy || !envioTemCargas}
+                    style={{ ...base, background: (envioBusy || !envioTemCargas) ? '#94a3b8' : 'linear-gradient(135deg,#25d366,#128c7e)', cursor: (envioBusy || !envioTemCargas) ? 'not-allowed' : 'pointer' }}>
+                    {envioBusy ? '⏳ Enviando...' : '📦 Enviar Volumetria'}
+                </button>;
+            })();
+
             return (
                 <div className="animate-fade-in">
-                    <h2 className="text-3xl font-bold mb-6 text-gray-800"><span className="icon-bounce inline-block">📊</span> Dashboard Interativo</h2>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }} className="mb-6">
+                        <h2 className="text-3xl font-bold text-gray-800"><span className="icon-bounce inline-block">📊</span> Dashboard Interativo</h2>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {envioMsg && <span style={{ fontSize: '12px', fontWeight: 700, color: envioMsg.tipo === 'ok' ? '#15803d' : '#b91c1c', maxWidth: '280px' }}>{envioMsg.texto}</span>}
+                            {envioEtapa === 'concluido' && <button onClick={() => salvarEtapaEnvio('finalizacao')} style={{ fontSize: '11px', color: '#64748b', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer' }}>reenviar</button>}
+                            {botaoEnvio}
+                            {isAdmin && <button onClick={() => { setEnvioCfgRascunho(JSON.parse(JSON.stringify(envioCfg))); setEnvioCfgAberto(true); }} title="Contatos do envio por WhatsApp" style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '9px 11px', cursor: 'pointer', fontSize: '15px' }}>⚙️</button>}
+                        </div>
+                    </div>
+
+                    {/* MODO MANUAL: imagem copiada → abre o WhatsApp de cada contato */}
+                    {envioPainel && (
+                        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+                            <div style={{ background: '#fff', borderRadius: '16px', padding: '22px', width: '100%', maxWidth: '440px', boxShadow: '0 20px 50px rgba(0,0,0,.35)' }}>
+                                <div style={{ fontSize: '17px', fontWeight: 800, color: '#0f172a', marginBottom: '4px' }}>📋 Imagem do painel copiada</div>
+                                <div style={{ fontSize: '13px', color: '#475569', marginBottom: '14px' }}>Abra o WhatsApp do contato e cole (Ctrl+V). A legenda já vai preenchida.</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto', marginBottom: '14px' }}>
+                                    {envioPainel.contatos.length === 0 && (
+                                        <a href={`https://wa.me/?text=${encodeURIComponent(envioPainel.legenda)}`} target="_blank" rel="noopener noreferrer" style={{ background: '#25d366', color: '#fff', fontWeight: 700, padding: '10px 14px', borderRadius: '10px', textAlign: 'center', textDecoration: 'none' }}>💬 Abrir WhatsApp</a>
+                                    )}
+                                    {envioPainel.contatos.map((c, i) => (
+                                        <a key={i} href={`https://wa.me/${c.numero}?text=${encodeURIComponent(envioPainel.legenda)}`} target="_blank" rel="noopener noreferrer" style={{ background: '#25d366', color: '#fff', fontWeight: 700, padding: '10px 14px', borderRadius: '10px', textAlign: 'center', textDecoration: 'none' }}>💬 {c.nome || c.numero}</a>
+                                    ))}
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                    <button onClick={() => setEnvioPainel(null)} style={{ padding: '9px 14px', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#fff', fontWeight: 700, cursor: 'pointer' }}>Fechar</button>
+                                    <button onClick={async () => { const t = envioPainel.tipo; setEnvioPainel(null); await concluirEnvio(t); }} style={{ padding: '9px 14px', borderRadius: '10px', border: 'none', background: '#0f172a', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>✔ Marcar como enviado</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* CONFIGURAÇÃO DE CONTATOS (somente administrador) */}
+                    {envioCfgAberto && (
+                        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+                            <div style={{ background: '#fff', borderRadius: '16px', padding: '22px', width: '100%', maxWidth: '620px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 50px rgba(0,0,0,.35)' }}>
+                                <div style={{ fontSize: '17px', fontWeight: 800, color: '#0f172a', marginBottom: '14px' }}>⚙️ Envio por WhatsApp — contatos</div>
+                                <div style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>Endereço do serviço de envio (opcional — habilita o envio direto)</div>
+                                <input value={envioCfgRascunho.endpoint || ''} onChange={e => setEnvioCfgRascunho(p => ({ ...p, endpoint: e.target.value }))} placeholder="https://..." style={{ width: '100%', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px', marginBottom: '16px', fontSize: '13px' }} />
+                                <div style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>Contatos (número com DDD)</div>
+                                {(envioCfgRascunho.contatos || []).map((c, i) => (
+                                    <div key={i} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap' }}>
+                                        <input value={c.nome || ''} onChange={e => setEnvioCfgRascunho(p => ({ ...p, contatos: p.contatos.map((x, j) => j === i ? { ...x, nome: e.target.value } : x) }))} placeholder="Nome" style={{ flex: '1 1 120px', padding: '7px 9px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '13px' }} />
+                                        <input value={c.numero || ''} onChange={e => setEnvioCfgRascunho(p => ({ ...p, contatos: p.contatos.map((x, j) => j === i ? { ...x, numero: e.target.value } : x) }))} placeholder="11 99999-9999" style={{ flex: '1 1 130px', padding: '7px 9px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '13px' }} />
+                                        <label style={{ fontSize: '12px', display: 'flex', gap: '4px', alignItems: 'center' }}><input type="checkbox" checked={!!c.volumetria} onChange={e => setEnvioCfgRascunho(p => ({ ...p, contatos: p.contatos.map((x, j) => j === i ? { ...x, volumetria: e.target.checked } : x) }))} />Volumetria</label>
+                                        <label style={{ fontSize: '12px', display: 'flex', gap: '4px', alignItems: 'center' }}><input type="checkbox" checked={!!c.finalizacao} onChange={e => setEnvioCfgRascunho(p => ({ ...p, contatos: p.contatos.map((x, j) => j === i ? { ...x, finalizacao: e.target.checked } : x) }))} />Finalização</label>
+                                        <button onClick={() => setEnvioCfgRascunho(p => ({ ...p, contatos: p.contatos.filter((_, j) => j !== i) }))} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '15px' }}>🗑️</button>
+                                    </div>
+                                ))}
+                                <button onClick={() => setEnvioCfgRascunho(p => ({ ...p, contatos: [...(p.contatos || []), { nome: '', numero: '', volumetria: true, finalizacao: true }] }))} style={{ fontSize: '13px', fontWeight: 700, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 0' }}>+ Adicionar contato</button>
+                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px', flexWrap: 'wrap' }}>
+                                    <button onClick={async () => { await salvarEtapaEnvio('volumetria'); setEnvioCfgAberto(false); }} style={{ fontSize: '12px', color: '#b45309', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Reiniciar envios deste dia</button>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <button onClick={() => setEnvioCfgAberto(false)} style={{ padding: '9px 14px', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#fff', fontWeight: 700, cursor: 'pointer' }}>Cancelar</button>
+                                        <button onClick={salvarCfgEnvio} style={{ padding: '9px 14px', borderRadius: '10px', border: 'none', background: '#0f172a', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Salvar</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* PAINEL DE APROVAÇÃO DE EXCLUSÕES (somente administrador) */}
                     {isAdmin && solicitacoesPendentes && solicitacoesPendentes.length > 0 && (
@@ -7763,7 +8015,7 @@
                     </div>
 
                     {/* CARDS DE INDICADORES */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div id="dash-envio-cards" className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                         <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-6 rounded-xl shadow-lg">
                             <div className="text-3xl font-bold">{indicadores.total}</div>
                             <div className="text-sm opacity-90">Total de Operações</div>
@@ -8169,7 +8421,7 @@
                     {/* ── FIM ALERTA CAPACIDADE ── */}
 
                     {/* TABELA DE DADOS FILTRADOS */}
-                    <div className="mt-6 bg-white rounded-lg shadow-lg overflow-hidden">
+                    <div id="dash-envio-tabela" className="mt-6 bg-white rounded-lg shadow-lg overflow-hidden">
                         <div className="neon-navy p-4">
                             <h3 className="text-xl font-bold text-white">
                                 📋 Dados Detalhados ({operacoesFiltradas.length} registros)
