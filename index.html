@@ -7812,6 +7812,7 @@
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {envioMsg && <span style={{ fontSize: '12px', fontWeight: 700, color: envioMsg.tipo === 'ok' ? '#15803d' : '#b91c1c', maxWidth: '280px' }}>{envioMsg.texto}</span>}
                             {envioEtapa === 'concluido' && <button onClick={() => salvarEtapaEnvio('finalizacao')} style={{ fontSize: '11px', color: '#64748b', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer' }}>reenviar</button>}
+                            {envioEtapa === 'finalizacao' && <button onClick={() => salvarEtapaEnvio('volumetria')} title="Volta ao passo anterior para enviar a Volumetria novamente" style={{ fontSize: '11px', color: '#64748b', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer' }}>reenviar volumetria</button>}
                             {botaoEnvio}
                             {isAdmin && <button onClick={() => { setEnvioCfgRascunho(JSON.parse(JSON.stringify(envioCfg))); setEnvioCfgAberto(true); }} title="Contatos do envio por WhatsApp" style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '9px 11px', cursor: 'pointer', fontSize: '15px' }}>⚙️</button>}
                         </div>
