@@ -7764,13 +7764,13 @@
                     } else {
                         // Sem serviço configurado: compartilhamento nativo (celular) ou imagem copiada (computador)
                         const arquivo = new File([blob], `${tipo}_${dataSelecionada}.png`, { type: 'image/png' });
-                        if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && navigator.canShare && navigator.canShare({ files: [arquivo] })) {
+                        if (navigator.canShare && navigator.canShare({ files: [arquivo] })) {
                             await navigator.share({ files: [arquivo], text: legenda });
                             await concluirEnvio(tipo);
                         } else {
                             try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); }
                             catch (e) { throw new Error('Não foi possível copiar a imagem neste navegador.'); }
-                            setEnvioPainel({ tipo, legenda, contatos, blob });
+                            setEnvioPainel({ tipo, legenda, contatos });
                         }
                     }
                 } catch (e) {
@@ -7895,23 +7895,16 @@
                         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
                             <div style={{ background: '#fff', borderRadius: '16px', padding: '22px', width: '100%', maxWidth: '440px', boxShadow: '0 20px 50px rgba(0,0,0,.35)' }}>
                                 <div style={{ fontSize: '17px', fontWeight: 800, color: '#0f172a', marginBottom: '4px' }}>📋 Imagem do painel copiada</div>
-                                <div style={{ fontSize: '13px', color: '#475569', marginBottom: '14px' }}>O WhatsApp Web não recebe imagem por link: ao abrir a conversa, clique na caixa de mensagem e cole a imagem (Ctrl+V). A legenda já vai preenchida.</div>
+                                <div style={{ fontSize: '13px', color: '#475569', marginBottom: '14px' }}>Abra o WhatsApp do contato e cole (Ctrl+V). A legenda já vai preenchida.</div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto', marginBottom: '14px' }}>
                                     {envioPainel.contatos.length === 0 && (
-                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                            <a href={`https://web.whatsapp.com/send?text=${encodeURIComponent(envioPainel.legenda)}`} target="wa_web" onClick={() => { const t = envioPainel.tipo; try { navigator.clipboard.write([new ClipboardItem({ 'image/png': envioPainel.blob })]).catch(() => {}); } catch (e) {} setTimeout(() => { setEnvioPainel(null); concluirEnvio(t); }, 150); }} style={{ background: '#25d366', color: '#fff', fontWeight: 700, padding: '10px 14px', borderRadius: '10px', textAlign: 'center', textDecoration: 'none', flex: 1 }}>🌐 Abrir WhatsApp Web</a>
-                                            <a href={`https://wa.me/?text=${encodeURIComponent(envioPainel.legenda)}`} target="_blank" onClick={() => { const t = envioPainel.tipo; try { navigator.clipboard.write([new ClipboardItem({ 'image/png': envioPainel.blob })]).catch(() => {}); } catch (e) {} setTimeout(() => { setEnvioPainel(null); concluirEnvio(t); }, 150); }} rel="noopener noreferrer" style={{ background: '#25d366', color: '#fff', fontWeight: 700, padding: '10px 14px', borderRadius: '10px', textAlign: 'center', textDecoration: 'none', background: '#128c7e' }}>📱 App</a>
-                                        </div>
+                                        <a href={`https://wa.me/?text=${encodeURIComponent(envioPainel.legenda)}`} target="_blank" rel="noopener noreferrer" style={{ background: '#25d366', color: '#fff', fontWeight: 700, padding: '10px 14px', borderRadius: '10px', textAlign: 'center', textDecoration: 'none' }}>💬 Abrir WhatsApp</a>
                                     )}
                                     {envioPainel.contatos.map((c, i) => (
-                                        <div key={i} style={{ display: 'flex', gap: '8px' }}>
-                                            <a href={`https://web.whatsapp.com/send?phone=${c.numero}&text=${encodeURIComponent(envioPainel.legenda)}`} target="wa_web" onClick={() => { const t = envioPainel.tipo; try { navigator.clipboard.write([new ClipboardItem({ 'image/png': envioPainel.blob })]).catch(() => {}); } catch (e) {} setTimeout(() => { setEnvioPainel(null); concluirEnvio(t); }, 150); }} style={{ background: '#25d366', color: '#fff', fontWeight: 700, padding: '10px 14px', borderRadius: '10px', textAlign: 'center', textDecoration: 'none', flex: 1 }}>🌐 {c.nome || c.numero} (Web)</a>
-                                            <a href={`https://wa.me/${c.numero}?text=${encodeURIComponent(envioPainel.legenda)}`} target="_blank" onClick={() => { const t = envioPainel.tipo; try { navigator.clipboard.write([new ClipboardItem({ 'image/png': envioPainel.blob })]).catch(() => {}); } catch (e) {} setTimeout(() => { setEnvioPainel(null); concluirEnvio(t); }, 150); }} rel="noopener noreferrer" style={{ background: '#25d366', color: '#fff', fontWeight: 700, padding: '10px 14px', borderRadius: '10px', textAlign: 'center', textDecoration: 'none', background: '#128c7e' }}>📱 App</a>
-                                        </div>
+                                        <a key={i} href={`https://wa.me/${c.numero}?text=${encodeURIComponent(envioPainel.legenda)}`} target="_blank" rel="noopener noreferrer" style={{ background: '#25d366', color: '#fff', fontWeight: 700, padding: '10px 14px', borderRadius: '10px', textAlign: 'center', textDecoration: 'none' }}>💬 {c.nome || c.numero}</a>
                                     ))}
                                 </div>
                                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                    <button onClick={() => { const u = URL.createObjectURL(envioPainel.blob); const a = document.createElement('a'); a.href = u; a.download = `${envioPainel.tipo}_${dataSelecionada}.png`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 2000); }} style={{ padding: '9px 14px', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#fff', fontWeight: 700, cursor: 'pointer' }}>⬇ Baixar imagem</button>
                                     <button onClick={() => setEnvioPainel(null)} style={{ padding: '9px 14px', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#fff', fontWeight: 700, cursor: 'pointer' }}>Fechar</button>
                                     <button onClick={async () => { const t = envioPainel.tipo; setEnvioPainel(null); await concluirEnvio(t); }} style={{ padding: '9px 14px', borderRadius: '10px', border: 'none', background: '#0f172a', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>✔ Marcar como enviado</button>
                                 </div>
