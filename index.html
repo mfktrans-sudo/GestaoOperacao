@@ -1543,6 +1543,13 @@
             return d.toLocaleDateString('pt-BR');
         };
 
+        // Horário (HH:MM, Brasília) em que a carga foi cancelada
+        const horaCancelamentoOp = (op) => {
+            if (!op) return '';
+            if (op.canceladaHora) return op.canceladaHora;
+            if (op.canceladaEm) return new Date(op.canceladaEm).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+            return '';
+        };
         const calcularStatus = (meta, termino) => {
             if (!meta || !termino) return 'amarelo';
             const metaNum = parseInt(meta.replace(':', ''));
@@ -2037,7 +2044,7 @@
             const farolAtrasos = useMemo(() => {
                 return operacoes.filter(op => !ehOperacaoExcluidaDoFarolTP(op.operacao)).reduce((total, op) => {
                     const item = farolTPMapa[op.id];
-                    if (item && item.status !== 'finalizada' && (farolEstaAtrasado(item, farolConfig) || farolTemDivergenciaAberta(item))) {
+                    if (item && !op.cargaCancelada && item.status !== 'finalizada' && (farolEstaAtrasado(item, farolConfig) || farolTemDivergenciaAberta(item))) {
                         return total + 1;
                     }
                     return total;
@@ -2603,7 +2610,7 @@
                 .filter(o => o.data === dataSelecionada)
                 .sort((a, b) => String(a.operacao || '').localeCompare(String(b.operacao || ''), 'pt-BR')), [operacoes, dataSelecionada]);
 
-            const operacaoFinalizada = modoConferente && opsDia.length > 0 && opsDia.every(o => o.inicio && o.romaneio && o.termino);
+            const operacaoFinalizada = modoConferente && opsDia.length > 0 && opsDia.every(o => o.cargaCancelada || (o.inicio && o.romaneio && o.termino));
 
             const conferentesDoDia = useMemo(() => {
                 const mapa = new Map();
@@ -2647,7 +2654,7 @@
                 }
             };
 
-            const concluidas = minhasCargas.filter(o => o.inicio && o.romaneio && o.termino).length;
+            const concluidas = minhasCargas.filter(o => o.cargaCancelada || (o.inicio && o.romaneio && o.termino)).length;
             const destinosTxt = (op) => (Array.isArray(op.destinos) && op.destinos.length) ? op.destinos.map(d => d.nome).filter(Boolean).join(' + ') : '';
 
             return (
@@ -2725,7 +2732,7 @@
                             <div className="grid gap-3" style={{gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))'}}>
                                 {minhasCargas.map(op => {
                                     const feitas = ETAPAS.filter(e => op[e.campo]).length;
-                                    const cor = feitas === 3 ? '#16a34a' : feitas === 0 ? '#9ca3af' : '#f59e0b';
+                                    const cor = op.cargaCancelada ? '#dc2626' : feitas === 3 ? '#16a34a' : feitas === 0 ? '#9ca3af' : '#f59e0b';
                                     return (
                                         <button key={op.id} onClick={() => setCargaAbertaId(op.id)}
                                             style={{textAlign:'left',border:`2px solid ${cor}`,borderRadius:'14px',padding:'14px',background:'#fff',cursor:'pointer',...(modoConferente ? expCardEstilo(op) : {})}}>
@@ -2733,7 +2740,7 @@
                                             <div className="flex justify-between items-start gap-2">
                                                 <div className="font-extrabold text-gray-800 text-lg">{op.operacao}</div>
                                                 <span style={{background:cor,color:'#fff',borderRadius:'999px',padding:'2px 10px',fontSize:'12px',fontWeight:800,whiteSpace:'nowrap'}}>
-                                                    {feitas === 3 ? 'Finalizada' : `${feitas}/3`}
+                                                    {op.cargaCancelada ? 'CANCELADA' : feitas === 3 ? 'Finalizada' : `${feitas}/3`}
                                                 </span>
                                             </div>
                                             {destinosTxt(op) && <div className="text-xs text-gray-500 mt-0.5">{destinosTxt(op)}</div>}
@@ -2741,11 +2748,18 @@
                                             {modoConferente && <ExpStatusAnim op={op} />}
                                             <div className="flex gap-2 mt-2 flex-wrap">
                                                 {ETAPAS.map(e => (
+                                                    (op.cargaCancelada && e.campo === 'termino' && !op[e.campo]) ? (
+                                                        <span key={e.campo} style={{fontSize:'11px',fontWeight:800,borderRadius:'8px',padding:'2px 8px',background:'#fee2e2',color:'#b91c1c',border:'1px solid #dc2626'}}>
+                                                            🚫 CANCELADA{horaCancelamentoOp(op) ? ' ' + horaCancelamentoOp(op) : ''}
+                                                        </span>
+                                                    ) : (
                                                     <span key={e.campo} style={{fontSize:'11px',fontWeight:700,borderRadius:'8px',padding:'2px 8px',background: op[e.campo] ? '#dcfce7' : '#f3f4f6',color: op[e.campo] ? '#166534' : '#6b7280'}}>
                                                         {op[e.campo] ? `✓ ${op[e.campo]}` : '—'}
                                                     </span>
+                                                    )
                                                 ))}
                                             </div>
+                                            {op.cargaCancelada && <div style={{marginTop:8,fontSize:12,fontWeight:800,color:'#b91c1c'}}>🚫 Motivo: {op.motivoCancelamento || '—'}{op.motivoCancelamentoObs ? ' — ' + op.motivoCancelamentoObs : ''}</div>}
                                         </button>
                                     );
                                 })}
@@ -2777,6 +2791,12 @@
                                     ))}
                                 </div>
 
+                                {cargaAberta.cargaCancelada && (
+                                    <div style={{border:'2px solid #dc2626',background:'#fee2e2',borderRadius:'12px',padding:'12px',marginBottom:'10px',color:'#b91c1c'}}>
+                                        <div style={{fontWeight:900,fontSize:'16px'}}>🚫 CARGA CANCELADA{horaCancelamentoOp(cargaAberta) ? ' às ' + horaCancelamentoOp(cargaAberta) : ''}</div>
+                                        <div style={{fontWeight:700,marginTop:4}}>Motivo: {cargaAberta.motivoCancelamento || '—'}{cargaAberta.motivoCancelamentoObs ? ' — ' + cargaAberta.motivoCancelamentoObs : ''}</div>
+                                    </div>
+                                )}
                                 {ETAPAS.map(etapa => {
                                     const valor = cargaAberta[etapa.campo];
                                     return (
@@ -2787,6 +2807,8 @@
                                             </div>
                                             {valor ? (
                                                 <div className="text-xs text-gray-500 mt-1">✓ Registrado. Para corrigir, fale com o responsável (aba Editar).</div>
+                                            ) : cargaAberta.cargaCancelada ? (
+                                                <div className="text-xs mt-1" style={{color:'#b91c1c',fontWeight:700}}>Carga cancelada — registro encerrado.</div>
                                             ) : (
                                                 <button disabled={salvando} onClick={() => registrarAgora(cargaAberta, etapa)}
                                                     className="w-full mt-2 py-4 rounded-xl font-extrabold text-white text-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40">
@@ -3209,7 +3231,8 @@
 
             const linhas = useMemo(() => {
                 return operacoesFarolTP.map(op => {
-                    const item = farolMapa[op.id] || farolNovoItem();
+                    const itemBase = farolMapa[op.id] || farolNovoItem();
+                    const item = op.cargaCancelada ? { ...itemBase, status: 'finalizada', cancelada: true } : itemBase;
                     const info = FAROL_ETAPA_INFO[item.status || 'aguardando_conferencia'];
                     const destinos = Array.isArray(op.destinos) && op.destinos.length ? op.destinos.map(d => d.nome).join(', ') : '';
                     return { op, item, info, destinos, atraso: farolEstaAtrasado(item, farolConfig), divergente: farolTemDivergenciaAberta(item) };
@@ -3504,6 +3527,7 @@
                                                     {op_nome(l.op)} {l.destinos && <span className="text-gray-400 font-normal text-sm">· {l.destinos}</span>}
                                                 </div>
                                                 <div className="text-xs text-gray-400">{formatarData(l.op.data)} {l.op.doca ? ('· Doca ' + l.op.doca) : ''}</div>
+                                                {l.op.cargaCancelada && <div style={{marginTop:4,background:'#fee2e2',border:'1px solid #dc2626',color:'#b91c1c',fontWeight:800,fontSize:12,padding:'3px 8px',borderRadius:8,display:'inline-block'}}>🚫 CARGA CANCELADA{horaCancelamentoOp(l.op) ? ' às ' + horaCancelamentoOp(l.op) : ''} · {l.op.motivoCancelamento || ''}{l.op.motivoCancelamentoObs ? ' — ' + l.op.motivoCancelamentoObs : ''}</div>}
                                             </div>
                                             <div className="flex items-center gap-4">
                                                 <Farol3DAnimacao status={l.item.status || 'aguardando_conferencia'} tamanho={44} />
@@ -10166,16 +10190,16 @@
                 if (dadosFinais.cargaCancelada) {
                     if (!dadosFinais.motivoCancelamento) { alert('⚠️ Selecione o motivo do cancelamento da carga.'); return; }
                     if (dadosFinais.motivoCancelamento === 'Outro' && !(dadosFinais.motivoCancelamentoObs || '').trim()) { alert('⚠️ Descreva o motivo do cancelamento.'); return; }
+                    // Carga cancelada: os horários já lançados (fim de conferência, romaneio...) permanecem como estão.
+                    // O cancelamento aparece no lugar do Término de Carregamento, com o horário do cancelamento.
                     if (!dadosFinais.canceladaEm) dadosFinais.canceladaEm = Date.now();
-                    // Carga cancelada: preserva os horários já lançados (fim de separação, entrega de romaneio...)
-                    // e completa apenas os que faltam com o horário do cancelamento, para a carga ficar finalizada.
-                    const horaCancel = new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-                    ['inicio', 'romaneio', 'termino'].forEach(c => { if (!dadosFinais[c]) dadosFinais[c] = horaCancel; });
+                    if (!dadosFinais.canceladaHora) dadosFinais.canceladaHora = horaCancelamentoOp(dadosFinais);
                 } else {
                     dadosFinais.cargaCancelada = false;
                     dadosFinais.motivoCancelamento = '';
                     dadosFinais.motivoCancelamentoObs = '';
                     dadosFinais.canceladaEm = null;
+                    dadosFinais.canceladaHora = '';
                 }
                 const operacaoAtualizada = {
                     ...dadosFinais,
@@ -10183,12 +10207,12 @@
                 };
                 if (dadosEdicao.conferentes) salvarHistoricoConferente(dadosEdicao.conferentes);
                 if (dadosEdicao.doca) salvarHistoricoDocaEditar(dadosEdicao.doca);
-                const jaEstavaCancelada = !!(operacoes.find(o => o.id === dadosEdicao.id) || {}).cargaCancelada;
                 await onEditar(operacaoAtualizada);
                 // Fecha também o acompanhamento no Farol TP / Controle de Expedição (não fica em aberto)
-                if (dadosFinais.cargaCancelada && !jaEstavaCancelada && typeof onAtualizarFarol === 'function') {
+                const itemFarolAtual = (farolTP || []).find(f => String(f.id) === String(dadosEdicao.id)) || {};
+                if (dadosFinais.cargaCancelada && !(itemFarolAtual.status === 'finalizada' && itemFarolAtual.cancelada) && typeof onAtualizarFarol === 'function') {
                     try {
-                        const itemFarol = (farolTP || []).find(f => String(f.id) === String(dadosEdicao.id)) || {};
+                        const itemFarol = itemFarolAtual;
                         const agoraMs = Date.now();
                         const txt = '🚫 Carga cancelada — ' + dadosFinais.motivoCancelamento + (dadosFinais.motivoCancelamentoObs ? ' (' + dadosFinais.motivoCancelamentoObs + ')' : '');
                         await onAtualizarFarol(dadosEdicao.id, {
@@ -10276,7 +10300,12 @@
                                                 <td className="px-4 py-3">{(Math.round((parseFloat(op.cubagem)||0)*100)/100).toFixed(2)}</td>
                                                 <td className="px-4 py-3">{op.inicio}</td>
                                                 <td className="px-4 py-3">{op.romaneio}</td>
-                                                <td className="px-4 py-3">{op.termino}</td>
+                                                <td className="px-4 py-3">{op.cargaCancelada ? (
+                                                    <div style={{background:'#fee2e2',border:'1px solid #dc2626',borderRadius:8,padding:'4px 8px',color:'#b91c1c',fontWeight:800,fontSize:12,lineHeight:1.3,minWidth:150}}>
+                                                        🚫 CARGA CANCELADA{horaCancelamentoOp(op) ? ' às ' + horaCancelamentoOp(op) : ''}
+                                                        <div style={{fontWeight:700,fontSize:11}}>{op.motivoCancelamento || ''}{op.motivoCancelamentoObs ? ' — ' + op.motivoCancelamentoObs : ''}</div>
+                                                    </div>
+                                                ) : op.termino}</td>
                                                 <td className="px-4 py-3">{op.conferentes || <span style={{color:'#94a3b8'}}>—</span>}</td>
                                                 <td className="px-4 py-3">{op.doca || <span style={{color:'#94a3b8'}}>—</span>}</td>
                                                 <td className="px-4 py-3">{op.mesaLV || <span style={{color:'#94a3b8'}}>—</span>}</td>
@@ -10284,7 +10313,7 @@
                                                     <span className={`px-3 py-1 rounded-full text-white text-xs font-bold status-${op.status}`}>
                                                         {op.status.toUpperCase()}
                                                     </span>
-                                                    {op.cargaCancelada && <span title={'Motivo: ' + (op.motivoCancelamento || '') + (op.motivoCancelamentoObs ? ' — ' + op.motivoCancelamentoObs : '')} style={{marginLeft:6,background:'#7f1d1d',color:'#fff',padding:'2px 8px',borderRadius:10,fontSize:10,fontWeight:800,whiteSpace:'nowrap'}}>🚫 CANCELADA{op.motivoCancelamento ? ' · ' + op.motivoCancelamento : ''}</span>}
+                                                    
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <div className="flex gap-2">
