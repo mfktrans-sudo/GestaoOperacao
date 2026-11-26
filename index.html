@@ -10160,6 +10160,16 @@
                         cubagem: Math.round(destinosFinal.reduce((s,d)=>s+d.cubagem,0) * 100) / 100
                     };
                 }
+                if (dadosFinais.cargaCancelada) {
+                    if (!dadosFinais.motivoCancelamento) { alert('⚠️ Selecione o motivo do cancelamento da carga.'); return; }
+                    if (dadosFinais.motivoCancelamento === 'Outro' && !(dadosFinais.motivoCancelamentoObs || '').trim()) { alert('⚠️ Descreva o motivo do cancelamento.'); return; }
+                    if (!dadosFinais.canceladaEm) dadosFinais.canceladaEm = Date.now();
+                } else {
+                    dadosFinais.cargaCancelada = false;
+                    dadosFinais.motivoCancelamento = '';
+                    dadosFinais.motivoCancelamentoObs = '';
+                    dadosFinais.canceladaEm = null;
+                }
                 const operacaoAtualizada = {
                     ...dadosFinais,
                     status: calcularStatus(meta, dadosFinais.termino)
@@ -10250,6 +10260,7 @@
                                                     <span className={`px-3 py-1 rounded-full text-white text-xs font-bold status-${op.status}`}>
                                                         {op.status.toUpperCase()}
                                                     </span>
+                                                    {op.cargaCancelada && <span title={'Motivo: ' + (op.motivoCancelamento || '') + (op.motivoCancelamentoObs ? ' — ' + op.motivoCancelamentoObs : '')} style={{marginLeft:6,background:'#7f1d1d',color:'#fff',padding:'2px 8px',borderRadius:10,fontSize:10,fontWeight:800,whiteSpace:'nowrap'}}>🚫 CANCELADA{op.motivoCancelamento ? ' · ' + op.motivoCancelamento : ''}</span>}
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <div className="flex gap-2">
@@ -10422,6 +10433,36 @@
                                                                     </div>
                                                                 </div>
                                                             )}
+                                                            <div style={{marginBottom:'12px',padding:'10px 12px',borderRadius:'8px',border:'1px solid '+(dadosEdicao.cargaCancelada?'#fca5a5':'#e2e8f0'),background:dadosEdicao.cargaCancelada?'#fef2f2':'#fff'}}>
+                                                                <label style={{display:'flex',alignItems:'center',gap:'8px',fontSize:'13px',fontWeight:'800',color:'#991b1b',cursor:'pointer'}}>
+                                                                    <input type="checkbox" checked={!!dadosEdicao.cargaCancelada} onChange={e => handleChange('cargaCancelada', e.target.checked)} style={{width:'16px',height:'16px'}} />
+                                                                    🚫 Carga cancelada
+                                                                </label>
+                                                                {dadosEdicao.cargaCancelada && (
+                                                                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:'10px',marginTop:'10px'}}>
+                                                                        <div>
+                                                                            <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Motivo do cancelamento *</label>
+                                                                            <select value={dadosEdicao.motivoCancelamento || ''} onChange={e => handleChange('motivoCancelamento', e.target.value)} className="w-full p-2 border-2 border-gray-300 rounded">
+                                                                                <option value="">Selecione o motivo...</option>
+                                                                                <option value="Baú vazando">Baú vazando</option>
+                                                                                <option value="Baú sujo / mau cheiro">Baú sujo / mau cheiro</option>
+                                                                                <option value="Baú danificado">Baú danificado</option>
+                                                                                <option value="Veículo não compatível">Veículo não compatível</option>
+                                                                                <option value="Problema mecânico no veículo">Problema mecânico no veículo</option>
+                                                                                <option value="Motorista não compareceu">Motorista não compareceu</option>
+                                                                                <option value="Documentação do motorista/veículo">Documentação do motorista/veículo</option>
+                                                                                <option value="Pedido cancelado pela loja">Pedido cancelado pela loja</option>
+                                                                                <option value="Problema de sistema / NF">Problema de sistema / NF</option>
+                                                                                <option value="Outro">Outro</option>
+                                                                            </select>
+                                                                        </div>
+                                                                        <div>
+                                                                            <label style={{display:'block',fontSize:'11px',fontWeight:'700',color:'#6b7280',marginBottom:'4px',textTransform:'uppercase'}}>Observação {dadosEdicao.motivoCancelamento === 'Outro' ? '*' : '(opcional)'}</label>
+                                                                            <input type="text" value={dadosEdicao.motivoCancelamentoObs || ''} onChange={e => handleChange('motivoCancelamentoObs', e.target.value)} placeholder="Detalhe o motivo..." className="w-full p-2 border-2 border-gray-300 rounded" />
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                             <div style={{display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap',paddingTop:'10px',borderTop:'1px solid #c7d2fe'}}>
                                                                 <span style={{fontSize:'12px',color:'#6b7280'}}>Status calculado: <strong style={{color: calcularStatus(dadosEdicao.meta,dadosEdicao.termino)==='verde'?'#10b981':calcularStatus(dadosEdicao.meta,dadosEdicao.termino)==='vermelho'?'#ef4444':'#f59e0b'}}>{calcularStatus(dadosEdicao.meta, dadosEdicao.termino).toUpperCase()}</strong></span>
                                                                 <div style={{marginLeft:'auto',display:'flex',gap:'8px'}}>
