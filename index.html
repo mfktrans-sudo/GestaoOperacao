@@ -7718,14 +7718,16 @@
             };
 
             // Cargas do dia selecionado: a finalização só libera quando todas têm Término de Carregamento
-            const envioPendentes = (operacoes || []).filter(o => o.data === dataSelecionada && !o.termino).length;
+            const envioPendentes = (operacoes || []).filter(o => o.data === dataSelecionada && !o.termino && !o.cargaCancelada).length;
             const envioTemCargas = (operacoes || []).some(o => o.data === dataSelecionada);
 
             const fmtNumEnvio = (n, casas) => (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: casas || 0, maximumFractionDigits: casas || 0 });
 
             const montarLegendaEnvio = (tipo) => {
                 const dataBR = formatarData(dataSelecionada);
-                const base = `📋 Operações: ${indicadores.total}\n🧾 NF: ${fmtNumEnvio(indicadores.nfTotal)}\n📦 Volume: ${fmtNumEnvio(indicadores.volTotal)}\n📐 Cubagem: ${fmtNumEnvio(indicadores.cubagemTotal, 2)} m³`;
+                const canceladasEnvio = (operacoesFiltradas || []).filter(o => o.cargaCancelada);
+                const textoCanc = canceladasEnvio.length ? '\n\n🚫 *Cargas canceladas: ' + canceladasEnvio.length + '*\n' + canceladasEnvio.map(o => '• ' + o.operacao + ' — ' + (horaCancelamentoOp(o) ? 'cancelada às ' + horaCancelamentoOp(o) + ' — ' : '') + (o.motivoCancelamento || 'sem motivo') + (o.motivoCancelamentoObs ? ' (' + o.motivoCancelamentoObs + ')' : '')).join('\n') : '';
+                const base = `📋 Operações: ${indicadores.total}\n🧾 NF: ${fmtNumEnvio(indicadores.nfTotal)}\n📦 Volume: ${fmtNumEnvio(indicadores.volTotal)}\n📐 Cubagem: ${fmtNumEnvio(indicadores.cubagemTotal, 2)} m³` + textoCanc;
                 if (tipo === 'volumetria') {
                     return `📊 *Volumetria do dia ${dataBR}*\nToda a volumetria já está dentro da ferramenta.\n\n${base}`;
                 }
@@ -7922,14 +7924,19 @@
                                                     <td style={cel}>{cubFmt(op.cubagem)}</td>
                                                     <td style={cel}>{vz(op.inicio)}</td>
                                                     <td style={cel}>{vz(op.romaneio)}</td>
-                                                    <td style={cel}>{vz(op.termino)}</td>
+                                                    <td style={op.cargaCancelada ? { ...cel, padding: '5px 4px' } : cel}>{op.cargaCancelada ? (
+                                                        <div style={{ background: 'linear-gradient(135deg,#ef4444,#b91c1c)', border: '1px solid #fecaca', borderRadius: '8px', padding: '4px 3px', color: '#fff', fontWeight: 900, fontSize: '13px', lineHeight: '1.15' }}>
+                                                            🚫 CANCELADA{horaCancelamentoOp(op) ? ' ' + horaCancelamentoOp(op) : ''}
+                                                            <div style={{ fontSize: '11px', fontWeight: 700, marginTop: '2px' }}>{op.motivoCancelamento || ''}</div>
+                                                        </div>
+                                                    ) : vz(op.termino)}</td>
                                                     <td style={cel}>{vz(op.meta)}</td>
                                                     <td style={cel}>{vz(op.conferentes)}</td>
                                                     <td style={cel}>{op.doca || '—'}</td>
                                                     <td style={cel}>{op.mesaLV || '—'}</td>
                                                     <td style={{ ...cel, borderRight: 'none' }}>
                                                         <span style={{ display: 'inline-block', width: '32px', height: '32px', lineHeight: '32px', borderRadius: '50%', fontSize: '17px', fontWeight: 900, color: '#fff', background: op.status === 'verde' ? 'linear-gradient(135deg,#34d399,#16a34a)' : op.status === 'vermelho' ? 'linear-gradient(135deg,#f87171,#dc2626)' : 'linear-gradient(135deg,#fde047,#f59e0b)', boxShadow: '0 0 10px rgba(255,255,255,.25)' }}>
-                                                            {op.status === 'verde' ? '✓' : op.status === 'vermelho' ? '✕' : '⏳'}
+                                                            {op.cargaCancelada ? '🚫' : op.status === 'verde' ? '✓' : op.status === 'vermelho' ? '✕' : '⏳'}
                                                         </span>
                                                     </td>
                                                 </tr>
@@ -8964,7 +8971,12 @@
                                                 <td className="px-4 py-2 text-sm">{(Math.round((parseFloat(op.cubagem)||0)*100)/100).toFixed(2)}</td>
                                                 <td className="px-4 py-2 text-sm">{op.inicio}</td>
                                                 <td className="px-4 py-2 text-sm">{op.romaneio}</td>
-                                                <td className="px-4 py-2 text-sm">{op.termino}</td>
+                                                <td className="px-4 py-2 text-sm">{op.cargaCancelada ? (
+                                                    <div style={{background:'#fee2e2',border:'1px solid #dc2626',borderRadius:8,padding:'3px 8px',color:'#b91c1c',fontWeight:800,fontSize:12,lineHeight:1.3}}>
+                                                        🚫 CARGA CANCELADA{horaCancelamentoOp(op) ? ' às ' + horaCancelamentoOp(op) : ''}
+                                                        <div style={{fontWeight:700,fontSize:11}}>{op.motivoCancelamento || ''}{op.motivoCancelamentoObs ? ' — ' + op.motivoCancelamentoObs : ''}</div>
+                                                    </div>
+                                                ) : op.termino}</td>
                                                 <td className="px-4 py-2 text-sm">{op.meta}</td>
                                                 <td className="px-4 py-2 text-sm">{op.conferentes || <span style={{color:'#94a3b8'}}>—</span>}</td>
                                                 <td className="px-4 py-2 text-sm">{op.doca || <span style={{color:'#94a3b8'}}>—</span>}</td>
@@ -8974,7 +8986,7 @@
                                                         op.status === 'verde' ? 'bg-green-500' :
                                                         op.status === 'vermelho' ? 'bg-red-500' : 'bg-yellow-500'
                                                     }`}>
-                                                        {op.status === 'verde' ? '✓' : op.status === 'vermelho' ? '✗' : '⏳'}
+                                                        {op.cargaCancelada ? '🚫' : op.status === 'verde' ? '✓' : op.status === 'vermelho' ? '✗' : '⏳'}
                                                     </span>
                                                 </td>
                                             </tr>
