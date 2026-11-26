@@ -2483,6 +2483,9 @@
                                     onDeletar={handleDeletarOperacao}
                                     isAdmin={isAdmin}
                                     bloqueadoEdicao={!isAdmin && !permissoesUsuarios.permitirEdicao}
+                                    farolTP={farolTP}
+                                    onAtualizarFarol={handleAtualizarFarolTP}
+                                    emailUsuario={user && user.email}
                                 />
                             )}
                             {abaSelecionada === 'gerenciar' && (
@@ -10078,7 +10081,7 @@
         }
 
         // ========== EDITAR ==========
-        function Editar({ operacoes, onEditar, onDeletar, isAdmin, bloqueadoEdicao }) {
+        function Editar({ operacoes, onEditar, onDeletar, isAdmin, bloqueadoEdicao, farolTP, onAtualizarFarol, emailUsuario }) {
             const [filtro, setFiltro] = useState('');
             const [editando, setEditando] = useState(null);
             const [dadosEdicao, setDadosEdicao] = useState({});
@@ -10164,6 +10167,10 @@
                     if (!dadosFinais.motivoCancelamento) { alert('⚠️ Selecione o motivo do cancelamento da carga.'); return; }
                     if (dadosFinais.motivoCancelamento === 'Outro' && !(dadosFinais.motivoCancelamentoObs || '').trim()) { alert('⚠️ Descreva o motivo do cancelamento.'); return; }
                     if (!dadosFinais.canceladaEm) dadosFinais.canceladaEm = Date.now();
+                    // Carga cancelada: preserva os horários já lançados (fim de separação, entrega de romaneio...)
+                    // e completa apenas os que faltam com o horário do cancelamento, para a carga ficar finalizada.
+                    const horaCancel = new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+                    ['inicio', 'romaneio', 'termino'].forEach(c => { if (!dadosFinais[c]) dadosFinais[c] = horaCancel; });
                 } else {
                     dadosFinais.cargaCancelada = false;
                     dadosFinais.motivoCancelamento = '';
@@ -10176,7 +10183,24 @@
                 };
                 if (dadosEdicao.conferentes) salvarHistoricoConferente(dadosEdicao.conferentes);
                 if (dadosEdicao.doca) salvarHistoricoDocaEditar(dadosEdicao.doca);
+                const jaEstavaCancelada = !!(operacoes.find(o => o.id === dadosEdicao.id) || {}).cargaCancelada;
                 await onEditar(operacaoAtualizada);
+                // Fecha também o acompanhamento no Farol TP / Controle de Expedição (não fica em aberto)
+                if (dadosFinais.cargaCancelada && !jaEstavaCancelada && typeof onAtualizarFarol === 'function') {
+                    try {
+                        const itemFarol = (farolTP || []).find(f => String(f.id) === String(dadosEdicao.id)) || {};
+                        const agoraMs = Date.now();
+                        const txt = '🚫 Carga cancelada — ' + dadosFinais.motivoCancelamento + (dadosFinais.motivoCancelamentoObs ? ' (' + dadosFinais.motivoCancelamentoObs + ')' : '');
+                        await onAtualizarFarol(dadosEdicao.id, {
+                            status: 'finalizada',
+                            cancelada: true,
+                            motivoCancelamento: dadosFinais.motivoCancelamento,
+                            finalizadoEm: agoraMs,
+                            finalizadoPor: emailUsuario || null,
+                            historico: farolAdicionarHistorico(itemFarol, txt, emailUsuario)
+                        });
+                    } catch (e) { console.error('Erro ao fechar Farol TP da carga cancelada:', e); }
+                }
                 setEditando(null);
                 setShowSugestoes(false);
             };
