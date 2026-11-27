@@ -1218,14 +1218,6 @@
         /* ═══ Paleta neon do cabeçalho — cabeçalhos de seção e de tabela ═══ */
         .neon-navy { background: linear-gradient(135deg, #031530 0%, #04234a 100%); box-shadow: inset 0 -1px 0 rgba(56,189,248,0.35); }
         .neon-th { background: linear-gradient(90deg, #04234a 0%, #0a6fd6 100%); }
-        /* ═══ Dashboard — tabela Dados Detalhados no layout escuro ═══ */
-        #dash-envio-tabela table { border-collapse: collapse; border: 1px solid rgba(96,165,250,.35); background: rgba(5,20,64,.7); }
-        #dash-envio-tabela thead { background: rgba(12,38,110,.95) !important; }
-        #dash-envio-tabela thead th { color: #fff !important; border-right: 1px solid rgba(96,165,250,.18); }
-        #dash-envio-tabela tbody tr { background: rgba(8,28,88,.55) !important; border-bottom: 1px solid rgba(96,165,250,.22) !important; }
-        #dash-envio-tabela tbody tr:nth-child(even) { background: rgba(18,48,130,.45) !important; }
-        #dash-envio-tabela tbody tr:hover { background: rgba(30,64,175,.55) !important; }
-        #dash-envio-tabela tbody td { color: #eaf2ff !important; border-right: 1px solid rgba(96,165,250,.18); }
 </style>
 </head>
 <body>
@@ -7422,7 +7414,7 @@
                             datasets: [{
                                 label: 'Volume',
                                 data: Object.values(dadosVol),
-                                backgroundColor: '#3b82f6',
+                                backgroundColor: '#667eea',
                                 borderRadius: 8
                             }]
                         },
@@ -7525,7 +7517,7 @@
                             datasets: [{
                                 label: 'NF',
                                 data: Object.values(dadosNF),
-                                backgroundColor: '#2563eb',
+                                backgroundColor: '#6366f1',
                                 borderColor: '#4f46e5',
                                 borderWidth: 2,
                                 borderRadius: 8
@@ -7864,14 +7856,13 @@
             })();
 
             return (
-                <div className="animate-fade-in" style={{ background: 'radial-gradient(ellipse at 50% 0%, #0b2a7a 0%, #04123a 38%, #020a22 100%)', borderRadius: '24px', padding: '16px', boxShadow: '0 0 0 1px rgba(56,189,248,0.25)' }}>
-                    <div style={{ position: 'relative', overflow: 'hidden', minHeight: '96px', padding: '14px 24px', borderRadius: '18px', border: '2px solid rgba(70,140,255,.75)', background: 'linear-gradient(90deg,#04123a 0%,#06205c 60%,#04123a 100%)', boxShadow: '0 0 26px rgba(40,110,255,.5)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }} className="mb-6">
-                        <div aria-hidden="true" style={{ position: 'absolute', left: '40%', top: 0, bottom: 0, width: '300px', backgroundImage: `url(${POSTER_HEADER_IMG})`, backgroundSize: 'auto 100%', backgroundRepeat: 'no-repeat', backgroundPosition: '75% center', opacity: .9, pointerEvents: 'none', WebkitMaskImage: 'linear-gradient(90deg, transparent 0, #000 35%, #000 80%, transparent 100%)', maskImage: 'linear-gradient(90deg, transparent 0, #000 35%, #000 80%, transparent 100%)' }}></div>
-                        <h2 style={{ position: 'relative', zIndex: 2, margin: 0, fontSize: '34px', fontWeight: 800, color: '#fff', letterSpacing: '.2px' }}>Dashboard <span style={{ color: '#38bdf8' }}>Interativo</span></h2>
-                        <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            {envioMsg && <span style={{ fontSize: '12px', fontWeight: 700, color: envioMsg.tipo === 'ok' ? '#4ade80' : '#fca5a5', maxWidth: '280px' }}>{envioMsg.texto}</span>}
-                            {envioEtapa === 'concluido' && <button onClick={() => salvarEtapaEnvio('finalizacao')} style={{ fontSize: '11px', color: '#cbd5e1', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer' }}>reenviar</button>}
-                            {envioEtapa === 'finalizacao' && <button onClick={() => salvarEtapaEnvio('volumetria')} title="Volta ao passo anterior para enviar a Volumetria novamente" style={{ fontSize: '11px', color: '#cbd5e1', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer' }}>reenviar volumetria</button>}
+                <div className="animate-fade-in">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }} className="mb-6">
+                        <h2 className="text-3xl font-bold text-gray-800"><span className="icon-bounce inline-block">📊</span> Dashboard Interativo</h2>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {envioMsg && <span style={{ fontSize: '12px', fontWeight: 700, color: envioMsg.tipo === 'ok' ? '#15803d' : '#b91c1c', maxWidth: '280px' }}>{envioMsg.texto}</span>}
+                            {envioEtapa === 'concluido' && <button onClick={() => salvarEtapaEnvio('finalizacao')} style={{ fontSize: '11px', color: '#64748b', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer' }}>reenviar</button>}
+                            {envioEtapa === 'finalizacao' && <button onClick={() => salvarEtapaEnvio('volumetria')} title="Volta ao passo anterior para enviar a Volumetria novamente" style={{ fontSize: '11px', color: '#64748b', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer' }}>reenviar volumetria</button>}
                             {botaoEnvio}
                             <button onClick={baixarPainelManual} disabled={envioBusy || !envioTemCargas} title="Gerar manualmente: baixa a imagem do painel sem enviar" style={{ fontWeight: 700, fontSize: '13px', padding: '10px 14px', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#fff', color: '#0f172a', cursor: (envioBusy || !envioTemCargas) ? 'not-allowed' : 'pointer', opacity: (envioBusy || !envioTemCargas) ? .6 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}>⬇ Gerar manual</button>
                             {isAdmin && <button onClick={() => { setEnvioCfgRascunho(JSON.parse(JSON.stringify(envioCfg))); setEnvioCfgAberto(true); }} title="Contatos do envio por WhatsApp" style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '9px 11px', cursor: 'pointer', fontSize: '15px' }}>⚙️</button>}
@@ -8053,7 +8044,7 @@
                     )}
                     
                     {/* PAINEL DE FILTROS */}
-                    <div className="filter-panel" style={{ border: '2px solid rgba(70,140,255,.75)', borderRadius: '22px', background: 'linear-gradient(180deg, rgba(6,24,76,.92), rgba(3,14,48,.95))', boxShadow: '0 0 26px rgba(40,110,255,.5)' }}>
+                    <div className="filter-panel">
                         <h3 className="text-xl font-bold text-white mb-4"><span className="icon-pulse inline-block">🔍</span> Filtros Avançados</h3>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -8184,13 +8175,11 @@
 
                     {/* CARDS DE INDICADORES */}
                     <div id="dash-envio-cards" className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                        <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-6 rounded-xl shadow-lg" style={{ background: 'linear-gradient(135deg,#2f6bff 0%,#1d4ed8 55%,#1e3a8a 100%)', border: '2px solid #7fb2ff', borderRadius: '22px', boxShadow: '0 0 22px rgba(80,140,255,.45)', position: 'relative' }}>
-                            <img src={POSTER_ICONS.blue} alt="" aria-hidden="true" style={{ position: 'absolute', right: '18px', top: '18px', width: '72px', height: '72px', opacity: .85, pointerEvents: 'none' }} />
-                            <div className="text-4xl font-bold">{indicadores.total}</div>
+                        <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-6 rounded-xl shadow-lg">
+                            <div className="text-3xl font-bold">{indicadores.total}</div>
                             <div className="text-sm opacity-90">Total de Operações</div>
                         </div>
-                        <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white p-6 rounded-xl shadow-lg" style={{ background: 'linear-gradient(135deg,#a855f7 0%,#7c3aed 55%,#5b21b6 100%)', border: '2px solid #d8b4fe', borderRadius: '22px', boxShadow: '0 0 22px rgba(80,140,255,.45)', position: 'relative' }}>
-                            <img src={POSTER_ICONS.purple} alt="" aria-hidden="true" style={{ position: 'absolute', right: '18px', top: '18px', width: '72px', height: '72px', opacity: .85, pointerEvents: 'none' }} />
+                        <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white p-6 rounded-xl shadow-lg" style={{position:'relative'}}>
                             {antSaveStatus && (
                                 <div style={{position:'absolute',top:'6px',right:'8px',fontSize:'10px',fontWeight:'700',padding:'2px 7px',borderRadius:'8px',
                                     background: antSaveStatus==='saving' ? 'rgba(255,255,255,0.25)' : antSaveStatus==='saved' ? 'rgba(16,185,129,0.85)' : 'rgba(239,68,68,0.85)',
@@ -8200,7 +8189,7 @@
                                     {antSaveStatus==='error'  && <>⚠ Erro ao salvar</>}
                                 </div>
                             )}
-                            <div className="text-4xl font-bold">{indicadores.nfTotal}</div>
+                            <div className="text-3xl font-bold">{indicadores.nfTotal}</div>
                             <div className="text-sm opacity-90">Total NF</div>
                             <div className="mt-2 text-xs opacity-70 cursor-pointer hover:opacity-100 underline select-none" onClick={() => setMostrarAntecipacoes(prev => prev === 'nf' ? null : 'nf')}>Antecipação</div>
                             {mostrarAntecipacoes === 'nf' && (
@@ -8247,9 +8236,8 @@
                                 </div>
                             )}
                         </div>
-                        <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white p-6 rounded-xl shadow-lg" style={{ background: 'linear-gradient(135deg,#fb923c 0%,#ea580c 55%,#b83a0a 100%)', border: '2px solid #fdba74', borderRadius: '22px', boxShadow: '0 0 22px rgba(80,140,255,.45)', position: 'relative' }}>
-                            <img src={POSTER_ICONS.orange} alt="" aria-hidden="true" style={{ position: 'absolute', right: '18px', top: '18px', width: '72px', height: '72px', opacity: .85, pointerEvents: 'none' }} />
-                            <div className="text-4xl font-bold">{indicadores.volTotal}</div>
+                        <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white p-6 rounded-xl shadow-lg">
+                            <div className="text-3xl font-bold">{indicadores.volTotal}</div>
                             <div className="text-sm opacity-90">Total Volume</div>
                             <div className="mt-2 text-xs opacity-70 cursor-pointer hover:opacity-100 underline select-none" onClick={() => setMostrarAntecipacoes(prev => prev === 'vol' ? null : 'vol')}>Antecipação</div>
                             {mostrarAntecipacoes === 'vol' && (
@@ -8296,9 +8284,8 @@
                                 </div>
                             )}
                         </div>
-                        <div className="bg-gradient-to-br from-green-500 to-green-600 text-white p-6 rounded-xl shadow-lg" style={{ background: 'linear-gradient(135deg,#34d399 0%,#16a34a 55%,#166534 100%)', border: '2px solid #86efac', borderRadius: '22px', boxShadow: '0 0 22px rgba(80,140,255,.45)', position: 'relative' }}>
-                            <img src={POSTER_ICONS.green} alt="" aria-hidden="true" style={{ position: 'absolute', right: '18px', top: '18px', width: '72px', height: '72px', opacity: .85, pointerEvents: 'none' }} />
-                            <div className="text-4xl font-bold">{indicadores.cubagemTotal.toFixed(2)}</div>
+                        <div className="bg-gradient-to-br from-green-500 to-green-600 text-white p-6 rounded-xl shadow-lg">
+                            <div className="text-3xl font-bold">{indicadores.cubagemTotal.toFixed(2)}</div>
                             <div className="text-sm opacity-90">Total Cubagem</div>
                             <div className="mt-2 text-xs opacity-70 cursor-pointer hover:opacity-100 underline select-none" onClick={() => setMostrarAntecipacoes(prev => prev === 'cub' ? null : 'cub')}>Antecipação</div>
                             {mostrarAntecipacoes === 'cub' && (
@@ -8593,11 +8580,11 @@
                     {/* ── FIM ALERTA CAPACIDADE ── */}
 
                     {/* TABELA DE DADOS FILTRADOS */}
-                    <div id="dash-envio-tabela" className="mt-6 overflow-hidden" style={{ border: '2px solid rgba(70,140,255,.75)', borderRadius: '22px', padding: '14px 16px 18px 16px', background: 'linear-gradient(180deg, rgba(6,24,76,.92), rgba(3,14,48,.95))', boxShadow: '0 0 26px rgba(40,110,255,.5)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '2px 6px 12px 6px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '22px' }}>📊</span>
-                            <h3 className="text-xl font-bold text-white" style={{ margin: 0 }}>Dados Detalhados</h3>
-                            <span style={{ background: '#1d4ed8', border: '1px solid #60a5fa', borderRadius: '999px', padding: '3px 14px', fontSize: '14px', fontWeight: 700, color: '#fff' }}>({operacoesFiltradas.length} registros)</span>
+                    <div id="dash-envio-tabela" className="mt-6 bg-white rounded-lg shadow-lg overflow-hidden">
+                        <div className="neon-navy p-4">
+                            <h3 className="text-xl font-bold text-white">
+                                📋 Dados Detalhados ({operacoesFiltradas.length} registros)
+                            </h3>
                         </div>
 
                         {/* ── ALERTA ANIMADO DE CUBAGEM ── */}
@@ -8619,11 +8606,11 @@
                             if (alertas.length === 0) return null;
 
                             return (
-                                <div style={{padding:'0 0 12px 0'}}>
+                                <div style={{padding:'12px 16px 0 16px'}}>
                                     {/* Banner colapsável de cubagem */}
                                     <button
                                         onClick={() => setAlertaCubExpanded(v => !v)}
-                                        style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',background:'#fee2e2',border:'2px solid rgba(239,68,68,0.5)',borderRadius: alertaCubExpanded ? '12px 12px 0 0' : '12px',padding:'12px 16px',cursor:'pointer',textAlign:'left',transition:'border-radius 0.2s'}}
+                                        style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',background:'rgba(254,226,226,0.7)',border:'2px solid rgba(239,68,68,0.5)',borderRadius: alertaCubExpanded ? '12px 12px 0 0' : '12px',padding:'12px 16px',cursor:'pointer',textAlign:'left',transition:'border-radius 0.2s'}}
                                     >
                                         <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
                                             <span className="cub-warn-icon" style={{fontSize:'20px'}}>🚛</span>
@@ -8649,7 +8636,7 @@
 
                                     {/* Conteúdo expandido — exatamente como estava antes */}
                                     {alertaCubExpanded && (
-                                    <div style={{background:'#fff5f5',border:'2px solid rgba(239,68,68,0.5)',borderTop:'none',borderRadius:'0 0 12px 12px',padding:'10px 16px 12px 16px',display:'flex',flexDirection:'column',gap:'10px'}}>
+                                    <div style={{border:'2px solid rgba(239,68,68,0.5)',borderTop:'none',borderRadius:'0 0 12px 12px',padding:'10px 16px 12px 16px',display:'flex',flexDirection:'column',gap:'10px'}}>
                                     {alertas.map(({nomeOp, cubTotal, cubMax, pct, excesso}) => {
                                         const pctBar = Math.min(pct, 100);
                                         return (
@@ -9012,21 +8999,21 @@
 
                     {/* GRÁFICOS */}
                     <div className="chart-grid">
-                        <div className="chart-container" style={{ border: '2px solid rgba(70,140,255,.75)', borderRadius: '18px', boxShadow: '0 0 22px rgba(40,110,255,.45)' }}>
+                        <div className="chart-container">
                             <canvas ref={chartRefs.status}></canvas>
                         </div>
-                        <div className="chart-container" style={{ border: '2px solid rgba(70,140,255,.75)', borderRadius: '18px', boxShadow: '0 0 22px rgba(40,110,255,.45)' }}>
+                        <div className="chart-container">
                             <canvas ref={chartRefs.volumetria}></canvas>
                         </div>
                         {dadosEvolucao && (
-                            <div className="chart-container" style={{ border: '2px solid rgba(70,140,255,.75)', borderRadius: '18px', boxShadow: '0 0 22px rgba(40,110,255,.45)' }}>
+                            <div className="chart-container">
                                 <canvas ref={chartRefs.evolucao}></canvas>
                             </div>
                         )}
-                        <div className="chart-container" style={{ border: '2px solid rgba(70,140,255,.75)', borderRadius: '18px', boxShadow: '0 0 22px rgba(40,110,255,.45)' }}>
+                        <div className="chart-container">
                             <canvas ref={chartRefs.nfPorOperacao}></canvas>
                         </div>
-                        <div className="chart-container" style={{ border: '2px solid rgba(70,140,255,.75)', borderRadius: '18px', boxShadow: '0 0 22px rgba(40,110,255,.45)' }}>
+                        <div className="chart-container">
                             <canvas ref={chartRefs.cubagem}></canvas>
                         </div>
                     </div>
